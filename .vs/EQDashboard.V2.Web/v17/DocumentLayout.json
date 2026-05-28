@@ -1,0 +1,58 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\EQDashboard\\EQDashboard\\EQDashboard.V2.Web\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{610DAD2E-2B4A-D3D3-25E1-D56D33738077}|EQDashboard.V2.Web.csproj|c:\\eqdashboard\\eqdashboard\\eqdashboard.v2.web\\wwwroot\\index.html||{40D31677-CBC0-4297-A9EF-89D907823A98}",
+      "RelativeMoniker": "D:0:0:{610DAD2E-2B4A-D3D3-25E1-D56D33738077}|EQDashboard.V2.Web.csproj|solutionrelative:wwwroot\\index.html||{40D31677-CBC0-4297-A9EF-89D907823A98}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{610DAD2E-2B4A-D3D3-25E1-D56D33738077}|EQDashboard.V2.Web.csproj|c:\\eqdashboard\\eqdashboard\\eqdashboard.v2.web\\services\\settingsservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{610DAD2E-2B4A-D3D3-25E1-D56D33738077}|EQDashboard.V2.Web.csproj|solutionrelative:services\\settingsservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 1,
+          "Children": [
+            {
+              "$type": "Bookmark",
+              "Name": "ST:128:0:{116d2292-e37d-41cd-a077-ebacac4c8cc4}"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "index.html",
+              "DocumentMoniker": "C:\\EQDashboard\\EQDashboard\\EQDashboard.V2.Web\\wwwroot\\index.html",
+              "RelativeDocumentMoniker": "wwwroot\\index.html",
+              "ToolTip": "C:\\EQDashboard\\EQDashboard\\EQDashboard.V2.Web\\wwwroot\\index.html",
+              "RelativeToolTip": "wwwroot\\index.html",
+              "ViewState": "AgIAAAIBAAAAAAAAAAAAABgBAABaAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001512|",
+              "WhenOpened": "2026-05-28T15:05:45.811Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "SettingsService.cs",
+              "DocumentMoniker": "C:\\EQDashboard\\EQDashboard\\EQDashboard.V2.Web\\Services\\SettingsService.cs",
+              "RelativeDocumentMoniker": "Services\\SettingsService.cs",
+              "ToolTip": "C:\\EQDashboard\\EQDashboard\\EQDashboard.V2.Web\\Services\\SettingsService.cs",
+              "RelativeToolTip": "Services\\SettingsService.cs",
+              "ViewState": "AgIAAAoAAAAAAAAAAAAkwA8AAABNAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-05-28T11:12:55.535Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

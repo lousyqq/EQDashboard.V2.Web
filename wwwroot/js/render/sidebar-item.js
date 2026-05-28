@@ -1,0 +1,241 @@
+// === render/sidebar-item.js - 選單項目產生器 ===
+function generateSidebarMenuItem(menu, allMenus, level, forceExpand = true) {
+    if (!menu || !menu.id) return '';
+    const subMenus = allMenus.filter(m => m.id !== menu.id && (window.isParentMatch(m.parentId, menu) || (m.parentIds || []).some(pid => window.isParentMatch(pid, menu))));
+    subMenus.sort((a, b) => (a.parentOrders?.[menu.id] ?? a.order ?? 0) - (b.parentOrders?.[menu.id] ?? b.order ?? 0));
+    const hasChildren = subMenus.length > 0;
+    let isDescendant = false;
+    if (hasChildren && window.currentActiveSidebarMenuId && typeof window.localIsMenuDescendant === 'function') {
+        isDescendant = window.localIsMenuDescendant(menu.id, window.currentActiveSidebarMenuId, allMenus);
+    }
+    const isExpanded = forceExpand || isDescendant; // 這裡將會是 true
+
+    let iconClass = menu.icon || 'far fa-file-alt';
+    if (menu.menuMode === 'folder' && !menu.icon) iconClass = 'fas fa-folder';
+    let iconHtml = `<i class="${iconClass} menu-icon ${menu.menuMode === 'folder' ? 'text-warning' : ''}"></i>`;
+    if (menu.icon && (menu.icon.startsWith('data:') || menu.icon.startsWith('icon/'))) {
+        iconHtml = `<img src="${menu.icon}" class="custom-icon menu-icon" alt="icon">`;
+    }
+
+    const safeDomId = 'collapse_' + encodeURIComponent(String(menu.id)).replace(/%/g, '_').replace(/[^a-zA-Z0-9_-]/g, '');
+
+    // ⭐️ 核心修正：棄用 Bootstrap 原生觸發器，改用完全自己掌控的 onclick，絕對不卡死！
+    let actionAttr = '';
+    if (hasChildren) actionAttr = `onclick="window.toggleSubMenu(event, '${safeDomId}', this)"`;
+    else if (menu.menuMode === 'app_grid') actionAttr = `onclick="window.activateMenu('${menu.id}')"`;
+    else if (menu.url) {
+        if (menu.target === 'blank') actionAttr = `onclick="window.open('${menu.url}', '_blank')"`
+        else actionAttr = `onclick="window.activateMenu('${menu.id}')"`;
+    }
+    else if (menu.targetPage) actionAttr = `onclick="window.activateMenu('${menu.id}')"`;
+
+    let dName = menu.displayName || menu.name || '未命名選單';
+    if (typeof i18n !== 'undefined' && i18n[currentLang] && i18n[currentLang]['dyn_' + menu.id] && !menu.isEdited) {
+        dName = i18n[currentLang]['dyn_' + menu.id];
+    }
+
+    if (hasChildren) {
+        const expClass = isExpanded ? 'show' : '';
+        const ariaAttr = isExpanded ? 'true' : 'false';
+        const collapsedClass = isExpanded ? '' : 'collapsed';
+        let html = `<div class="menu-item ${collapsedClass}" ${actionAttr} title="${dName}" aria-expanded="${ariaAttr}" style="cursor:pointer;">
+                        ${iconHtml}<span class="text-truncate">${dName}</span>
+                        <i class="fas fa-chevron-right dropdown-arrow"></i>
+                    </div>
+                    <div class="collapse ${expClass}" id="${safeDomId}" style="${isExpanded ? 'display:block;' : 'display:none;'}">
+                        <div class="sub-menu-container">`;
+        subMenus.forEach(child => html += generateSidebarMenuItem(child, allMenus, level + 1, forceExpand));
+        html += `</div></div>`;
+        return html;
+    } else {
+        const itemClass = level > 1 ? 'menu-item sub-item' : 'menu-item';
+        return `<div class="${itemClass}" ${actionAttr} title="${dName}" style="cursor:pointer;">${iconHtml}<span class="text-truncate">${dName}</span></div>`;
+    }
+}
+
+// ⭐️ 補回遺失的首頁儀表板渲染邏輯
+window.renderHomeDashboard = function () {
+    try {
+        if (!currentUser) return;
+        const homeRole = document.getElementById('home-role-title');
+        const homeRoleLvl = document.getElementById('home-role-level');
+        if (homeRole) homeRole.innerText = currentUser.roleLevel === 'admin' ? t('home_role_admin', '系統管理員') : t('home_role_user', '一般使用者');
+        if (homeRoleLvl) homeRoleLvl.innerText = currentUser.roleLevel === 'admin' ? '(Admin)' : '(User)';
+
+        const fabs = getFabs();
+        let currentFabObj = fabs.find(f => window.cleanId(f.fabName || f.FabName || f.id || f.fabId || f.FabId) === window.cleanId(window.currentFab));
+        let displayDName = currentFabObj ? (currentFabObj.displayName || currentFabObj.DisplayName || currentFabObj.fabName || currentFabObj.FabName) : window.currentFab;
+
+        const homeFab = document.getElementById('home-fab-display');
+        if (homeFab) homeFab.innerText = displayDName;
+
+        // 同步右上角頭像下拉的使用者資訊（對齊 TEST_20260429.html:2917-2930）
+        if (typeof window.renderUserDropdown === 'function') window.renderUserDropdown();
+    } catch (e) { console.error("renderHomeDashboard error", e); }
+};
+
+// 右上角使用者下拉資訊（姓名、部門、累積登入次數、本次登入時間）
+window.renderUserDropdown = function () {
+    if (!currentUser) return;
+    const setText = (id, txt) => { const el = document.getElementById(id); if (el) el.innerText = txt; };
+    const setHtml = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+
+    setText('user-name', currentUser.id || '');
+    const loginCount = currentUser.loginCount || 1;
+    setHtml('user-role',
+        t('login_count_prefix', '這是您第 ') + '<span style="color:#38bdf8; font-weight:800; font-size:0.75rem;">' + loginCount + '</span>' + t('login_count_suffix', ' 次登入'));
+
+    setText('dropdown-user-name', (currentUser.name || '') + ' (' + (currentUser.id || '') + ')');
+    setText('dropdown-user-dept', currentUser.department || t('dept_unknown', '未設定部門'));
+    setText('dropdown-user-login-count', loginCount + ' ' + t('login_count_unit', '次'));
+    setText('dropdown-user-login-time', currentUser.currentLoginTime || '00:00 AM');
+};
+// =========================================================================
+// ⭐️ 無敵雙重容錯版：自動相容各種 HTML ID 命名，且直接讀取底層記憶體！
+// =========================================================================
+window.renderFabSwitcher = function () {
+    // ⭐️ 核心修正 1：雙重 ID 尋找機制！不論您 HTML 裡面叫 dropdown 還是 switcher 都能抓到
+    const fabMenu = document.getElementById('fab-dropdown-menu') || document.getElementById('fab-switcher-menu');
+    const fabNameDisplay = document.getElementById('current-fab-name') || document.getElementById('current-fab-display');
+    const homeFabDisplay = document.getElementById('home-fab-display');
+
+    if (!fabMenu) {
+        console.error("🚨 找不到廠區下拉容器，請確認 index.html 裡面有 id='fab-dropdown-menu'");
+        return;
+    }
+
+    // 直接從全域記憶體取得 fabs
+    const allFabs = (window.appState && window.appState.fabs) ? window.appState.fabs : [];
+
+    // ⭐️ 依「可視群組版面 (currentUser.assignedRoles)」與「fab.assignedRoles」的交集過濾廠區
+    //    fab 的 assignedRoles 與帳號的 assignedRoles 有任何共同 role → 該廠區可見
+    //    admin 也套用同規則（admin 帳號預設綁定所有 role 即可看到所有廠區）
+    const userRoleIds = (currentUser && (currentUser.assignedRoles || currentUser.AssignedRoles) || [])
+        .map(window.cleanId);
+    const fabs = !currentUser ? allFabs : allFabs.filter(f => {
+        const fabRoles = (f.assignedRoles || f.AssignedRoles || []).map(window.cleanId);
+        // 若該廠區沒設任何 role，視為「無人可見」（與舊版單檔的隱含規則一致）
+        if (fabRoles.length === 0) return false;
+        return fabRoles.some(r => userRoleIds.includes(r));
+    });
+
+    fabMenu.innerHTML = '';
+
+    if (fabs.length === 0) {
+        fabMenu.innerHTML = '<li><span class="dropdown-item text-muted px-3 py-2"><i class="fas fa-exclamation-circle me-1"></i>無可用廠區資料</span></li>';
+        if (fabNameDisplay) fabNameDisplay.innerText = '無';
+        if (homeFabDisplay) homeFabDisplay.innerText = '無';
+        return;
+    }
+
+    // 初始化 / 校正 currentFab：若目前 currentFab 不在可見清單中，自動切到第一個
+    const isCurrentVisible = !!fabs.find(f =>
+        window.cleanId(f.fabName || f.FabName || f.id || f.fabId || f.FabId) === window.cleanId(window.currentFab)
+    );
+    if (!window.currentFab || !isCurrentVisible) {
+        const first = fabs[0];
+        window.currentFab = first.fabName || first.FabName || first.id || first.fabId || first.FabId;
+        try { currentFab = window.currentFab; } catch (e) { }
+    }
+
+    // 尋找目前的廠區物件以取得顯示名稱
+    const currentFabObj = fabs.find(f =>
+        window.cleanId(f.fabName || f.FabName || f.id || f.fabId || f.FabId) === window.cleanId(window.currentFab)
+    );
+    const displayDName = currentFabObj
+        ? (currentFabObj.displayName || currentFabObj.DisplayName || currentFabObj.fabName || currentFabObj.FabName)
+        : window.currentFab;
+
+    if (fabNameDisplay) fabNameDisplay.innerText = displayDName;
+    if (homeFabDisplay) homeFabDisplay.innerText = displayDName;
+
+    // 動態產生選單項目（已過濾過的 fabs）
+    let htmlBuffer = [];
+    fabs.forEach(f => {
+        const fName = f.fabName || f.FabName || f.id || f.fabId || f.FabId;
+        const dName = f.displayName || f.DisplayName || fName;
+        const isCurrent = window.cleanId(fName) === window.cleanId(window.currentFab);
+
+        htmlBuffer.push(`
+          <li>
+            <a class="dropdown-item py-2 fw-bold d-flex justify-content-between align-items-center ${isCurrent ? 'bg-primary text-white' : ''}"
+               href="#"
+               data-fab="${String(fName).replace(/"/g, '&quot;')}">
+              <span><i class="fas fa-industry me-2 small ${isCurrent ? 'text-white' : 'text-secondary'}"></i>${dName}</span>
+              ${isCurrent ? '<i class="fas fa-check ms-2"></i>' : ''}
+            </a>
+          </li>
+        `);
+    });
+    fabMenu.innerHTML = htmlBuffer.join('');
+
+    // 綁定點擊事件 (精準攔截 a 標籤內的所有點擊)
+    if (!fabMenu.hasAttribute('data-fab-bound')) {
+        fabMenu.setAttribute('data-fab-bound', '1');
+        fabMenu.addEventListener('click', function (e) {
+            const a = e.target.closest('a[data-fab]');
+            if (!a) return;
+ 
+            e.preventDefault();
+            // ✅ 不要 stopPropagation，讓 Bootstrap 的自動收合機制可以運作
+            // e.stopPropagation();
+ 
+            const selectedFab = a.getAttribute('data-fab');
+            window.switchFab(selectedFab);
+ 
+            // ✅ 手動保險收合（就算別的地方擋掉，也一定會關）
+            const dropdownBtn = fabMenu.closest('.dropdown')?.querySelector('button[data-bs-toggle="dropdown"]');
+            if (dropdownBtn && window.bootstrap?.Dropdown) {
+                bootstrap.Dropdown.getOrCreateInstance(dropdownBtn).hide();
+            }
+        });
+ 
+    }
+};
+ 
+// ⭐️ 廠區切換引擎（依「可視廠區」防呆）
+window.switchFab = function (fabName) {
+    if (!fabName) return;
+    if (window.cleanId(window.currentFab) === window.cleanId(fabName)) return;
+
+    const fabs = (window.appState && window.appState.fabs) ? window.appState.fabs : [];
+    const fabObj = fabs.find(f =>
+        window.cleanId(f.fabName || f.FabName || f.id || f.fabId || f.FabId) === window.cleanId(fabName)
+    );
+    if (!fabObj) return;
+
+    // 防呆：使用者沒有交集角色就不允許切到該廠區
+    if (currentUser) {
+        const userRoleIds = (currentUser.assignedRoles || currentUser.AssignedRoles || []).map(window.cleanId);
+        const fabRoleIds = (fabObj.assignedRoles || fabObj.AssignedRoles || []).map(window.cleanId);
+        const canSee = fabRoleIds.length > 0 && fabRoleIds.some(r => userRoleIds.includes(r));
+        if (!canSee) {
+            if (typeof customAlert === 'function') customAlert(t('no_permission', '您沒有權限存取此廠區'));
+            return;
+        }
+    }
+
+    window.currentFab = fabName;
+    try { currentFab = fabName; } catch (e) { }
+
+    const dLang = fabObj.defaultLang || fabObj.DefaultLang;
+    if (dLang && typeof changeLanguage === 'function') {
+        changeLanguage(dLang);
+    }
+
+    if (typeof renderFabSwitcher === 'function') renderFabSwitcher();
+    if (typeof renderHomeDashboard === 'function') renderHomeDashboard();
+    if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
+
+    const isSystemSettings = window.currentActiveTopMenuId === 'system_settings';
+    if (window.currentLayoutMode === 'system' && !isSystemSettings) {
+        if (typeof goDefaultHome === 'function') {
+            goDefaultHome();
+        }
+    }
+};
+// === 個人頁面管理 ===
+//  - 主選單 (level 0) 才放在 tbody，DataTable 分頁只計主選單筆數（不含子選單）
+//  - 主選單若有子選單，使用 DataTable row.child() 內嵌呈現
+//  - 主選單拖曳影響上方導覽列順序；子選單拖曳影響側邊欄順序
+//  - 顯示/隱藏 toggle、開啟方式下拉皆可即時生效

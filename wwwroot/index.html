@@ -1,0 +1,393 @@
+﻿<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>主系統儀表板 - EQ Performance Dashboard</title>
+
+    <!-- 引入 Bootstrap CSS, FontAwesome 與 SheetJS(Excel 匯出匯入) -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+    <!-- DataTables CSS & JS + jQuery -->
+    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- CSS 模組 (從 style.css 拆分) -->
+    <link href="css/variables.css?v=2" rel="stylesheet">
+    <link href="css/navbar.css?v=2" rel="stylesheet">
+    <link href="css/sidebar.css?v=2" rel="stylesheet">
+    <link href="css/components.css?v=2" rel="stylesheet">
+</head>
+<body>
+
+    <div id="focus-exit-btn" class="focus-exit-overlay">
+        <span class="text-white" style="font-size: 10px; font-weight: bold; letter-spacing: 1px;">FOCUS</span>
+        <button class="btn btn-sm btn-light py-0 px-2" style="font-size: 0.75rem;" onclick="document.getElementById('main-iframe').src = document.getElementById('main-iframe').src" title="重新整理"><i class="fas fa-sync-alt"></i></button>
+        <button class="btn btn-sm btn-danger py-0 px-2 fw-bold" style="font-size: 0.75rem;" onclick="toggleFullscreen()"><i class="fas fa-compress me-1"></i> 退出</button>
+    </div>
+
+    <!-- 登入框 -->
+    <div id="login-overlay" style="display:none;">
+        <div class="login-box">
+            <h4 class="text-center mb-4 fw-bold" style="color: #0b1120;"><i class="fas fa-microchip me-2"></i><span data-i18n="login_title">EQ Dashboard</h4>
+            <div class="alert alert-light border py-2 mb-4 text-center" style="font-size: 0.8rem;">
+                <i class="fas fa-info-circle me-1 text-primary"></i> 測試帳號：<br><b>admin</b> (管理員) / <b>user</b> (一般使用者)
+            </div>
+            <form onsubmit="doLogin(); return false;">
+                <div class="mb-3">
+                    <label class="form-label text-muted small fw-bold mb-1" data-i18n="login_emp_id">工號 (Emp ID)</label>
+                    <input type="text" id="empId" class="form-control form-control-sm" placeholder="admin / user">
+                </div>
+                <div class="mb-4">
+                    <label class="form-label text-muted small fw-bold mb-1" data-i18n="login_pwd">密碼 (Password)</label>
+                    <input type="password" id="empPwd" class="form-control form-control-sm" value="123456">
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm w-100 fw-bold py-2"><i class="fas fa-sign-in-alt me-1"></i><span data-i18n="login_btn"> 登入</span></button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 邊緣觸發區 (沉浸模式專用) -->
+    <div class="edge-trigger trigger-top" id="trigger-top" title="喚醒導覽列"></div>
+    <div class="edge-trigger trigger-left" id="trigger-left" title="喚醒選單"></div>
+
+    <!-- 頂部導航列 -->
+    <div class="top-navbar-group" id="top-navbar">
+        <div class="navbar-row-top">
+            <div class="nav-brand-section">
+                <button class="btn p-0 text-white me-3" style="opacity: 0.7;" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
+                <h1 class="nav-logo-text" onclick="goDefaultHome()" title="回預設首頁"><span class="text-info">UMC</span> EQ Dashboard</h1>
+                <div class="nav-breadcrumb-inline" id="top-breadcrumb">
+                    <i class="fas fa-satellite-dish me-1"></i>
+                    <span id="bc-path" style="display:none;"></span><span class="current" id="bc-name" data-i18n="nav_breadcrumb_home">首頁總覽</span>
+                </div>
+            </div>
+
+            <div class="utility-cluster">
+                <div class="dropdown">
+                    <button class="util-item dropdown-toggle" id="fabDropdownToggle" type="button" data-bs-toggle="dropdown"
+                                                       aria-expanded="false">
+                        <span data-i18n="nav_fab">廠區:</span><span class="text-white ms-1" id="current-fab-name">12A</span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0 mt-1" id="fab-dropdown-menu"
+                                               aria-labelledby="fabDropdownToggle"></ul>
+                </div>
+                <div class="util-divider"></div>
+
+                <div class="layout-toggle-wrapper" id="layout-toggle-wrapper" onclick="switchLayoutMode(currentLayoutMode === 'system' ? 'personal' : 'system')" title="切換版面配置">
+                    <div class="layout-toggle-slider"></div>
+                    <div class="pill-btn-text active" id="btn-layout-system" data-i18n="nav_sys">系統</div>
+                    <div class="pill-btn-text" id="btn-layout-personal" data-i18n="nav_personal">自訂</div>
+                </div>
+                <div class="util-divider"></div>
+
+                <div class="dropdown">
+                    <button class="btn btn-sm text-white border-0 dropdown-toggle fw-bold" type="button" id="langDropdown" data-bs-toggle="dropdown" aria-expanded="false" style="padding-left: 4px; padding-right: 4px; font-size: 0.8rem;">
+                        <i class="fas fa-globe me-1" style="font-size: 0.7rem; opacity: 0.9;"></i><span id="current-lang-display">繁中</span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow" aria-labelledby="langDropdown" style="min-width: 130px;">
+                        <li>
+                            <a class="dropdown-item py-2 fw-bold d-flex justify-content-between align-items-center" href="#" onclick="event.preventDefault(); updateLangUI('zh');">
+                                <span data-i18n="lang_zh">繁體中文</span><i class="fas fa-check ms-2 text-primary lang-check" id="check-zh"></i>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item py-2 fw-bold d-flex justify-content-between align-items-center" href="#" onclick="event.preventDefault(); updateLangUI('ja');">
+                                <span data-i18n="lang_ja">日本語</span><i class="fas fa-check ms-2 text-primary d-none lang-check" id="check-ja"></i>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item py-2 fw-bold d-flex justify-content-between align-items-center" href="#" onclick="event.preventDefault(); updateLangUI('en');">
+                                <span data-i18n="lang_en">English</span><i class="fas fa-check ms-2 text-primary d-none lang-check" id="check-en"></i>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+
+                <button id="btn-pin" class="util-item text-danger" style="font-size: 0.85rem;" onclick="togglePin()" title="切換自動隱藏/固定版面">
+                    <i class="fas fa-thumbtack"></i>
+                </button>
+                <div class="util-divider"></div>
+
+                <button id="btn-system-settings" class="util-item" onclick="selectTopMenu('system_settings')" title="系統設定">
+                    <i class="fas fa-cog" style="font-size: 0.95rem;"></i>
+                </button>
+
+                <div class="dropdown ms-1">
+                    <button class="btn border-0 p-0 d-flex align-items-center text-white" type="button" data-bs-toggle="dropdown">
+                        <div class="d-none d-md-block text-end lh-1 me-2"><div class="fw-bold" style="font-size: 0.85rem;" id="user-name">載入中...</div><div class="text-white-50 mt-1" style="font-size: 0.7rem;" id="user-role">Role</div></div><i class="fas fa-user-circle fs-4 text-white opacity-75"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow border-0 mt-2 p-0" style="width: 280px; border-radius: 8px; overflow: hidden;">
+                        <div class="p-3 bg-light border-bottom d-flex align-items-center"><div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center shadow-sm" style="width: 45px; height: 45px; font-size: 1.5rem; flex-shrink: 0;"><i class="fas fa-user"></i></div><div class="ms-3 overflow-hidden"><div class="fw-bold text-dark fs-6 text-truncate" id="dropdown-user-name">系統管理員 (admin)</div><div class="text-muted small text-truncate mt-1"><i class="fas fa-sitemap me-1"></i> <span id="dropdown-user-dept">資訊處</span></div></div></div>
+                        <div class="p-3 bg-white"><div class="d-flex justify-content-between align-items-center mb-3"><div class="text-secondary fw-bold"><i class="fas fa-chart-line me-2 text-success"></i><span data-i18n="nav_login_count">累積登入次數</div><div class="badge bg-success bg-opacity-10 text-success px-2 py-1 border border-success border-opacity-25" id="dropdown-user-login-count">0 次</div></div><div class="d-flex justify-content-between align-items-center"><div class="text-secondary fw-bold"><i class="fas fa-clock me-2 text-primary"></i><span data-i18n="nav_login_time">本次登入時間</div><div class="fw-bold text-dark" id="dropdown-user-login-time">00:00 AM</div></div></div>
+                        <div class="border-top"><a class="dropdown-item py-3 fw-bold cursor-pointer bg-light d-flex align-items-center" onclick="logout()"><i class="fas fa-sign-out-alt text-danger me-2 fs-5"></i> <span class="text-danger" data-i18n="nav_logout">登出系統</span></a></div>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="navbar-row-bottom">
+            <div class="top-menus" id="top-dynamic-menus"></div>
+            <!-- TODO: 將下方 your-feedback-url.com 換成實際的意見回饋網址 -->
+            <a href="https://your-feedback-url.com" target="_blank" class="feedback-link" title="提供您的寶貴意見"><i class="fas fa-envelope-open-text me-1"></i><span data-i18n="nav_feedback"> 意見箱</span></a>
+        </div>
+    </div>
+
+    <div id="wrapper">
+        <div id="sidebar" class="sidebar">
+            <div class="sidebar-module-header"><i class="fas fa-layer-group"></i> <div class="module-title-text" id="sidebar-module-title" data-i18n="sidebar_module">模組目錄</div></div>
+            <div class="flex-grow-1 overflow-auto py-1" id="dynamic-sidebar-menus"></div>
+        </div>
+
+        <div id="content-wrapper">
+            <div id="main-content">
+                <!-- ========== 全新儀表板首頁區塊 ========== -->
+                <div id="page-home" class="page-section active">
+                    <div class="home-welcome-alert">
+                        <div class="home-welcome-icon"><i class="fas fa-check"></i></div>
+                        <div>
+                            <h5 class="mb-1 fw-bold" style="color: #065f46;" data-i18n="welcome_title">歡迎登入</h5>
+                            <p class="mb-0" style="color: #047857; font-size: 0.9rem;" id="layout-status-desc" data-i18n="home_desc">目前為 <strong>預設系統版面</strong>。請從上方或左側選單進入各項報表或設定。</p>
+                        </div>
+                    </div>
+
+                    <div class="row g-4 mb-4">
+                        <div class="col-md-6">
+                            <div class="home-card home-card-top-red">
+                                <div class="home-icon-bg shield"><i class="fas fa-shield-alt"></i></div>
+                                <div class="home-card-content">
+                                    <p class="text-muted fw-bold mb-2 small"><i class="fas fa-key me-1"></i><span data-i18n="home_role_title"> 我的系統權限層級</p>
+                                    <h2 class="mb-3 mt-3 fw-bold" style="color: #dc3545;"><span id="home-role-title" data-i18n="home_role_admin">系統管理員</span> <small class="text-danger fs-5 fw-normal opacity-75" id="home-role-level">(Admin)</small></h2>
+                                    <p class="text-muted small mb-0"><i class="fas fa-info-circle me-1"></i> 系統根據您的職務自動派發</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="home-card home-card-top-blue">
+                                <div class="home-icon-bg building"><i class="fas fa-building"></i></div>
+                                <div class="home-card-content">
+                                    <div class="d-flex justify-content-between align-items-start"><p class="text-muted fw-bold mb-2 small"><i class="fas fa-map-marker-alt me-1"></i><span data-i18n="home_fab_title"> 目前選擇廠區</p><span class="badge border text-muted bg-light fw-normal py-1 px-2 shadow-sm" style="font-size: 0.75rem;">可於右上方切換</span></div>
+                                    <h2 class="mb-3 mt-3 fw-bold" style="color: #0284c7;" id="home-fab-display">12A</h2>
+                                    <p class="text-muted small mb-0">目前顯示該廠區之全域配置</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="page-personal-manage" class="page-section">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0 fw-bold text-primary"><i class="fas fa-user-cog me-2"></i><span data-i18n="menu_personal_manage"> 個人頁面管理 <span class="fs-6 text-muted fw-normal ms-2">(自訂專屬版面)</span></h5>
+                        <div class="d-flex align-items-center gap-2">
+                            <button class="btn btn-sm btn-outline-danger fw-bold shadow-sm" onclick="restoreDefaultPersonalMenu()"><i class="fas fa-trash-restore me-1"></i><span data-i18n="btn_restore_default"> 還原預設版面</span></button>
+                            <button class="btn btn-sm btn-outline-secondary fw-bold shadow-sm" id="btn-per-toggle-all" onclick="togglePerAllMenus()"><i class="fas fa-expand-arrows-alt me-1"></i><span data-i18n="btn_expand_all"> 全部展開</span></button>
+                        </div>
+                    </div>
+                    <div class="manage-alert shadow-sm">
+                        <i class="fas fa-lightbulb text-warning me-2 fs-5"></i> <strong>獨立個人化設定區：</strong>這裡的設定完全只對您的帳號生效。切換顯示開關會立即同步左側。<strong>按住清單列即可上下拖曳，放開後會自動儲存並即時同步顯示至左側選單！</strong>
+                    </div>
+                    <div class="card border-0 shadow-sm overflow-hidden">
+                        <div class="card-header bg-white border-bottom py-3">
+                            <h6 class="m-0 fw-bold text-primary"><i class="fas fa-list me-2"></i>個人看板樹狀結構</h6>
+                        </div>
+                        <div class="card-body p-3 table-responsive">
+                            <table id="dtPersonalMenu" class="table table-custom align-middle text-center w-100">
+                                <thead><tr>
+                                    <th class="text-start ps-4" style="width: 280px;" data-i18n="th_display_name">顯示名稱 <span class="fw-normal small text-muted">(按住可拖曳)</span></th>
+                                    <th style="width: 100px;" data-i18n="th_level">層級</th>
+                                    <th style="width: 80px;" data-i18n="th_status">狀態</th>
+                                    <th class="text-start" data-i18n="th_open_pref">開啟方式偏好</th>
+                                    <th class="text-center" style="width: 90px;" data-i18n="th_actions">操作</th>
+                                </tr></thead>
+                                <tbody id="personalMenuTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="page-webpage-manage" class="page-section">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0 fw-bold" data-i18n="menu_webpage_manage">看板網頁管理</h5>
+                        <button class="btn btn-sm btn-primary fw-bold" onclick="openAddWebpageModal()"><i class="fas fa-plus me-1"></i><span data-i18n="btn_add_webpage"> 新增網頁</span></button>
+                    </div>
+                    <div class="card border-0 overflow-hidden shadow-sm">
+                        <div class="card-body p-3 table-responsive">
+                            <table id="dtWebpage" class="table table-custom align-middle text-center w-100">
+                                <thead><tr><th class="text-start ps-3" style="width: 280px;" data-i18n="th_display_name">顯示名稱</th><th style="width: 110px;" data-i18n="th_type">類型</th><th style="width: 80px;" data-i18n="th_status">狀態</th><th class="text-start" data-i18n="th_open_config">開啟配置 / 路徑</th><th class="text-center" style="width: 90px;" data-i18n="th_actions">操作</th></tr></thead>
+                                <tbody id="webpageTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="page-menu-manage" class="page-section">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0 fw-bold" data-i18n="menu_menu_manage">選單配置管理</h5>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-sm btn-primary fw-bold" id="btn-add-main-menu" onclick="openAddMenuNodeModal()"><i class="fas fa-plus me-1"></i><span data-i18n="btn_add_main_menu"> 新增主選單配置</span></button>
+                        </div>
+                    </div>
+                    <div class="alert alert-primary bg-primary bg-opacity-10 border-0 mb-3 d-flex align-items-center">
+                        <i class="fas fa-sitemap fs-5 me-2 text-primary"></i>
+                        <span class="small fw-bold text-primary">此處用於建立「主選單群組」或「獨立網頁」。子選單請點擊「編輯結構」進入調整。</span>
+                    </div>
+                    <div class="card border-0 overflow-hidden shadow-sm">
+                        <div class="card-body p-3 table-responsive">
+                            <table id="dtMenuConfig" class="table table-custom align-middle text-center w-100">
+                                <thead><tr><th class="text-start ps-3" style="width: 250px;" data-i18n="th_display_name">顯示名稱 (系統名稱)</th><th style="width: 120px;" data-i18n="th_type">類型</th><th style="width: 80px;" data-i18n="th_status">狀態</th><th class="text-start" data-i18n="th_content_config">內容配置 (子選單 / 網址)</th><th class="text-center" style="width: 90px;" data-i18n="th_actions">操作</th></tr></thead>
+                                <tbody id="menuConfigTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="page-fab-manage" class="page-section">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0 fw-bold" data-i18n="menu_fab_manage">廠區管理</h5>
+                        <button class="btn btn-sm btn-primary fw-bold admin-only-btn" onclick="openAddFabModal()"><i class="fas fa-plus me-1"></i><span data-i18n="btn_add_fab"> 新增廠區</span></button>
+                    </div>
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body p-3 table-responsive">
+                            <table id="dtFab" class="table table-custom text-center align-middle w-100">
+                                <thead><tr><th class="text-start ps-3" data-i18n="th_fab_id">廠區(ID)</th><th data-i18n="th_display_name">顯示名稱</th><th data-i18n="th_default_lang">預設語言</th><th class="text-start" data-i18n="th_applied_roles">套用的權限群組</th><th class="admin-only-col text-center" style="width: 90px;" data-i18n="th_actions">操作</th></tr></thead>
+                                <tbody id="fabTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="page-role-manage" class="page-section">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0 fw-bold" data-i18n="menu_role_manage">權限群組管理</h5>
+                        <button class="btn btn-sm btn-primary fw-bold admin-only-btn" onclick="openAddRoleModal()"><i class="fas fa-plus me-1"></i><span data-i18n="btn_add_role"> 新增群組</span></button>
+                    </div>
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body p-3 table-responsive">
+                            <table id="dtRole" class="table table-custom align-middle w-100">
+                                <thead><tr><th class="text-start ps-3" data-i18n="th_role_name">群組名稱</th><th class="text-start" data-i18n="th_allowed_menus">允許的看板組合</th><th class="text-center admin-only-col" style="width: 90px;" data-i18n="th_actions">操作</th></tr></thead>
+                                <tbody id="roleTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="page-account-manage" class="page-section">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0 fw-bold" data-i18n="menu_account_manage">帳號管理</h5>
+                        <button class="btn btn-sm btn-primary fw-bold admin-only-btn" onclick="openAddAccountModal()"><i class="fas fa-plus me-1"></i><span data-i18n="btn_add_account"> 新增帳號</span></button>
+                    </div>
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body p-3 table-responsive">
+                            <table id="dtAccount" class="table table-custom text-center align-middle w-100">
+                                <thead><tr><th data-i18n="th_emp_id">工號</th><th data-i18n="th_name_dept">姓名/部門</th><th data-i18n="th_role_level">權限層級</th><th class="text-start" data-i18n="th_default_home">登入預設首頁</th><th class="text-start" data-i18n="th_visible_roles">可視群組版面</th><th class="admin-only-col text-center" style="width: 90px;" data-i18n="th_actions">操作</th></tr></thead>
+                                <tbody id="accTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="page-apply" class="page-section">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0 fw-bold" data-i18n="menu_apply">需求申請</h5>
+                        <button class="btn btn-sm btn-primary fw-bold" onclick="openApplyModal()"><i class="fas fa-plus me-1"></i><span data-i18n="btn_add_apply"> 新增申請</span></button>
+                    </div>
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body p-3 table-responsive">
+                            <table id="dtApply" class="table table-custom align-middle w-100 text-center">
+                                <thead><tr><th data-i18n="th_apply_time">申請時間</th><th data-i18n="th_apply_type">申請類別 / 廠區</th><th class="text-start" data-i18n="th_apply_reason">申請原因與需求細節</th><th data-i18n="th_apply_status">處理狀態</th><th class="text-start" data-i18n="th_apply_progress">處理進度與回覆</th><th class="text-center" style="width: 120px;" data-i18n="th_actions">操作</th></tr></thead>
+                                <tbody id="applyTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="page-audit-manage" class="page-section">
+                    <h5 class="mb-3 fw-bold" data-i18n="menu_audit_manage">申請審核管理</h5>
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body p-3 table-responsive">
+                            <table id="dtAudit" class="table table-custom align-middle w-100 text-center">
+                                <thead><tr><th data-i18n="th_applicant">申請人</th><th data-i18n="th_apply_time">申請時間</th><th data-i18n="th_apply_type">申請類別 / 廠區</th><th class="text-start" data-i18n="th_apply_reason">申請原因與需求細節</th><th data-i18n="th_apply_status">處理狀態</th><th class="text-start" data-i18n="th_apply_progress">處理進度與回覆</th><th class="text-center" style="width: 90px;" data-i18n="th_actions">操作</th></tr></thead>
+                                <tbody id="auditTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="page-config-manage" class="page-section">
+                    <div class="d-flex justify-content-between align-items-center mb-3"><h5 class="mb-0 fw-bold" data-i18n="menu_config_manage">設定檔管理</h5></div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="card p-4 h-100 border-0 shadow-sm text-center d-flex flex-column justify-content-center">
+                                <i class="fas fa-file-upload text-success mb-3" style="font-size: 3rem;"></i>
+                                <h5 class="fw-bold" data-i18n="config_import_title">從 Excel 匯入</h5>
+                                <div class="custom-file-input-wrapper d-flex align-items-center mb-3 w-75 mx-auto border rounded" style="overflow: hidden; height: 34px;">
+                                    <button type="button" class="btn btn-sm btn-outline-primary fw-bold px-3 border-0 border-end rounded-0 h-100" style="white-space: nowrap;" onclick="document.getElementById('configFile').click();" data-i18n="file_choose">選擇檔案</button>
+                                    <span id="configFileName" class="px-2 text-muted small text-truncate" style="flex:1;" data-i18n="file_none">沒有選擇檔案</span>
+                                    <input type="file" id="configFile" class="d-none" accept=".xlsx, .xls" onchange="document.getElementById('configFileName').innerText = this.files.length ? this.files[0].name : t('file_none','沒有選擇檔案');">
+                                </div>
+                                <button class="btn btn-success fw-bold mx-auto" style="width: fit-content;" onclick="importConfig()"><i class="fas fa-upload me-1"></i><span data-i18n="btn_import_excel"> 匯入並覆蓋</span></button>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card p-4 h-100 border-0 shadow-sm text-center d-flex flex-column justify-content-center">
+                                <i class="fas fa-file-export text-warning mb-3" style="font-size: 3rem;"></i>
+                                <h5 class="fw-bold" data-i18n="config_export_title">匯出 Excel 備份</h5>
+                                <div class="text-muted small mb-3" data-i18n="config_export_desc">將目前資料庫內容匯出為 EQDashboard_Setting.xlsx，供離線備份</div>
+                                <button class="btn btn-warning fw-bold mx-auto" style="width: fit-content;" onclick="exportConfig()"><i class="fas fa-download me-1"></i><span data-i18n="btn_export_excel"> 匯出 Excel</span></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="page-iframe" class="page-section"><h6 id="iframe-title" style="display: none;"></h6><iframe id="main-iframe" src="" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"></iframe></div>
+                <div id="page-app-grid" class="page-section"><div class="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2"><h5 class="mb-0 fw-bold text-success"><i class="fas fa-th-large me-2"></i><span id="app-grid-title">應用集合</span></h5></div><div class="app-grid" id="app-grid-container"></div></div>
+                <div id="page-under-construction" class="page-section"><div class="manage-alert" id="under-construction-text">內容建置中</div></div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Modals 容器：由 partials/modals.html 動態載入 -->
+    <div id="modals-container"></div>
+
+    <div class="modal fade" id="systemAlertModal" tabindex="-1" style="z-index: 1060;"><div class="modal-dialog modal-dialog-centered modal-sm"><div class="modal-content border-0 shadow"><div class="modal-body text-center py-4"><i class="fas fa-info-circle text-info mb-3" style="font-size: 2.5rem;"></i><p class="fs-6 fw-bold mb-0 text-dark" id="systemAlertMsg"></p></div><div class="modal-footer justify-content-center border-0 bg-light py-2"><button type="button" class="btn btn-primary btn-sm px-4 fw-bold" data-bs-dismiss="modal">確定</button></div></div></div></div>
+    <div class="modal fade" id="systemConfirmModal" tabindex="-1" style="z-index: 1060;"><div class="modal-dialog modal-dialog-centered modal-sm"><div class="modal-content border-0 shadow"><div class="modal-body text-center py-4"><i class="fas fa-exclamation-triangle text-warning mb-3" style="font-size: 2.5rem;"></i><p class="fs-6 fw-bold mb-0 text-dark" id="systemConfirmMsg"></p></div><div class="modal-footer justify-content-center border-0 bg-light py-2"><button type="button" class="btn btn-light btn-sm border px-3 fw-bold" data-bs-dismiss="modal" data-i18n="modal_btn_cancel">取消</button><button type="button" class="btn btn-danger btn-sm px-3 fw-bold" id="systemConfirmBtn" onclick="if(confirmActionCallback) confirmActionCallback(); bootstrap.Modal.getInstance(document.getElementById('systemConfirmModal')).hide();">確定</button></div></div></div></div>
+
+    <!-- ⭐️ 動態載入 Modals partial -->
+    <script>
+        fetch('partials/modals.html')
+            .then(r => r.text())
+            .then(html => { document.getElementById('modals-container').innerHTML = html; })
+            .catch(e => console.warn('載入 modals.html 失敗:', e));
+    </script>
+
+    <!-- ⭐️ 快取破解碼：確保瀏覽器抓到最新版 JS 檔案！每次部署更新版本號 -->
+    <script>window.__APP_VER__ = '20260528c';</script>
+    <script src="js/config.js?v=20260528c"></script>
+    <script src="js/api.js?v=20260528c"></script>
+    <script src="js/auth.js?v=20260528c"></script>
+    <!-- ui 模組 (從 ui.js 拆分) -->
+    <script src="js/ui/layout.js?v=20260528c"></script>
+    <script src="js/ui/navigation.js?v=20260528c"></script>
+    <script src="js/ui/dialogs.js?v=20260528c"></script>
+    <!-- render 模組 (從 render.js 拆分) -->
+    <script src="js/render/sidebar.js?v=20260528c"></script>
+    <script src="js/render/sidebar-item.js?v=20260528c"></script>
+    <script src="js/render/tables.js?v=20260528c"></script>
+    <script src="js/render/account-ui.js?v=20260528c"></script>
+    <!-- admin 模組 (從 admin.js 拆分) -->
+    <script src="js/admin/modal-utils.js?v=20260528c"></script>
+    <script src="js/admin/fab-manage.js?v=20260528c"></script>
+    <script src="js/admin/role-manage.js?v=20260528c"></script>
+    <script src="js/admin/account-manage.js?v=20260528c"></script>
+    <script src="js/admin/menu-manage.js?v=20260528c"></script>
+    <script src="js/admin/misc-manage.js?v=20260528c"></script>
+    <script src="js/main.js?v=20260528c"></script>
+
+</body>
+</html>
