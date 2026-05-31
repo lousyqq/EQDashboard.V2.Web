@@ -63,12 +63,63 @@ function reorderSystemMenu(srcId, targetId, parentId) {
     }
 }
 
-async function reorderPersonalMenu(srcId, targetId, parentId) {
+// =====================================================================
+// 個人頁面拖曳：兩段式 (Pending → Save)
+//   - 拖曳只更新「待儲存」記憶體狀態，不碰 localStorage，不重畫上方導覽列
+//   - 右上「儲存變更」按鈕亮起，點下去才呼叫 savePersonalSettings 寫 DB 並重畫 sidebar
+//   - 「放棄」按鈕直接清掉 pending 回到 localStorage 既有狀態
+//   - 切到別頁再回來、pending 仍會保留（只在分頁關閉或 refresh 時才會清掉）
+//
+//   getEffectivePersonalSettings(empId)：renderPersonalMenuManage 用此 helper 讀取，
+//   有 pending 就用 pending；沒有就退回 localStorage。
+// =====================================================================
+
+window._personalPendingPSets = null;     // 待儲存的 pSets 物件 (整份 snapshot)
+window._personalPendingDirty = false;    // 是否有未儲存的拖曳變更
+
+window.getEffectivePersonalSettings = function (empId) {
+    if (window._personalPendingDirty && window._personalPendingPSets) {
+        return window._personalPendingPSets;
+    }
+    return getPersonalSettings(empId);
+};
+
+window.updatePersonalSaveButton = function () {
+    const saveBtn = document.getElementById('btn-per-save-pending');
+    const discardBtn = document.getElementById('btn-per-discard-pending');
+    const countEl = document.getElementById('btn-per-pending-count');
+    if (!saveBtn) return;
+
+    if (window._personalPendingDirty) {
+        saveBtn.classList.remove('d-none');
+        if (discardBtn) discardBtn.classList.remove('d-none');
+        // 簡單計算「待儲存改動數」= pending 中跟 localStorage 不同的 order 欄位數
+        try {
+            const saved = getPersonalSettings(currentUser?.id || '');
+            const pending = window._personalPendingPSets || {};
+            let diff = 0;
+            const keys = new Set([...Object.keys(saved), ...Object.keys(pending)]);
+            keys.forEach(k => {
+                const a = saved[k]?.order;
+                const b = pending[k]?.order;
+                if (a !== b) diff++;
+            });
+            if (countEl) countEl.innerText = diff;
+        } catch (e) { /* 計數失敗不要擋住按鈕顯示 */ }
+    } else {
+        saveBtn.classList.add('d-none');
+        if (discardBtn) discardBtn.classList.add('d-none');
+    }
+};
+
+function reorderPersonalMenu(srcId, targetId, parentId) {
     const pId = (!parentId || parentId === 'null' || parentId === '') ? null : parentId;
-    let pSets = getPersonalSettings(currentUser.id);
+
+    // 從 effective (pending 或 localStorage) 起手，深拷一份避免污染
+    const basePSets = window.getEffectivePersonalSettings(currentUser.id);
+    let pSets = JSON.parse(JSON.stringify(basePSets));
     let menus = getCustomMenus();
 
-    // 個人模式拖曳：當 pId 為 null 時抓「無父節點且非池中項目」的 root（與上方導覽列一致）
     let siblings;
     if (pId === null) {
         siblings = menus.filter(m =>
@@ -99,12 +150,56 @@ async function reorderPersonalMenu(srcId, targetId, parentId) {
         if (!pSets[m.id]) pSets[m.id] = {};
         pSets[m.id].order = idx * 10;
     });
-    savePersonalSettings(currentUser.id, pSets);
-    await window.fetchInitialDataFromDB();
 
+    // 寫入 pending、不碰 localStorage、不重畫 sidebar (上方導覽列保留舊順序)
+    window._personalPendingPSets = pSets;
+    window._personalPendingDirty = true;
+
+    if (typeof window.updatePersonalSaveButton === 'function') window.updatePersonalSaveButton();
+    if (typeof renderPersonalMenuManage === 'function') renderPersonalMenuManage();
+    // ⚠️ 故意不呼叫 renderSidebarMenus — 拖曳暫態不要影響上方導覽列
+}
+
+// 「儲存變更」按鈕：把 pending 真正寫進 localStorage + DB + 重畫上方導覽列
+window.commitPersonalPendingOrder = async function () {
+    if (!window._personalPendingDirty || !window._personalPendingPSets) return;
+    const pSets = window._personalPendingPSets;
+
+    try {
+        await savePersonalSettings(currentUser.id, pSets);
+    } catch (e) {
+        console.error('儲存個人版面順序失敗', e);
+        if (typeof customAlert === 'function') customAlert('儲存失敗，請稍後再試');
+        return;
+    }
+
+    window._personalPendingPSets = null;
+    window._personalPendingDirty = false;
+
+    if (typeof window.updatePersonalSaveButton === 'function') window.updatePersonalSaveButton();
     if (typeof renderPersonalMenuManage === 'function') renderPersonalMenuManage();
     if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
-}
+
+    if (typeof customAlert === 'function') customAlert('已儲存個人版面順序，並同步到上方導覽列');
+};
+
+// 「放棄」按鈕：清掉 pending、回到 localStorage 既有狀態
+window.discardPersonalPendingOrder = function () {
+    if (!window._personalPendingDirty) return;
+    if (typeof customConfirm === 'function') {
+        customConfirm('放棄這次的拖曳變更？', () => {
+            window._personalPendingPSets = null;
+            window._personalPendingDirty = false;
+            if (typeof window.updatePersonalSaveButton === 'function') window.updatePersonalSaveButton();
+            if (typeof renderPersonalMenuManage === 'function') renderPersonalMenuManage();
+        });
+    } else {
+        window._personalPendingPSets = null;
+        window._personalPendingDirty = false;
+        if (typeof window.updatePersonalSaveButton === 'function') window.updatePersonalSaveButton();
+        if (typeof renderPersonalMenuManage === 'function') renderPersonalMenuManage();
+    }
+};
 
 async function reorderWebpageMenu(srcId, targetId) {
     let menus = getCustomMenus();
@@ -265,7 +360,7 @@ function openApplyModal(id = null) {
     } catch (e) { console.error("[openApplyModal] 錯誤:", e); }
 }
 
-function submitApplyItem(e) {
+async function submitApplyItem(e) {
     // ⭐️ 核心防重整
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     else if (window.event && typeof window.event.preventDefault === 'function') window.event.preventDefault();
@@ -276,42 +371,46 @@ function submitApplyItem(e) {
         const reqType = document.getElementById('applyType') ? document.getElementById('applyType').value : '系統需求';
         const fab = document.getElementById('applyFab') ? document.getElementById('applyFab').value : '全域';
 
-        if (!reason) return false;
+        if (!reason) { customAlert('請填寫需求說明！'); return false; }
 
-        let reqs = getRequests();
-        if (id) {
-            let idx = reqs.findIndex(r => window.cleanId(r.id) === window.cleanId(id));
-            if (idx > -1) {
-                reqs[idx].reason = reason; reqs[idx].reqType = reqType; reqs[idx].fab = fab;
-                reqs[idx].status = 'pending'; reqs[idx].timestamp = Date.now(); reqs[idx].withdrawReason = '';
-            }
-        } else {
-            reqs.push({
-                id: 'req_' + Date.now(), empId: currentUser.id, empName: currentUser.name,
-                reqType: reqType, fab: fab, reason: reason, timestamp: Date.now(),
-                status: 'pending', reply: ''
-            });
+        const payload = {
+            requestId: id || ('req_' + Date.now()),
+            reqType: reqType,
+            fab: fab,
+            reason: reason
+        };
+
+        const response = await fetch('/api/Requests', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            console.error("API 回傳失敗:", response.status);
+            return false;
         }
 
-        // 異動立即靜默同步到 DB（一般操作不需手動觸發）
-        if (typeof syncDataToDB === 'function') syncDataToDB();
-
+        // 重新拉取最新資料並重新渲染
+        await window.fetchInitialDataFromDB();
+        
         hideModalSafely('applyModal');
-
         if (typeof renderApplyTable === 'function') renderApplyTable();
         customAlert(id ? '需求申請已重新送出！' : '您的需求申請已成功送出！系統管理員將盡快為您處理。');
     } catch (error) { console.error("[submitApplyItem] 錯誤:", error); }
     return false;
 }
 
-// 對齊 TEST_20260429.html 申請紀錄刪除：撤回後可由使用者手動清除該筆
 window.deleteApplyItem = function (id) {
     if (typeof customConfirm !== 'function') return;
-    customConfirm('確定要刪除此申請紀錄嗎？', () => {
-        let reqs = getRequests().filter(r => window.cleanId(r.id || r.RequestId) !== window.cleanId(id));
-        window.appState.requests = reqs;
-        if (typeof syncDataToDB === 'function') syncDataToDB();
-        if (typeof renderApplyTable === 'function') renderApplyTable();
+    customConfirm('確定要刪除此申請紀錄嗎？', async () => {
+        try {
+            await fetch('/api/Requests/' + id, { method: 'DELETE' });
+            await window.fetchInitialDataFromDB();
+            if (typeof renderApplyTable === 'function') renderApplyTable();
+        } catch (e) {
+            console.error("刪除失敗", e);
+        }
     });
 };
 
@@ -323,20 +422,23 @@ function withdrawApply(id) {
     } catch (e) { console.error("[withdrawApply] 錯誤:", e); }
 }
 
-function submitWithdrawItem(e) {
+async function submitWithdrawItem(e) {
     // ⭐️ 核心防重整
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     else if (window.event && typeof window.event.preventDefault === 'function') window.event.preventDefault();
 
     try {
         const id = document.getElementById('withdrawReqId').value;
-        let reqs = getRequests();
-        reqs = reqs.filter(r => window.cleanId(r.id) !== window.cleanId(id));
-        window.appState.requests = reqs;
+        const reason = document.getElementById('withdrawReason').value.trim();
 
-        // 異動立即靜默同步到 DB（一般操作不需手動觸發）
-        if (typeof syncDataToDB === 'function') syncDataToDB();
+        await fetch('/api/Requests/' + id + '/Withdraw', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason: reason })
+        });
 
+        await window.fetchInitialDataFromDB();
+        
         hideModalSafely('withdrawModal');
         if (typeof renderApplyTable === 'function') renderApplyTable();
     } catch (error) { console.error("[submitWithdrawItem] 錯誤:", error); }
@@ -368,7 +470,7 @@ function openAuditModal(id) {
     } catch (e) { console.error("[openAuditModal] 錯誤:", e); }
 }
 
-function saveAuditItem(e) {
+async function saveAuditItem(e) {
     // ⭐️ 核心防重整
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     else if (window.event && typeof window.event.preventDefault === 'function') window.event.preventDefault();
@@ -378,15 +480,13 @@ function saveAuditItem(e) {
         const status = document.getElementById('auditStatus').value;
         const reply = document.getElementById('auditReply').value.trim();
 
-        let reqs = getRequests();
-        let idx = reqs.findIndex(x => window.cleanId(x.id) === window.cleanId(id));
-        if (idx > -1) {
-            reqs[idx].status = status; reqs[idx].reply = reply;
+        await fetch('/api/Requests/' + id + '/Audit', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: status, reply: reply })
+        });
 
-            // 異動立即靜默同步到 DB（一般操作不需手動觸發）
-        if (typeof syncDataToDB === 'function') syncDataToDB();
-        }
-
+        await window.fetchInitialDataFromDB();
         hideModalSafely('auditModal');
 
         if (typeof renderAuditTable === 'function') renderAuditTable();
@@ -394,7 +494,6 @@ function saveAuditItem(e) {
 
     } catch (error) { console.error("[saveAuditItem] 錯誤:", error); }
     return false;
-
 }
 
 // === Excel 匯出備份（對齊 TEST_20260429.html:2186-2259）===

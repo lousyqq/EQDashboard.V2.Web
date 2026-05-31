@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using EQDashboard.V2.Web.Data;
@@ -10,6 +11,7 @@ namespace EQDashboard.V2.Web.Controllers;
 
 [Route("api/[controller]")]
 [ApiController]
+[Authorize]
 public class AppsController : ControllerBase
 {
     private readonly AppDbContext _context;
@@ -17,15 +19,4 @@ public class AppsController : ControllerBase
 
     [HttpGet]
     public async Task<IActionResult> Get() => Ok(await _context.Apps.ToListAsync());
-}
-
-[Route("api/[controller]")]
-[ApiController]
-public class RequestsController : ControllerBase
-{
-    private readonly AppDbContext _context;
-    public RequestsController(AppDbContext context) { _context = context; }
-
-    [HttpGet]
-    public async Task<IActionResult> Get() => Ok(await _context.Requests.ToListAsync());
 }

@@ -1,5 +1,14 @@
 // === admin/menu-manage.js - 個人選單 + 看板管理 + 選單結構樹 ===
 
+// 共用工具：把 ACL textarea 內容切行、trim、過濾空字串、去重
+window.__parseAclTextarea = function (txt) {
+    if (!txt) return [];
+    return txt.split(/[\n,;]+/)             // 容忍逗號 / 分號 / 換行
+              .map(s => s.trim())
+              .filter(Boolean)
+              .filter((v, i, a) => a.indexOf(v) === i);
+};
+
 // === Personal Menus 個人選單（對齊 TEST_20260429.html:3744-3771）===
 function togglePerMenuExpand(id) {
     if (expandedPerMenuIds.has(id)) expandedPerMenuIds.delete(id);
@@ -30,12 +39,15 @@ function togglePerAllMenus() {
 }
 
 function restoreDefaultPersonalMenu() {
-    customConfirm('確定要還原成預設系統版面嗎？您所有的個人自訂排序與隱藏設定將會被清除。', async () => {
+    customConfirm('確定要還原成預設系統版面嗎？您所有的個人自訂排序與隱藏設定將會被清除（包含未儲存的拖曳變更）。', async () => {
+        // 清掉本地 + pending；DB 端透過 savePersonalSettings([]) 改成空 list 即可同步
         localStorage.removeItem('umc_personal_menus_' + currentUser.id);
-        
-        // 個人選單設定主要存在 localStorage，若要同步，只需呼叫 saveAccountAPI（因為目前帳號不存 personalMenu，所以這裡 fetchInitialDataFromDB 即可）
-        await window.fetchInitialDataFromDB();
-        
+        window._personalPendingPSets = null;
+        window._personalPendingDirty = false;
+
+        try { await savePersonalSettings(currentUser.id, {}); } catch (e) { console.error('還原預設版面同步 DB 失敗', e); }
+
+        if (typeof window.updatePersonalSaveButton === 'function') window.updatePersonalSaveButton();
         if (typeof renderPersonalMenuManage === 'function') renderPersonalMenuManage();
         if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
         if (typeof customAlert === 'function') customAlert('已成功還原為預設版面！');
@@ -80,10 +92,9 @@ async function savePersonalMenu(e) {
         const target = document.getElementById('personalMenuTarget').value;
         if (target) pSets[id].target = target; else delete pSets[id].target;
 
-        savePersonalSettings(currentUser.id, pSets);
-
-        // 個人選單設定主要存在 localStorage，重新載入前端狀態即可
-        await window.fetchInitialDataFromDB();
+        // 同上：必須 await + 不需要再 fetchInitialDataFromDB (localStorage 為個人設定的單一事實來源)
+        // 否則會有 race 把剛改的 hidden/icon/target 順手洗掉
+        await savePersonalSettings(currentUser.id, pSets);
 
         hideModalSafely('personalMenuModal');
         if (typeof renderPersonalMenuManage === 'function') renderPersonalMenuManage();
@@ -114,6 +125,12 @@ function openAddWebpageModal(id = null) {
         toggleWebpageMode();
         setIconValToModal('wp', '');
 
+        // ACL textarea：新建時清空，編輯時帶入既有
+        const wpAllowTA = document.getElementById('wpAllowedEmpIds');
+        const wpDenyTA = document.getElementById('wpDeniedEmpIds');
+        if (wpAllowTA) wpAllowTA.value = '';
+        if (wpDenyTA) wpDenyTA.value = '';
+
         if (id) {
             const m = getCustomMenus().find(x => window.cleanId(x.id) === window.cleanId(id));
             if (m) {
@@ -126,6 +143,9 @@ function openAddWebpageModal(id = null) {
                 document.getElementById('wpUrl').value = m.url || m.targetPage || '';
                 document.getElementById('wpTarget').value = m.target || 'iframe';
                 setIconValToModal('wp', m.icon || '');
+
+                if (wpAllowTA) wpAllowTA.value = (m.allowedEmpIds || []).join('\n');
+                if (wpDenyTA) wpDenyTA.value = (m.deniedEmpIds || []).join('\n');
             }
         }
         showModalSafely('webpageModal');
@@ -172,6 +192,10 @@ async function saveWebpageItem(e) {
             mObj.target = document.getElementById('wpTarget').value;
         }
 
+        // 收 ACL textareas → 切行、trim、過濾空字串、去重
+        mObj.allowedEmpIds = window.__parseAclTextarea(document.getElementById('wpAllowedEmpIds')?.value || '');
+        mObj.deniedEmpIds = window.__parseAclTextarea(document.getElementById('wpDeniedEmpIds')?.value || '');
+
         if (!id) {
             mObj.order = -1;
             menus.push(mObj);
@@ -182,18 +206,23 @@ async function saveWebpageItem(e) {
 
         const result = await saveMenuAPI(!id, mObj);
         if (!result.success) {
-            customAlert("儲存失敗: " + result.message);
-            return false;
+            customAlert("儲存失敗: " + (result.message || '未知錯誤'));
+            return false; // ← 失敗時不關 modal、不刷新，保留輸入讓使用者重試
         }
 
-        await window.fetchInitialDataFromDB();
-
-        hideModalSafely('webpageModal');
-
-        if (typeof renderWebpageTable === 'function') renderWebpageTable();
-        if (typeof renderMenuConfigTable === 'function') renderMenuConfigTable();
-        if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
-    } catch (error) { console.error("[saveWebpageItem] 錯誤:", error); }
+        // 成功 → 刷新資料 + 關 modal + 重畫；任一階段若噴錯也不能讓畫面卡住
+        try { await window.fetchInitialDataFromDB(); } catch (e) { console.error('fetch 失敗', e); }
+        try { hideModalSafely('webpageModal'); } catch (e) { console.error('hideModal 失敗', e); }
+        try {
+            if (typeof renderWebpageTable === 'function') renderWebpageTable();
+            if (typeof renderMenuConfigTable === 'function') renderMenuConfigTable();
+            if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
+        } catch (e) { console.error('render 失敗', e); }
+    } catch (error) {
+        console.error("[saveWebpageItem] 錯誤:", error);
+        // 最外層噴錯也要彈訊息 + 確保 modal 不會永遠卡住
+        try { customAlert("儲存發生未預期錯誤：" + (error?.message || error)); } catch (_) { }
+    }
     return false;
 }
 
@@ -408,6 +437,12 @@ function openAddMenuNodeModal(id = null) {
         const container = document.getElementById('treeBuilderContainer');
         container.innerHTML = '';
 
+        // ACL textarea：新建時清空，編輯時帶入
+        const nodeAllowTA = document.getElementById('nodeAllowedEmpIds');
+        const nodeDenyTA = document.getElementById('nodeDeniedEmpIds');
+        if (nodeAllowTA) nodeAllowTA.value = '';
+        if (nodeDenyTA) nodeDenyTA.value = '';
+
         const menus = getCustomMenus();
         if (id) {
             const m = menus.find(x => window.cleanId(x.id) === window.cleanId(id));
@@ -420,6 +455,9 @@ function openAddMenuNodeModal(id = null) {
                 document.getElementById('nodeUrl').value = m.url || m.targetPage || '';
                 document.getElementById('nodeTarget').value = m.target || 'iframe';
                 setIconValToModal('node', m.icon || '');
+
+                if (nodeAllowTA) nodeAllowTA.value = (m.allowedEmpIds || []).join('\n');
+                if (nodeDenyTA) nodeDenyTA.value = (m.deniedEmpIds || []).join('\n');
 
                 if (m.menuMode === 'folder') {
                     buildTreeUI(container, m.id);
@@ -448,6 +486,10 @@ async function saveMenuNodeItem(e) {
         mObj.menuMode = isFolder ? 'folder' : 'link';
         mObj.icon = getSelectedIconVal('node');
         mObj.isEdited = true;
+
+        // 收 ACL
+        mObj.allowedEmpIds = window.__parseAclTextarea(document.getElementById('nodeAllowedEmpIds')?.value || '');
+        mObj.deniedEmpIds = window.__parseAclTextarea(document.getElementById('nodeDeniedEmpIds')?.value || '');
 
         if (!id) {
             mObj.enabled = true; // 新節點預設啟用
@@ -529,20 +571,25 @@ async function saveMenuNodeItem(e) {
 
         const result = await batchSaveMenusAPI(menus);
         if (foldersToDelete.length > 0) {
-            await batchDeleteMenusAPI(foldersToDelete);
+            try { await batchDeleteMenusAPI(foldersToDelete); }
+            catch (e) { console.error('batchDeleteMenusAPI 失敗', e); }
         }
 
         if (!result.success) {
-            customAlert("儲存失敗: " + result.message);
-            return false;
+            customAlert("儲存失敗: " + (result.message || '未知錯誤'));
+            return false; // 失敗時不關 modal、不刷新，保留輸入讓使用者重試
         }
 
-        await window.fetchInitialDataFromDB();
-
-        hideModalSafely('menuNodeModal');
-        if (typeof renderMenuConfigTable === 'function') renderMenuConfigTable();
-        if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
-    } catch (error) { console.error("[saveMenuNodeItem] 錯誤:", error); }
+        try { await window.fetchInitialDataFromDB(); } catch (e) { console.error('fetch 失敗', e); }
+        try { hideModalSafely('menuNodeModal'); } catch (e) { console.error('hideModal 失敗', e); }
+        try {
+            if (typeof renderMenuConfigTable === 'function') renderMenuConfigTable();
+            if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
+        } catch (e) { console.error('render 失敗', e); }
+    } catch (error) {
+        console.error("[saveMenuNodeItem] 錯誤:", error);
+        try { customAlert("儲存發生未預期錯誤：" + (error?.message || error)); } catch (_) { }
+    }
     return false;
 }
 

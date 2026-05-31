@@ -14,24 +14,30 @@ function renderAccRoleCheckboxes(selectedIds) {
 
         html.push(`
             <div class="form-check form-check-inline border rounded px-3 py-1 bg-white mb-1 shadow-sm" style="border-color: #dee2e6 !important;">
-                <input class="form-check-input ms-0 me-2 acc-role-cb cursor-pointer" type="checkbox" id="acr_${rId}" value="${rId}" ${isChecked}>
-                <label class="form-check-label small fw-bold text-dark cursor-pointer" for="acr_${rId}">${rName}</label>
+                <input class="form-check-input ms-0 me-2 acc-role-cb cursor-pointer" type="checkbox" id="acr_${window.escapeHTML(rId)}" value="${window.escapeHTML(rId)}" ${isChecked}>
+                <label class="form-check-label small fw-bold text-dark cursor-pointer" for="acr_${window.escapeHTML(rId)}">${window.escapeHTML(rName)}</label>
             </div>
         `);
     });
     container.innerHTML = html.join('');
 
-    // ⭐️ 勾選/取消勾選角色時，立刻刷新「管理目錄」清單與「各廠區預設首頁」
+    // ⭐️ 勾選/取消勾選角色時，立刻刷新「管理目錄」、「廠區預設首頁」、以及個別覆寫三個區塊與預覽
     if (!container.hasAttribute('data-roles-bound')) {
         container.setAttribute('data-roles-bound', '1');
         container.addEventListener('change', (e) => {
             if (!e.target.classList.contains('acc-role-cb')) return;
             // 保留目前勾選的管理目錄狀態
-            const stillChecked = Array.from(document.querySelectorAll('.acc-menu-cb:checked')).map(cb => cb.value);
+            const stillCheckedManage = Array.from(document.querySelectorAll('.acc-menu-cb:checked')).map(cb => cb.value);
+            const stillCheckedExtra = Array.from(document.querySelectorAll('.acc-extra-cb:checked')).map(cb => cb.value);
+            const stillCheckedDeny = Array.from(document.querySelectorAll('.acc-deny-cb:checked')).map(cb => cb.value);
+
             if (typeof renderAccManageMenuCheckboxes === 'function') {
-                renderAccManageMenuCheckboxes(stillChecked);
+                renderAccManageMenuCheckboxes(stillCheckedManage);
             }
             if (typeof renderAccDefaultPagesUI === 'function') renderAccDefaultPagesUI();
+            if (typeof renderAccExtraMenuCheckboxes === 'function') renderAccExtraMenuCheckboxes(stillCheckedExtra);
+            if (typeof renderAccDenyMenuCheckboxes === 'function') renderAccDenyMenuCheckboxes(stillCheckedDeny);
+            if (typeof renderAccEffectivePreview === 'function') renderAccEffectivePreview();
         });
     }
 }
@@ -94,6 +100,168 @@ function renderAccManageMenuCheckboxes(selectedIds) {
     });
     container.innerHTML = html.join('');
 }
+
+// =========================================================================
+// 個別覆寫：額外開放 / 個別封鎖 / 即時可見預覽
+// =========================================================================
+
+// 共用：把所有「非 folder + 啟用」menu 抓出來，並依群組樹狀整理排序
+function getAllSelectableMenus() {
+    const all = getCustomMenus();
+    return all.filter(m => {
+        const mode = (m.menuMode || m.MenuMode || '').toLowerCase();
+        if (mode === 'folder') return false;
+        if (m.enabled === false || m.IsEnabled === false) return false;
+        return true;
+    });
+}
+
+// 算出「目前 modal 內已勾選 roles」展開後的全部 menuId 集合（含子節點）
+function computeRoleAllowedSet() {
+    const checkedRoleIds = Array.from(document.querySelectorAll('.acc-role-cb:checked')).map(cb => cb.value);
+    const roles = getRoles();
+    let initialMenuIds = [];
+    checkedRoleIds.forEach(rId => {
+        const role = roles.find(r => window.cleanId(r.id || r.RoleId) === window.cleanId(rId));
+        if (role && (role.allowedMenuIds || role.AllowedMenuIds)) {
+            initialMenuIds.push(...(role.allowedMenuIds || role.AllowedMenuIds));
+        }
+    });
+    return window.getAllowedIdsWithHierarchy(getCustomMenus(), initialMenuIds);
+}
+
+// 額外開放：列出「不在 Role 範圍內的 menus」，讓 admin 勾選來補
+window.renderAccExtraMenuCheckboxes = function (selectedExtraIds) {
+    if (!Array.isArray(selectedExtraIds)) selectedExtraIds = [];
+    const container = document.getElementById('accExtraMenuCheckboxes');
+    if (!container) return;
+
+    const selectableMenus = getAllSelectableMenus();
+    const roleAllowedSet = computeRoleAllowedSet();
+    const lowerSelected = selectedExtraIds.map(id => window.cleanId(id));
+
+    // 候選 = (全部可選的 menus) — (已經被 role 包進來的)；但已勾選的「extra」即使後來 role 也加進來，仍然顯示為勾選讓 admin 看到
+    const candidates = selectableMenus.filter(m => {
+        const mId = window.cleanId(m.id || m.MenuId);
+        if (lowerSelected.includes(mId)) return true; // 已勾的一定顯示
+        return !roleAllowedSet.has(mId);
+    });
+
+    if (candidates.length === 0) {
+        container.innerHTML = '<div class="text-muted small px-2 py-1"><i class="fas fa-info-circle me-1 opacity-50"></i>目前所選 Role 已涵蓋所有看板，不需要額外開放</div>';
+        return;
+    }
+
+    let html = [];
+    candidates.forEach(m => {
+        const mId = m.id || m.MenuId || '';
+        const mName = m.displayName || m.DisplayName || m.name || m.SysName || mId;
+        const checked = lowerSelected.includes(window.cleanId(mId)) ? 'checked' : '';
+        const pathStr = typeof getFullMenuPathStr === 'function' ? getFullMenuPathStr(mId, getCustomMenus()) : mName;
+        html.push(`
+            <div class="form-check d-flex align-items-center">
+                <input class="form-check-input acc-extra-cb cursor-pointer mt-0" type="checkbox" id="acex_${mId}" value="${mId}" ${checked} onchange="window.__accOverrideChanged('extra')">
+                <label class="form-check-label small text-dark cursor-pointer ms-2" for="acex_${mId}" title="${pathStr}">
+                    <i class="fas fa-file-alt text-secondary me-1 opacity-75"></i>${mName}
+                </label>
+            </div>
+        `);
+    });
+    container.innerHTML = html.join('');
+};
+
+// 個別封鎖：列出「目前可見的 menus = role + extra」，讓 admin 勾要扣掉的
+window.renderAccDenyMenuCheckboxes = function (selectedDenyIds) {
+    if (!Array.isArray(selectedDenyIds)) selectedDenyIds = [];
+    const container = document.getElementById('accDenyMenuCheckboxes');
+    if (!container) return;
+
+    // 候選 = role allowed + 目前 modal 勾的 extra
+    const roleAllowedSet = computeRoleAllowedSet();
+    const checkedExtraIds = Array.from(document.querySelectorAll('.acc-extra-cb:checked')).map(cb => window.cleanId(cb.value));
+    const candidateSet = new Set([...roleAllowedSet, ...checkedExtraIds]);
+
+    const selectable = getAllSelectableMenus().filter(m => candidateSet.has(window.cleanId(m.id || m.MenuId)));
+    const lowerSelected = selectedDenyIds.map(id => window.cleanId(id));
+
+    if (selectable.length === 0) {
+        container.innerHTML = '<div class="text-muted small px-2 py-1"><i class="fas fa-info-circle me-1 opacity-50"></i>目前帳號沒有可被封鎖的看板（先勾選 Role 或加入額外開放）</div>';
+        return;
+    }
+
+    let html = [];
+    selectable.forEach(m => {
+        const mId = m.id || m.MenuId || '';
+        const mName = m.displayName || m.DisplayName || m.name || m.SysName || mId;
+        const checked = lowerSelected.includes(window.cleanId(mId)) ? 'checked' : '';
+        const pathStr = typeof getFullMenuPathStr === 'function' ? getFullMenuPathStr(mId, getCustomMenus()) : mName;
+        html.push(`
+            <div class="form-check d-flex align-items-center">
+                <input class="form-check-input acc-deny-cb cursor-pointer mt-0" type="checkbox" id="acdn_${mId}" value="${mId}" ${checked} onchange="window.__accOverrideChanged('deny')">
+                <label class="form-check-label small text-dark cursor-pointer ms-2" for="acdn_${mId}" title="${pathStr}">
+                    <i class="fas fa-file-alt text-secondary me-1 opacity-75"></i>${mName}
+                </label>
+            </div>
+        `);
+    });
+    container.innerHTML = html.join('');
+};
+
+// 統一處理：勾選 extra/deny 時，連動更新對方的候選清單與預覽
+window.__accOverrideChanged = function (which) {
+    const stillCheckedExtra = Array.from(document.querySelectorAll('.acc-extra-cb:checked')).map(cb => cb.value);
+    const stillCheckedDeny = Array.from(document.querySelectorAll('.acc-deny-cb:checked')).map(cb => cb.value);
+    if (which === 'extra') {
+        // extra 動了 → deny 的候選池需重整 (因為 deny 候選 = role + extra)
+        if (typeof window.renderAccDenyMenuCheckboxes === 'function') {
+            window.renderAccDenyMenuCheckboxes(stillCheckedDeny);
+        }
+    } else if (which === 'deny') {
+        // deny 動了不影響 extra 候選池 (extra 候選 = 全部非 role 內的)，所以不需重畫
+    }
+    if (typeof window.renderAccEffectivePreview === 'function') {
+        window.renderAccEffectivePreview();
+    }
+};
+
+// 即時預覽：role + extra - deny
+window.renderAccEffectivePreview = function () {
+    const container = document.getElementById('accEffectivePreview');
+    if (!container) return;
+
+    const roleAllowedSet = computeRoleAllowedSet();
+    const checkedExtraIds = Array.from(document.querySelectorAll('.acc-extra-cb:checked')).map(cb => window.cleanId(cb.value));
+    const checkedDenyIds = Array.from(document.querySelectorAll('.acc-deny-cb:checked')).map(cb => window.cleanId(cb.value));
+
+    const effective = new Set([...roleAllowedSet, ...checkedExtraIds]);
+    checkedDenyIds.forEach(id => effective.delete(id));
+
+    // 把 effective 對應到實際 menu 物件並過濾出非 folder + 啟用
+    const items = getCustomMenus().filter(m => {
+        const mId = window.cleanId(m.id || m.MenuId);
+        if (!effective.has(mId)) return false;
+        const mode = (m.menuMode || m.MenuMode || '').toLowerCase();
+        if (mode === 'folder') return false;
+        if (m.enabled === false || m.IsEnabled === false) return false;
+        return true;
+    });
+
+    if (items.length === 0) {
+        container.innerHTML = '<div class="text-warning small"><i class="fas fa-exclamation-triangle me-1"></i>此帳號目前沒有任何可見看板</div>';
+        return;
+    }
+
+    let html = [];
+    items.forEach(m => {
+        const mName = m.displayName || m.DisplayName || m.name || m.SysName || '';
+        const mId = window.cleanId(m.id || m.MenuId);
+        // 標記來源：extra 綠 / role 藍 / 同時 extra 也綠（extra 優先）
+        const isExtra = checkedExtraIds.includes(mId);
+        const bg = isExtra ? 'bg-success-subtle text-success border-success' : 'bg-primary-subtle text-primary border-primary';
+        html.push(`<span class="badge border ${bg} border-opacity-50" style="font-size:0.7rem;"><i class="fas fa-file-alt me-1 opacity-75"></i>${mName}</span>`);
+    });
+    container.innerHTML = html.join('');
+};
 
 function renderAccDefaultPagesUI() {
     const container = document.getElementById('accDefaultPagesContainer'); if (!container) return;

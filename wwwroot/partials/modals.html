@@ -46,8 +46,9 @@
     <!-- 3. 帳號管理 Modal (精美瘦身還原：3欄排版，移除強制全高，保證不被遮擋) -->
     <!-- ========================================================================= -->
     <div class="modal fade" id="accModal" tabindex="-1" aria-hidden="true">
-        <!-- 移除 modal-dialog-scrollable 防止視窗被迫撐到滿版，保持 modal-lg 與 centered -->
-        <div class="modal-dialog modal-lg modal-dialog-centered">
+        <!-- 改用 modal-dialog-scrollable：header/footer 固定、body 內部捲動，
+             避免加了「進階個別權限調整」後內容超過 viewport 時 header 被裁掉看不到 -->
+        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
             <div class="modal-content border-0 shadow-lg">
                 <form id="accForm">
                     <div class="modal-header bg-light border-bottom py-3">
@@ -117,9 +118,48 @@
                         </div>
 
                         <!-- 可視群組版面區塊 -->
-                        <div class="mb-1 border-top pt-2">
+                        <div class="mb-2 border-top pt-2">
                             <label class="form-label fw-bold text-secondary mb-2 small" data-i18n="th_visible_roles">可視群組版面</label>
                             <div id="accRoleCheckboxes" class="d-flex flex-wrap gap-2"></div>
+                        </div>
+
+                        <!-- 個別覆寫：額外開放 / 個別封鎖 / 即時預覽 (折疊起來避免 modal 過長) -->
+                        <div class="mb-1 border-top pt-2">
+                            <button type="button" class="btn btn-link p-0 fw-bold text-secondary small text-decoration-none" data-bs-toggle="collapse" data-bs-target="#accOverrideSection" aria-expanded="false">
+                                <i class="fas fa-caret-right me-1" id="accOverrideCaret"></i>
+                                <i class="fas fa-sliders-h me-1"></i> 進階個別權限調整 (Role 之外的覆寫)
+                            </button>
+                            <div class="collapse mt-2" id="accOverrideSection">
+                                <div class="alert alert-light border py-2 mb-2" style="font-size:0.75rem;">
+                                    <i class="fas fa-info-circle me-1 text-primary"></i>
+                                    優先序：<b>群組可視範圍</b> ＋ <span class="text-success">額外開放</span> − <span class="text-danger">個別封鎖</span>
+                                </div>
+
+                                <!-- 額外開放 -->
+                                <div class="mb-2 bg-white border border-success border-opacity-25 rounded p-2 shadow-sm">
+                                    <label class="form-label fw-bold text-success mb-1 small">
+                                        <i class="fas fa-plus-circle me-1"></i>額外開放看板 <span class="text-muted fw-normal">(在 Role 之外加上這些)</span>
+                                    </label>
+                                    <div id="accExtraMenuCheckboxes" class="d-flex flex-column gap-1 px-1" style="max-height: 160px; overflow-y: auto;"></div>
+                                </div>
+
+                                <!-- 個別封鎖 -->
+                                <div class="mb-2 bg-white border border-danger border-opacity-25 rounded p-2 shadow-sm">
+                                    <label class="form-label fw-bold text-danger mb-1 small">
+                                        <i class="fas fa-ban me-1"></i>個別封鎖看板 <span class="text-muted fw-normal">(從 Role 給的範圍扣除這些)</span>
+                                    </label>
+                                    <div id="accDenyMenuCheckboxes" class="d-flex flex-column gap-1 px-1" style="max-height: 160px; overflow-y: auto;"></div>
+                                </div>
+
+                                <!-- 預覽 -->
+                                <div class="bg-light border rounded p-2 shadow-sm">
+                                    <label class="form-label fw-bold text-primary mb-1 small">
+                                        <i class="fas fa-eye me-1"></i>目前實際可見的看板預覽
+                                        <span class="text-muted fw-normal">(即時計算)</span>
+                                    </label>
+                                    <div id="accEffectivePreview" class="d-flex flex-wrap gap-1 px-1" style="max-height: 120px; overflow-y: auto; min-height: 32px;"></div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -195,6 +235,31 @@
                                 </select>
                             </div>
 
+                            <!-- 存取控制 (白名單 / 黑名單)，折疊起來避免 modal 變太長 -->
+                            <div class="col-12 mt-2 pt-2 border-top">
+                                <button type="button" class="btn btn-link p-0 fw-bold text-secondary small text-decoration-none" data-bs-toggle="collapse" data-bs-target="#wpAclSection">
+                                    <i class="fas fa-user-shield me-1"></i> 存取控制 (白名單 / 黑名單)
+                                </button>
+                                <div class="collapse mt-2" id="wpAclSection">
+                                    <div class="alert alert-light border py-2 mb-2" style="font-size:0.75rem;">
+                                        <i class="fas fa-info-circle me-1 text-primary"></i>
+                                        留空 = 不卡控；每行填一個工號。會在 Role 權限結果之上再做最終過濾。
+                                    </div>
+                                    <div class="mb-2">
+                                        <label class="form-label fw-bold text-success mb-1 small">
+                                            <i class="fas fa-check-circle me-1"></i>白名單：僅允許這些工號瀏覽
+                                        </label>
+                                        <textarea id="wpAllowedEmpIds" class="form-control form-control-sm font-monospace" rows="3" placeholder="例如&#10;00058897&#10;00012345"></textarea>
+                                    </div>
+                                    <div>
+                                        <label class="form-label fw-bold text-danger mb-1 small">
+                                            <i class="fas fa-ban me-1"></i>黑名單：禁止這些工號瀏覽
+                                        </label>
+                                        <textarea id="wpDeniedEmpIds" class="form-control form-control-sm font-monospace" rows="3" placeholder="例如&#10;99999999"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div class="col-12 d-flex justify-content-end gap-2 mt-3 pt-2 border-top">
                                 <button type="button" class="btn btn-sm btn-light border fw-bold" data-bs-dismiss="modal" data-i18n="modal_btn_cancel">取消</button>
                                 <button type="submit" class="btn btn-sm btn-primary fw-bold"><i class="fas fa-save me-1"></i><span data-i18n="modal_btn_save"> 儲存</span></button>
@@ -267,6 +332,33 @@
                                 </div>
                             </div>
                         </div>
+                        <!-- 存取控制 (白名單 / 黑名單) — 對「群組」與「獨立看板」都生效；群組被擋會連同子節點看不到 -->
+                        <div class="mt-3 pt-3 border-top">
+                            <button type="button" class="btn btn-link p-0 fw-bold text-secondary small text-decoration-none" data-bs-toggle="collapse" data-bs-target="#nodeAclSection">
+                                <i class="fas fa-user-shield me-1"></i> 存取控制 (白名單 / 黑名單)
+                            </button>
+                            <div class="collapse mt-2" id="nodeAclSection">
+                                <div class="alert alert-light border py-2 mb-2" style="font-size:0.75rem;">
+                                    <i class="fas fa-info-circle me-1 text-primary"></i>
+                                    留空 = 不卡控；每行填一個工號。<b>對群組設定時、整個子樹一起卡控。</b>
+                                </div>
+                                <div class="row g-2">
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold text-success mb-1 small">
+                                            <i class="fas fa-check-circle me-1"></i>白名單：僅允許這些工號
+                                        </label>
+                                        <textarea id="nodeAllowedEmpIds" class="form-control form-control-sm font-monospace" rows="4" placeholder="00058897&#10;00012345"></textarea>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold text-danger mb-1 small">
+                                            <i class="fas fa-ban me-1"></i>黑名單：禁止這些工號
+                                        </label>
+                                        <textarea id="nodeDeniedEmpIds" class="form-control form-control-sm font-monospace" rows="4" placeholder="99999999"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="d-flex justify-content-end gap-2 mt-3 pt-2 border-top">
                             <button type="button" class="btn btn-sm btn-light border fw-bold" data-bs-dismiss="modal" data-i18n="modal_btn_cancel">取消</button>
                             <button type="submit" class="btn btn-sm btn-primary fw-bold"><i class="fas fa-save me-1"></i> 儲存選單結構</button>

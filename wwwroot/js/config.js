@@ -120,8 +120,33 @@ function getPersonalSettings(empId) {
     try { return JSON.parse(localStorage.getItem('umc_personal_menus_' + empId)) || {}; }
     catch (e) { return {}; }
 }
-function savePersonalSettings(empId, data) {
+async function savePersonalSettings(empId, data) {
     localStorage.setItem('umc_personal_menus_' + empId, JSON.stringify(data));
+
+    // 將個人設定轉換為後端 API 預期的 List<PersonalSettingDto> 格式
+    const payload = [];
+    for (let menuId in data) {
+        payload.push({
+            menuId: menuId,
+            isHidden: data[menuId].hidden || false,
+            openTarget: data[menuId].target || null,
+            icon: data[menuId].icon || null,
+            sortOrder: data[menuId].order || null
+        });
+    }
+
+    try {
+        const response = await fetch('/api/PersonalSettings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (!response.ok) {
+            console.error("無法將個人選單儲存至伺服器，狀態碼:", response.status);
+        }
+    } catch (e) {
+        console.error("儲存個人選單失敗:", e);
+    }
 }
 
 // === i18n 工具函式 ===

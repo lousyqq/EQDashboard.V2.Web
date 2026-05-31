@@ -12,9 +12,9 @@ function generateSidebarMenuItem(menu, allMenus, level, forceExpand = true) {
 
     let iconClass = menu.icon || 'far fa-file-alt';
     if (menu.menuMode === 'folder' && !menu.icon) iconClass = 'fas fa-folder';
-    let iconHtml = `<i class="${iconClass} menu-icon ${menu.menuMode === 'folder' ? 'text-warning' : ''}"></i>`;
+    let iconHtml = `<i class="${window.escapeHTML(iconClass)} menu-icon ${menu.menuMode === 'folder' ? 'text-warning' : ''}"></i>`;
     if (menu.icon && (menu.icon.startsWith('data:') || menu.icon.startsWith('icon/'))) {
-        iconHtml = `<img src="${menu.icon}" class="custom-icon menu-icon" alt="icon">`;
+        iconHtml = `<img src="${window.escapeHTML(menu.icon)}" class="custom-icon menu-icon" alt="icon">`;
     }
 
     const safeDomId = 'collapse_' + encodeURIComponent(String(menu.id)).replace(/%/g, '_').replace(/[^a-zA-Z0-9_-]/g, '');
@@ -74,18 +74,26 @@ window.renderHomeDashboard = function () {
     } catch (e) { console.error("renderHomeDashboard error", e); }
 };
 
-// 右上角使用者下拉資訊（姓名、部門、累積登入次數、本次登入時間）
+// 右上角使用者下拉資訊（姓名、部門、累積登入次數、本次登入時間、登入來源徽章）
 window.renderUserDropdown = function () {
     if (!currentUser) return;
     const setText = (id, txt) => { const el = document.getElementById(id); if (el) el.innerText = txt; };
     const setHtml = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+
+    // 登入來源徽章：Windows 自動 / 手動 / 測試 / 緊急
+    const src = (currentUser.loginSource || '').toLowerCase();
+    let srcBadge = '';
+    if (src === 'windows') srcBadge = ' <span class="badge bg-info text-white ms-1" style="font-size:0.6rem; vertical-align:middle;"><i class="fab fa-windows me-1"></i>Windows</span>';
+    else if (src === 'manual') srcBadge = ' <span class="badge bg-secondary text-white ms-1" style="font-size:0.6rem; vertical-align:middle;"><i class="fas fa-key me-1"></i>手動</span>';
+    else if (src === 'test') srcBadge = ' <span class="badge bg-warning text-dark ms-1" style="font-size:0.6rem; vertical-align:middle;"><i class="fas fa-vial me-1"></i>測試</span>';
+    else if (src === 'emergency') srcBadge = ' <span class="badge bg-danger text-white ms-1" style="font-size:0.6rem; vertical-align:middle;"><i class="fas fa-shield-alt me-1"></i>緊急</span>';
 
     setText('user-name', currentUser.id || '');
     const loginCount = currentUser.loginCount || 1;
     setHtml('user-role',
         t('login_count_prefix', '這是您第 ') + '<span style="color:#38bdf8; font-weight:800; font-size:0.75rem;">' + loginCount + '</span>' + t('login_count_suffix', ' 次登入'));
 
-    setText('dropdown-user-name', (currentUser.name || '') + ' (' + (currentUser.id || '') + ')');
+    setHtml('dropdown-user-name', (currentUser.name || '') + ' (' + (currentUser.id || '') + ')' + srcBadge);
     setText('dropdown-user-dept', currentUser.department || t('dept_unknown', '未設定部門'));
     setText('dropdown-user-login-count', loginCount + ' ' + t('login_count_unit', '次'));
     setText('dropdown-user-login-time', currentUser.currentLoginTime || '00:00 AM');

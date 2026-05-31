@@ -30,15 +30,33 @@ function openAddAccountModal() {
         if (typeof renderAccRoleCheckboxes === 'function') renderAccRoleCheckboxes([]);
         if (typeof renderAccManageMenuCheckboxes === 'function') renderAccManageMenuCheckboxes([]);
         if (typeof renderAccDefaultPagesUI === 'function') renderAccDefaultPagesUI();
+        // 個別覆寫 (新增模式：全空)
+        if (typeof renderAccExtraMenuCheckboxes === 'function') renderAccExtraMenuCheckboxes([]);
+        if (typeof renderAccDenyMenuCheckboxes === 'function') renderAccDenyMenuCheckboxes([]);
+        if (typeof renderAccEffectivePreview === 'function') renderAccEffectivePreview();
 
         showModalSafely('accModal');
     } catch (e) { console.error("[openAddAccountModal] 錯誤:", e); }
 }
 
-function editAccount(empId) {
+async function editAccount(empId) {
     try {
-        const acc = getAccounts().find(a => window.cleanId(a.empId) === window.cleanId(empId));
+        let acc = getAccounts().find(a => window.cleanId(a.empId) === window.cleanId(empId));
         if (!acc) { console.error("找不到對應的帳號資料 (工號: " + empId + ")"); return; }
+
+        // 🛡️ Lazy Loading：向後端取得此帳號的詳細權限設定
+        try {
+            const res = await fetch(`/api/Accounts/${acc.empId}`);
+            if (res.ok) {
+                const details = await res.json();
+                // 將詳細設定合併回記憶體中的 acc 物件
+                Object.assign(acc, details);
+            } else {
+                console.warn(`無法取得帳號 ${empId} 的詳細權限`);
+            }
+        } catch (err) {
+            console.error("Fetch account details failed:", err);
+        }
 
         document.getElementById('editAccMode').value = 'edit';
         document.getElementById('accEmpId').value = acc.empId; document.getElementById('accEmpId').disabled = true;
@@ -60,6 +78,10 @@ function editAccount(empId) {
         if (typeof renderAccDefaultPagesUI === 'function') renderAccDefaultPagesUI();
         if (typeof renderAccRoleCheckboxes === 'function') renderAccRoleCheckboxes(acc.assignedRoles || []);
         if (typeof renderAccManageMenuCheckboxes === 'function') renderAccManageMenuCheckboxes(acc.manageableMenus || []);
+        // 個別覆寫 (編輯模式：帶入現有值)
+        if (typeof renderAccExtraMenuCheckboxes === 'function') renderAccExtraMenuCheckboxes(acc.extraMenus || []);
+        if (typeof renderAccDenyMenuCheckboxes === 'function') renderAccDenyMenuCheckboxes(acc.denyMenus || []);
+        if (typeof renderAccEffectivePreview === 'function') renderAccEffectivePreview();
         toggleAccDelegationUI(); toggleDelegationDetails();
 
         showModalSafely('accModal');
@@ -84,6 +106,10 @@ async function saveAccountItem(e) {
             canEditOthers = document.getElementById('accCanEditOthers').checked;
         }
 
+        // 個別覆寫
+        let extraMenus = Array.from(document.querySelectorAll('.acc-extra-cb:checked')).map(cb => cb.value);
+        let denyMenus = Array.from(document.querySelectorAll('.acc-deny-cb:checked')).map(cb => cb.value);
+
         let isNew = (mode !== 'edit');
         if (isNew) {
             let accs = getAccounts();
@@ -98,6 +124,8 @@ async function saveAccountItem(e) {
             canEditOthers: canEditOthers,
             assignedRoles: assigned,
             manageableMenus: manageable,
+            extraMenus: extraMenus,
+            denyMenus: denyMenus,
             defaultPages: JSON.parse(JSON.stringify(tempDefaultPages))
         };
 

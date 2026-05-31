@@ -14,6 +14,7 @@ public class SettingsService : ISettingsService
     private readonly string _connStr;
     private readonly ILogger<SettingsService> _logger;
     private readonly Microsoft.Extensions.Caching.Memory.IMemoryCache _cache;
+    private static readonly SemaphoreSlim _semaphore = new(1, 1);
 
     private const string InitialDataCacheKey = "InitialData";
 
@@ -21,7 +22,11 @@ public class SettingsService : ISettingsService
     {
         "Menus", "Fabs", "Roles", "Accounts", "Apps", "Requests",
         "Map_Fab_Role", "Map_Account_Role", "Map_Account_ManageMenu",
-        "Map_Role_Menu", "Map_Menu_Structure", "Map_Account_DefaultPage", "PersonalSettings"
+        "Map_Role_Menu", "Map_Menu_Structure", "Map_Account_DefaultPage", "PersonalSettings",
+        // 帳號層級可視覆寫 (RBAC 之外的個別調整)
+        "Map_Account_ExtraMenu", "Map_Account_DenyMenu",
+        // Menu 層級存取控制 (白名單 / 黑名單)
+        "Map_Menu_AllowAccount", "Map_Menu_DenyAccount"
     };
 
     public SettingsService(IConfiguration config, ILogger<SettingsService> logger, Microsoft.Extensions.Caching.Memory.IMemoryCache cache)
@@ -41,45 +46,63 @@ public class SettingsService : ISettingsService
             return cachedData!;
         }
 
-        var dbData = new Dictionary<string, object>();
-
-        using var conn = new SqlConnection(_connStr);
-        await conn.OpenAsync();
-
-        foreach (var tableName in TableNames)
+        await _semaphore.WaitAsync();
+        try
         {
-            var tableData = new List<Dictionary<string, object>>();
-            try
+            // Double-Check Locking
+            if (_cache.TryGetValue(InitialDataCacheKey, out cachedData))
             {
-                // 讀取前先確認資料表是否存在
-                using var checkCmd = new SqlCommand(
-                    "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = @tb", conn);
-                checkCmd.Parameters.AddWithValue("@tb", tableName);
-                if ((int)(await checkCmd.ExecuteScalarAsync())! == 0) continue;
+                return cachedData!;
+            }
 
-                using var cmd = new SqlCommand($"SELECT * FROM [{tableName}]", conn);
-                using var reader = await cmd.ExecuteReaderAsync();
-                while (await reader.ReadAsync())
+            var dbData = new Dictionary<string, object>();
+
+            using var conn = new SqlConnection(_connStr);
+            await conn.OpenAsync();
+
+            foreach (var tableName in TableNames)
+            {
+                // ⚠️ 不可跳過 Map_Account_* 那幾張表！前端 api.js fetchInitialDataFromDB 仰賴它們去組
+                // currentUser.manageableMenus / defaultPages / extraMenus / denyMenus，缺一者「委派管理 / 各
+                // 廠區預設首頁 / 個別覆寫」三大功能會全部失效（明明 DB 有設、UI 卻看不到）。
+                // 若日後資料量真的太大要做 lazy-loading，應改成「只回當前登入者 EmpId 那幾筆」而非整張跳過。
+                var tableData = new List<Dictionary<string, object>>();
+                try
                 {
-                    var row = new Dictionary<string, object>();
-                    for (int i = 0; i < reader.FieldCount; i++)
+                    // 讀取前先確認資料表是否存在
+                    using var checkCmd = new SqlCommand(
+                        "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = @tb", conn);
+                    checkCmd.Parameters.AddWithValue("@tb", tableName);
+                    if ((int)(await checkCmd.ExecuteScalarAsync())! == 0) continue;
+
+                    using var cmd = new SqlCommand($"SELECT * FROM [{tableName}]", conn);
+                    using var reader = await cmd.ExecuteReaderAsync();
+                    while (await reader.ReadAsync())
                     {
-                        row[reader.GetName(i)] = reader.IsDBNull(i) ? null! : reader.GetValue(i);
+                        var row = new Dictionary<string, object>();
+                        for (int i = 0; i < reader.FieldCount; i++)
+                        {
+                            row[reader.GetName(i)] = reader.IsDBNull(i) ? null! : reader.GetValue(i);
+                        }
+                        tableData.Add(row);
                     }
-                    tableData.Add(row);
+                    dbData[tableName] = tableData;
                 }
-                dbData[tableName] = tableData;
+                catch (Exception tblEx)
+                {
+                    _logger.LogWarning(tblEx, "Failed to load table {TableName}", tableName);
+                }
             }
-            catch (Exception tblEx)
-            {
-                _logger.LogWarning(tblEx, "Failed to load table {TableName}", tableName);
-            }
+
+            // 寫入快取，設定 30 分鐘過期
+            _cache.Set(InitialDataCacheKey, dbData, TimeSpan.FromMinutes(30));
+
+            return dbData;
         }
-
-        // 寫入快取，設定 30 分鐘過期
-        _cache.Set(InitialDataCacheKey, dbData, TimeSpan.FromMinutes(30));
-
-        return dbData;
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     public async Task<(bool success, string message)> SaveDataAsync(
@@ -182,6 +205,19 @@ public class SettingsService : ISettingsService
 
             try
             {
+                var dt = new DataTable(tableName);
+                foreach (var kvp in columnTypes)
+                {
+                    Type type = typeof(string);
+                    string dbType = kvp.Value;
+                    if (dbType.Contains("int")) type = typeof(long);
+                    else if (dbType.Contains("float") || dbType.Contains("decimal") || dbType.Contains("numeric")) type = typeof(double);
+                    else if (dbType.Contains("bit")) type = typeof(bool);
+                    else if (dbType.Contains("date") || dbType.Contains("time")) type = typeof(DateTime);
+                    
+                    dt.Columns.Add(kvp.Key, Nullable.GetUnderlyingType(type) ?? type);
+                }
+
                 foreach (var row in tableData)
                 {
                     bool hasActualRowData = row.Any(p =>
@@ -190,24 +226,76 @@ public class SettingsService : ISettingsService
                         !string.IsNullOrWhiteSpace(p.Value.ToString()));
                     if (!hasActualRowData) continue;
 
-                    var (insertSuccess, errorMsg) = await InsertRowAsync(
-                        conn, trans, tableName, row, columnTypes, columnMaxLengths);
-
-                    if (insertSuccess) successCount++;
-                    else if (errorMsg != null) errorLogs.Add(errorMsg);
-                }
-            }
-            finally
-            {
-                if (hasIdentity)
-                {
-                    try
+                    var newRow = dt.NewRow();
+                    foreach (var prop in row)
                     {
-                        using var cmdOff = new SqlCommand($"SET IDENTITY_INSERT [{tableName}] OFF", conn, trans);
-                        await cmdOff.ExecuteNonQueryAsync();
+                        string colName = prop.Key;
+                        if (!dt.Columns.Contains(colName)) continue;
+
+                        JsonElement val = prop.Value;
+                        if (val.ValueKind == JsonValueKind.Null || val.ValueKind == JsonValueKind.Undefined)
+                        {
+                            newRow[colName] = DBNull.Value;
+                            continue;
+                        }
+
+                        string strVal = val.ToString();
+                        if (string.IsNullOrEmpty(strVal))
+                        {
+                            newRow[colName] = DBNull.Value;
+                            continue;
+                        }
+
+                        string dbType = columnTypes.ContainsKey(colName) ? columnTypes[colName] : "";
+                        if (dbType.Contains("char") || dbType.Contains("text"))
+                        {
+                            int maxLen = columnMaxLengths.ContainsKey(colName) ? columnMaxLengths[colName] : 0;
+                            if (maxLen > 0 && maxLen < 10000000 && strVal.Length > maxLen)
+                                strVal = strVal[..maxLen];
+                            newRow[colName] = strVal;
+                        }
+                        else if (dbType.Contains("bit"))
+                        {
+                            newRow[colName] = (val.ValueKind == JsonValueKind.True || strVal.Equals("true", StringComparison.OrdinalIgnoreCase) || strVal == "1");
+                        }
+                        else if (dbType.Contains("int"))
+                        {
+                            if (long.TryParse(strVal, out long parsedLong)) newRow[colName] = parsedLong;
+                            else newRow[colName] = DBNull.Value;
+                        }
+                        else if (dbType.Contains("float") || dbType.Contains("decimal") || dbType.Contains("numeric"))
+                        {
+                            if (double.TryParse(strVal, out double parsedDouble)) newRow[colName] = parsedDouble;
+                            else newRow[colName] = DBNull.Value;
+                        }
+                        else if (dbType.Contains("date") || dbType.Contains("time"))
+                        {
+                            if (DateTime.TryParse(strVal, out DateTime parsedDate)) newRow[colName] = parsedDate;
+                            else newRow[colName] = DBNull.Value;
+                        }
+                        else
+                        {
+                            newRow[colName] = strVal;
+                        }
                     }
-                    catch { }
+                    dt.Rows.Add(newRow);
                 }
+
+                var bulkCopyOptions = hasIdentity ? SqlBulkCopyOptions.KeepIdentity : SqlBulkCopyOptions.Default;
+                using var bulkCopy = new SqlBulkCopy(conn, bulkCopyOptions, trans);
+                bulkCopy.DestinationTableName = $"[{tableName}]";
+                
+                foreach (DataColumn col in dt.Columns)
+                {
+                    bulkCopy.ColumnMappings.Add(col.ColumnName, col.ColumnName);
+                }
+
+                await bulkCopy.WriteToServerAsync(dt);
+                successCount += dt.Rows.Count;
+            }
+            catch (Exception ex)
+            {
+                errorLogs.Add($"[{tableName}] 批次匯入失敗: {ex.Message}");
             }
         }
 
@@ -305,6 +393,10 @@ public class SettingsService : ISettingsService
             foreach (var prop in row)
             {
                 string colName = prop.Key;
+
+                // ⭐️ SQL Injection 防護：只允許欄位名包含字母、數字、底線
+                if (!System.Text.RegularExpressions.Regex.IsMatch(colName, @"^[a-zA-Z_][a-zA-Z0-9_]*$"))
+                    continue;
 
                 if (!idCaptured && prop.Value.ValueKind != JsonValueKind.Null && prop.Value.ValueKind != JsonValueKind.Undefined)
                 {

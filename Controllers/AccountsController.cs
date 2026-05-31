@@ -10,7 +10,7 @@ namespace EQDashboard.V2.Web.Controllers;
 
 [Route("api/[controller]")]
 [ApiController]
-[Authorize(Roles = "admin")]
+[Authorize(Roles = "admin,user")]
 public class AccountsController : ControllerBase
 {
     private readonly AppDbContext _context;
@@ -27,8 +27,7 @@ public class AccountsController : ControllerBase
     {
         var accounts = await _context.Accounts
             .Include(a => a.MapAccountRoles)
-            .Include(a => a.MapAccountManageMenus)
-            .Include(a => a.MapAccountDefaultPages)
+            // 🛡️ Lazy Loading：清單頁面不再 Include 詳細權限，減輕負載
             .ToListAsync();
 
         var result = accounts.Select(a => new
@@ -40,12 +39,38 @@ public class AccountsController : ControllerBase
             canEditOthers = a.CanEditOthers,
             loginCount = a.LoginCount,
             lastLoginTime = a.LastLoginTime,
-            assignedRoles = a.MapAccountRoles?.Select(m => m.RoleId).ToList() ?? new List<string>(),
-            manageableMenus = a.MapAccountManageMenus?.Select(m => m.MenuId).ToList() ?? new List<string>(),
-            defaultPages = a.MapAccountDefaultPages?.ToDictionary(m => m.FabId, m => m.MenuId) ?? new Dictionary<string, string>()
+            assignedRoles = a.MapAccountRoles?.Select(m => m.RoleId).ToList() ?? new List<string>()
         });
 
         return Ok(result);
+    }
+
+    [HttpGet("{id}")]
+    public async Task<IActionResult> GetAccountDetails(string id)
+    {
+        var a = await _context.Accounts
+            .Include(x => x.MapAccountRoles)
+            .Include(x => x.MapAccountManageMenus)
+            .Include(x => x.MapAccountDefaultPages)
+            .Include(x => x.MapAccountExtraMenus)
+            .Include(x => x.MapAccountDenyMenus)
+            .FirstOrDefaultAsync(x => x.EmpId == id);
+
+        if (a == null) return NotFound();
+
+        return Ok(new
+        {
+            empId = a.EmpId,
+            name = a.Name,
+            department = a.Department,
+            roleLevel = a.RoleLevel,
+            canEditOthers = a.CanEditOthers,
+            assignedRoles = a.MapAccountRoles?.Select(m => m.RoleId).ToList() ?? new List<string>(),
+            manageableMenus = a.MapAccountManageMenus?.Select(m => m.MenuId).ToList() ?? new List<string>(),
+            extraMenus = a.MapAccountExtraMenus?.Select(m => m.MenuId).ToList() ?? new List<string>(),
+            denyMenus = a.MapAccountDenyMenus?.Select(m => m.MenuId).ToList() ?? new List<string>(),
+            defaultPages = a.MapAccountDefaultPages?.ToDictionary(m => m.FabId, m => m.MenuId) ?? new Dictionary<string, string>()
+        });
     }
 
     [HttpPost]
@@ -79,6 +104,8 @@ public class AccountsController : ControllerBase
             .Include(a => a.MapAccountRoles)
             .Include(a => a.MapAccountManageMenus)
             .Include(a => a.MapAccountDefaultPages)
+            .Include(a => a.MapAccountExtraMenus)
+            .Include(a => a.MapAccountDenyMenus)
             .FirstOrDefaultAsync(a => a.EmpId == id);
 
         if (account == null) return NotFound();
@@ -92,6 +119,8 @@ public class AccountsController : ControllerBase
         if (account.MapAccountRoles != null) _context.MapAccountRoles.RemoveRange(account.MapAccountRoles);
         if (account.MapAccountManageMenus != null) _context.MapAccountManageMenus.RemoveRange(account.MapAccountManageMenus);
         if (account.MapAccountDefaultPages != null) _context.MapAccountDefaultPages.RemoveRange(account.MapAccountDefaultPages);
+        if (account.MapAccountExtraMenus != null) _context.MapAccountExtraMenus.RemoveRange(account.MapAccountExtraMenus);
+        if (account.MapAccountDenyMenus != null) _context.MapAccountDenyMenus.RemoveRange(account.MapAccountDenyMenus);
 
         await _context.SaveChangesAsync(); // 強制執行刪除以避免 PK tracking 衝突
 
@@ -109,6 +138,8 @@ public class AccountsController : ControllerBase
             .Include(a => a.MapAccountRoles)
             .Include(a => a.MapAccountManageMenus)
             .Include(a => a.MapAccountDefaultPages)
+            .Include(a => a.MapAccountExtraMenus)
+            .Include(a => a.MapAccountDenyMenus)
             .FirstOrDefaultAsync(a => a.EmpId == id);
         if (account == null) return NotFound();
 
@@ -119,6 +150,10 @@ public class AccountsController : ControllerBase
             _context.MapAccountManageMenus.RemoveRange(account.MapAccountManageMenus);
         if (account.MapAccountDefaultPages != null && account.MapAccountDefaultPages.Count > 0)
             _context.MapAccountDefaultPages.RemoveRange(account.MapAccountDefaultPages);
+        if (account.MapAccountExtraMenus != null && account.MapAccountExtraMenus.Count > 0)
+            _context.MapAccountExtraMenus.RemoveRange(account.MapAccountExtraMenus);
+        if (account.MapAccountDenyMenus != null && account.MapAccountDenyMenus.Count > 0)
+            _context.MapAccountDenyMenus.RemoveRange(account.MapAccountDenyMenus);
 
         // PersonalSettings 不使用 FK 關聯，需要明確刪除避免遺留孤兒紀錄
         var pSettings = await _context.PersonalSettings.Where(p => p.EmpId == id).ToListAsync();
@@ -155,6 +190,23 @@ public class AccountsController : ControllerBase
                 _context.MapAccountDefaultPages.Add(new MapAccountDefaultPage { EmpId = dto.EmpId, FabId = kvp.Key, MenuId = kvp.Value });
             }
         }
+
+        // 個別覆寫 (額外開放 / 個別封鎖) — 同樣是「全清+全寫」模式
+        if (dto.ExtraMenus != null)
+        {
+            foreach (var mId in dto.ExtraMenus.Distinct())
+            {
+                _context.MapAccountExtraMenus.Add(new MapAccountExtraMenu { EmpId = dto.EmpId, MenuId = mId });
+            }
+        }
+
+        if (dto.DenyMenus != null)
+        {
+            foreach (var mId in dto.DenyMenus.Distinct())
+            {
+                _context.MapAccountDenyMenus.Add(new MapAccountDenyMenu { EmpId = dto.EmpId, MenuId = mId });
+            }
+        }
     }
 }
 
@@ -176,5 +228,7 @@ public class AccountFullDto
     public bool CanEditOthers { get; set; }
     public List<string>? AssignedRoles { get; set; }
     public List<string>? ManageableMenus { get; set; }
+    public List<string>? ExtraMenus { get; set; }
+    public List<string>? DenyMenus { get; set; }
     public Dictionary<string, string>? DefaultPages { get; set; }
 }

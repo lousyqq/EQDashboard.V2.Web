@@ -21,4 +21,6 @@ public class Menu
     public int? GlobalOrder { get; set; }
 
     public ICollection<MapMenuStructure>? MapMenuStructuresChild { get; set; }
+    public ICollection<MapMenuAllowAccount>? MapMenuAllowAccounts { get; set; }
+    public ICollection<MapMenuDenyAccount>? MapMenuDenyAccounts { get; set; }
 }

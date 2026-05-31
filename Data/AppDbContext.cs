@@ -25,6 +25,10 @@ public class AppDbContext : DbContext
     public DbSet<MapRoleMenu> MapRoleMenus { get; set; }
     public DbSet<MapMenuStructure> MapMenuStructures { get; set; }
     public DbSet<MapAccountDefaultPage> MapAccountDefaultPages { get; set; }
+    public DbSet<MapAccountExtraMenu> MapAccountExtraMenus { get; set; }
+    public DbSet<MapAccountDenyMenu> MapAccountDenyMenus { get; set; }
+    public DbSet<MapMenuAllowAccount> MapMenuAllowAccounts { get; set; }
+    public DbSet<MapMenuDenyAccount> MapMenuDenyAccounts { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -116,6 +120,35 @@ public class AppDbContext : DbContext
             entity.HasOne(e => e.Account).WithMany(a => a.MapAccountDefaultPages).HasForeignKey(e => e.EmpId);
             entity.HasOne(e => e.Fab).WithMany().HasForeignKey(e => e.FabId);
             entity.HasOne(e => e.Menu).WithMany().HasForeignKey(e => e.MenuId);
+        });
+
+        modelBuilder.Entity<MapAccountExtraMenu>(entity =>
+        {
+            entity.HasKey(e => new { e.EmpId, e.MenuId });
+            entity.HasOne(e => e.Account).WithMany(a => a.MapAccountExtraMenus).HasForeignKey(e => e.EmpId);
+            entity.HasOne(e => e.Menu).WithMany().HasForeignKey(e => e.MenuId);
+        });
+
+        modelBuilder.Entity<MapAccountDenyMenu>(entity =>
+        {
+            entity.HasKey(e => new { e.EmpId, e.MenuId });
+            entity.HasOne(e => e.Account).WithMany(a => a.MapAccountDenyMenus).HasForeignKey(e => e.EmpId);
+            entity.HasOne(e => e.Menu).WithMany().HasForeignKey(e => e.MenuId);
+        });
+
+        // Menu-level ACL：PK 順序 (MenuId, EmpId)，主要查詢方向 = 從 menu 列出對應 emp
+        modelBuilder.Entity<MapMenuAllowAccount>(entity =>
+        {
+            entity.HasKey(e => new { e.MenuId, e.EmpId });
+            entity.HasOne(e => e.Menu).WithMany(m => m.MapMenuAllowAccounts).HasForeignKey(e => e.MenuId);
+            entity.HasOne(e => e.Account).WithMany().HasForeignKey(e => e.EmpId);
+        });
+
+        modelBuilder.Entity<MapMenuDenyAccount>(entity =>
+        {
+            entity.HasKey(e => new { e.MenuId, e.EmpId });
+            entity.HasOne(e => e.Menu).WithMany(m => m.MapMenuDenyAccounts).HasForeignKey(e => e.MenuId);
+            entity.HasOne(e => e.Account).WithMany().HasForeignKey(e => e.EmpId);
         });
     }
 }

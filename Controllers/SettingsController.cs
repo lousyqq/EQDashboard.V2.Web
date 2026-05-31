@@ -1,5 +1,6 @@
 using System.Text.Json;
 using EQDashboard.V2.Web.Services.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EQDashboard.V2.Web.Controllers;
@@ -7,6 +8,7 @@ namespace EQDashboard.V2.Web.Controllers;
 /// <summary>
 /// 設定 Controller - 薄化版，業務邏輯已抽到 SettingsService
 /// </summary>
+[Authorize(Roles = "admin")]
 public class SettingsController : Controller
 {
     private readonly ISettingsService _settingsService;
@@ -17,6 +19,7 @@ public class SettingsController : Controller
     }
 
     [HttpGet]
+    [AllowAnonymous] // 前端登入流程需要讀取帳號資料進行比對
     public async Task<JsonResult> GetInitialData()
     {
         try
@@ -26,7 +29,8 @@ public class SettingsController : Controller
         }
         catch (Exception ex)
         {
-            return Json(new { error = true, message = ex.Message });
+            Console.Error.WriteLine($"GetInitialData 錯誤: {ex}");
+            return Json(new { error = true, message = "讀取初始資料時發生錯誤，請聯繫系統管理員。" });
         }
     }
 
@@ -47,7 +51,8 @@ public class SettingsController : Controller
         }
         catch (Exception ex)
         {
-            return Json(new { success = false, message = "伺服器寫入發生嚴重錯誤: " + ex.Message });
+            Console.Error.WriteLine($"SaveData 錯誤: {ex}");
+            return Json(new { success = false, message = "伺服器寫入發生錯誤，請聯繫系統管理員。" });
         }
     }
 
@@ -57,6 +62,7 @@ public class SettingsController : Controller
     }
 
     [HttpPost]
+    [AllowAnonymous]
     public async Task<JsonResult> UpdateLoginStats()
     {
         try
@@ -82,7 +88,8 @@ public class SettingsController : Controller
         }
         catch (Exception ex)
         {
-            return Json(new { success = false, message = "更新登入紀錄失敗: " + ex.Message });
+            Console.Error.WriteLine($"UpdateLoginStats 錯誤: {ex}");
+            return Json(new { success = false, message = "更新登入紀錄失敗，請聯繫系統管理員。" });
         }
     }
 }

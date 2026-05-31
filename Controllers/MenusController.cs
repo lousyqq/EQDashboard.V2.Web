@@ -27,6 +27,8 @@ public class MenusController : ControllerBase
     {
         var menus = await _context.Menus
             .Include(m => m.MapMenuStructuresChild)
+            .Include(m => m.MapMenuAllowAccounts)
+            .Include(m => m.MapMenuDenyAccounts)
             .ToListAsync();
 
         var result = menus.Select(m => new
@@ -45,13 +47,16 @@ public class MenusController : ControllerBase
             isEdited = m.IsEdited ?? false,
             order = m.GlobalOrder,
             parentIds = m.MapMenuStructuresChild?.Select(p => p.ParentMenuId).ToList() ?? new List<string>(),
-            parentOrders = m.MapMenuStructuresChild?.ToDictionary(p => p.ParentMenuId, p => p.SortOrder ?? 0) ?? new Dictionary<string, int>()
+            parentOrders = m.MapMenuStructuresChild?.ToDictionary(p => p.ParentMenuId, p => p.SortOrder ?? 0) ?? new Dictionary<string, int>(),
+            allowedEmpIds = m.MapMenuAllowAccounts?.Select(a => a.EmpId).ToList() ?? new List<string>(),
+            deniedEmpIds = m.MapMenuDenyAccounts?.Select(a => a.EmpId).ToList() ?? new List<string>()
         });
 
         return Ok(result);
     }
 
     [HttpPost]
+    [Authorize(Roles = "admin")]
     public async Task<IActionResult> CreateMenu([FromBody] MenuDto dto)
     {
         if (await _context.Menus.AnyAsync(m => m.MenuId == dto.Id))
@@ -77,6 +82,7 @@ public class MenusController : ControllerBase
         _context.Menus.Add(menu);
 
         UpdateMenuMappings(dto);
+        UpdateMenuAcl(dto);
 
         await _context.SaveChangesAsync();
         _settingsService.InvalidateInitialDataCache();
@@ -84,10 +90,13 @@ public class MenusController : ControllerBase
     }
 
     [HttpPut("{id}")]
+    [Authorize(Roles = "admin")]
     public async Task<IActionResult> UpdateMenu(string id, [FromBody] MenuDto dto)
     {
         var menu = await _context.Menus
             .Include(m => m.MapMenuStructuresChild)
+            .Include(m => m.MapMenuAllowAccounts)
+            .Include(m => m.MapMenuDenyAccounts)
             .FirstOrDefaultAsync(m => m.MenuId == id);
 
         if (menu == null) return NotFound();
@@ -105,13 +114,18 @@ public class MenusController : ControllerBase
         menu.IsEdited = dto.IsEdited;
         menu.GlobalOrder = dto.Order;
 
+        // ⚠️ 三張 Map 表都用「全刪+重建」模式，必須在 Add 之前先 SaveChanges 把 DELETE flush 到 DB，
+        //     否則 EF Core 同時 track DELETE + INSERT 同一個 PK 會撞衝突。
         if (menu.MapMenuStructuresChild != null)
-        {
             _context.MapMenuStructures.RemoveRange(menu.MapMenuStructuresChild);
-            await _context.SaveChangesAsync(); // 強制執行刪除以避免 PK tracking 衝突
-        }
+        if (menu.MapMenuAllowAccounts != null)
+            _context.MapMenuAllowAccounts.RemoveRange(menu.MapMenuAllowAccounts);
+        if (menu.MapMenuDenyAccounts != null)
+            _context.MapMenuDenyAccounts.RemoveRange(menu.MapMenuDenyAccounts);
+        await _context.SaveChangesAsync(); // ← 一次 flush 所有 pending DELETE
 
         UpdateMenuMappings(dto);
+        UpdateMenuAcl(dto);
 
         await _context.SaveChangesAsync();
         _settingsService.InvalidateInitialDataCache();
@@ -119,6 +133,7 @@ public class MenusController : ControllerBase
     }
 
     [HttpDelete("{id}")]
+    [Authorize(Roles = "admin")]
     public async Task<IActionResult> DeleteMenu(string id)
     {
         var menu = await _context.Menus.FindAsync(id);
@@ -133,30 +148,39 @@ public class MenusController : ControllerBase
     }
 
     [HttpPost("batch")]
+    [Authorize(Roles = "admin")]
     public async Task<IActionResult> BatchUpdateMenus([FromBody] List<MenuDto> dtos)
     {
-        // 為了簡單且安全地處理批次異動，我們先清空所有受影響的選單與關聯，再重新建立
-        // 或是較安全的作法：逐一比對更新。
-        // 考慮到前端送來的是完整的 menus 列表（或是被修改過的部分），我們採用逐一 Upsert。
-        foreach (var dto in dtos)
+        using var transaction = await _context.Database.BeginTransactionAsync();
+        try
         {
-            var menu = await _context.Menus
-                .Include(m => m.MapMenuStructuresChild)
-                .FirstOrDefaultAsync(m => m.MenuId == dto.Id);
+            // 為了簡單且安全地處理批次異動，我們先清空所有受影響的選單與關聯，再重新建立
+            // 或是較安全的作法：逐一比對更新。
+            // 考慮到前端送來的是完整的 menus 列表（或是被修改過的部分），我們採用逐一 Upsert。
+            foreach (var dto in dtos)
+            {
+                var menu = await _context.Menus
+                    .Include(m => m.MapMenuStructuresChild)
+                    .Include(m => m.MapMenuAllowAccounts)
+                    .Include(m => m.MapMenuDenyAccounts)
+                    .FirstOrDefaultAsync(m => m.MenuId == dto.Id);
 
-            if (menu == null)
-            {
-                menu = new Menu { MenuId = dto.Id };
-                _context.Menus.Add(menu);
-            }
-            else
-            {
-                if (menu.MapMenuStructuresChild != null)
+                if (menu == null)
                 {
-                    _context.MapMenuStructures.RemoveRange(menu.MapMenuStructuresChild);
-                    await _context.SaveChangesAsync(); // 強制執行刪除以避免 PK tracking 衝突
+                    menu = new Menu { MenuId = dto.Id };
+                    _context.Menus.Add(menu);
                 }
-            }
+                else
+                {
+                    // ⚠️ 三張 Map 表都「全刪+重建」，要先 flush DELETE 才能 Add 同 PK 不撞 tracking 衝突
+                    if (menu.MapMenuStructuresChild != null)
+                        _context.MapMenuStructures.RemoveRange(menu.MapMenuStructuresChild);
+                    if (menu.MapMenuAllowAccounts != null)
+                        _context.MapMenuAllowAccounts.RemoveRange(menu.MapMenuAllowAccounts);
+                    if (menu.MapMenuDenyAccounts != null)
+                        _context.MapMenuDenyAccounts.RemoveRange(menu.MapMenuDenyAccounts);
+                    await _context.SaveChangesAsync();
+                }
 
             menu.SysName = dto.Name;
             menu.DisplayName = dto.DisplayName;
@@ -172,14 +196,23 @@ public class MenusController : ControllerBase
             menu.GlobalOrder = dto.Order;
 
             UpdateMenuMappings(dto);
+            UpdateMenuAcl(dto);
         }
 
         await _context.SaveChangesAsync();
+        await transaction.CommitAsync();
         _settingsService.InvalidateInitialDataCache();
         return Ok(new { success = true });
     }
+    catch
+    {
+        await transaction.RollbackAsync();
+        throw;
+    }
+}
 
     [HttpDelete("batch")]
+    [Authorize(Roles = "admin")]
     public async Task<IActionResult> BatchDeleteMenus([FromBody] List<string> ids)
     {
         if (ids == null || ids.Count == 0) return Ok(new { success = true });
@@ -221,9 +254,44 @@ public class MenusController : ControllerBase
         var personal = await _context.PersonalSettings.Where(p => ids.Contains(p.MenuId)).ToListAsync();
         if (personal.Count > 0) _context.PersonalSettings.RemoveRange(personal);
 
-        if (structures.Count + roleMenus.Count + manageMenus.Count + defaultPages.Count + personal.Count > 0)
+        // Menu-level ACL
+        var allowAcc = await _context.MapMenuAllowAccounts.Where(a => ids.Contains(a.MenuId)).ToListAsync();
+        if (allowAcc.Count > 0) _context.MapMenuAllowAccounts.RemoveRange(allowAcc);
+
+        var denyAcc = await _context.MapMenuDenyAccounts.Where(a => ids.Contains(a.MenuId)).ToListAsync();
+        if (denyAcc.Count > 0) _context.MapMenuDenyAccounts.RemoveRange(denyAcc);
+
+        if (structures.Count + roleMenus.Count + manageMenus.Count + defaultPages.Count + personal.Count
+            + allowAcc.Count + denyAcc.Count > 0)
         {
             await _context.SaveChangesAsync();
+        }
+    }
+
+    /// <summary>寫入 Menu 層級的白名單 / 黑名單</summary>
+    private void UpdateMenuAcl(MenuDto dto)
+    {
+        if (dto.AllowedEmpIds != null)
+        {
+            foreach (var empId in dto.AllowedEmpIds.Distinct().Where(x => !string.IsNullOrWhiteSpace(x)))
+            {
+                _context.MapMenuAllowAccounts.Add(new MapMenuAllowAccount
+                {
+                    MenuId = dto.Id,
+                    EmpId = empId.Trim()
+                });
+            }
+        }
+        if (dto.DeniedEmpIds != null)
+        {
+            foreach (var empId in dto.DeniedEmpIds.Distinct().Where(x => !string.IsNullOrWhiteSpace(x)))
+            {
+                _context.MapMenuDenyAccounts.Add(new MapMenuDenyAccount
+                {
+                    MenuId = dto.Id,
+                    EmpId = empId.Trim()
+                });
+            }
         }
     }
 
@@ -297,4 +365,8 @@ public class MenuDto
     public string? ParentId { get; set; }
     public List<string>? ParentIds { get; set; }
     public Dictionary<string, int>? ParentOrders { get; set; }
+
+    // Menu-level ACL (空 list = 不卡控)
+    public List<string>? AllowedEmpIds { get; set; }
+    public List<string>? DeniedEmpIds { get; set; }
 }

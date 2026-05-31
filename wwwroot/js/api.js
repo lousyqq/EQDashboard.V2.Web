@@ -77,10 +77,14 @@ async function fetchInitialDataFromDB() {
         // 取得資料陣列 (無視大小寫)
         const menusData = getVal(result, 'Menus') || [];
         const mapMenuData = getVal(result, 'Map_Menu_Structure') || [];
+        const mapMenuAllowData = getVal(result, 'Map_Menu_AllowAccount') || [];
+        const mapMenuDenyData = getVal(result, 'Map_Menu_DenyAccount') || [];
         const accData = getVal(result, 'Accounts') || [];
         const mapAccRoleData = getVal(result, 'Map_Account_Role') || [];
         const mapAccMenuData = getVal(result, 'Map_Account_ManageMenu') || [];
         const mapAccPageData = getVal(result, 'Map_Account_DefaultPage') || [];
+        const mapAccExtraData = getVal(result, 'Map_Account_ExtraMenu') || [];
+        const mapAccDenyData = getVal(result, 'Map_Account_DenyMenu') || [];
         const roleData = getVal(result, 'Roles') || [];
         const mapRoleMenuData = getVal(result, 'Map_Role_Menu') || [];
         const fabData = getVal(result, 'Fabs') || [];
@@ -127,7 +131,10 @@ async function fetchInitialDataFromDB() {
                 order: parseInt(getVal(m, 'GlobalOrder') || getVal(m, 'order') || 0),
                 parentId: pId,
                 parentIds: parsedPIds,
-                parentOrders: parsedPOrders
+                parentOrders: parsedPOrders,
+                // Menu 層級存取控制 — 下面從 Map_Menu_Allow/DenyAccount 補入
+                allowedEmpIds: [],
+                deniedEmpIds: []
             };
         });
 
@@ -143,6 +150,22 @@ async function fetchInitialDataFromDB() {
                 child.parentOrders[pId] = sortOrder;
                 if (child.parentId === null) child.parentId = pId;
             }
+        });
+
+        // Menu-level ACL：白名單
+        mapMenuAllowData.forEach(rel => {
+            let mId = String(getVal(rel, 'MenuId') || '');
+            let eId = String(getVal(rel, 'EmpId') || '');
+            let menu = mappedMenus.find(m => m.id === mId);
+            if (menu && eId && !menu.allowedEmpIds.includes(eId)) menu.allowedEmpIds.push(eId);
+        });
+
+        // Menu-level ACL：黑名單
+        mapMenuDenyData.forEach(rel => {
+            let mId = String(getVal(rel, 'MenuId') || '');
+            let eId = String(getVal(rel, 'EmpId') || '');
+            let menu = mappedMenus.find(m => m.id === mId);
+            if (menu && eId && !menu.deniedEmpIds.includes(eId)) menu.deniedEmpIds.push(eId);
         });
 
         // 2. 轉換 Accounts (⭐️ 雙軌相容讀取)
@@ -171,6 +194,9 @@ async function fetchInitialDataFromDB() {
                 manageableMenus: parsedManageable,
                 assignedRoles: parsedAssigned,
                 defaultPages: parsedDefPages,
+                // 個別覆寫 — 由 Map_Account_ExtraMenu / Map_Account_DenyMenu 補入
+                extraMenus: [],
+                denyMenus: [],
                 // 登入統計
                 loginCount: parseInt(getVal(a, 'LoginCount') || getVal(a, 'loginCount') || 0) || 0,
                 lastLoginTime: getVal(a, 'LastLoginTime') || getVal(a, 'lastLoginTime') || null
@@ -193,6 +219,20 @@ async function fetchInitialDataFromDB() {
             let acc = mappedAccounts.find(a => a.empId === String(getVal(rel, 'EmpId')));
             let fId = String(getVal(rel, 'FabId')); let mId = String(getVal(rel, 'MenuId'));
             if (acc && fId && mId) acc.defaultPages[fId] = mId;
+        });
+
+        // 個別覆寫：額外開放
+        mapAccExtraData.forEach(rel => {
+            let acc = mappedAccounts.find(a => a.empId === String(getVal(rel, 'EmpId')));
+            let mId = String(getVal(rel, 'MenuId'));
+            if (acc && mId && !acc.extraMenus.includes(mId)) acc.extraMenus.push(mId);
+        });
+
+        // 個別覆寫：個別封鎖
+        mapAccDenyData.forEach(rel => {
+            let acc = mappedAccounts.find(a => a.empId === String(getVal(rel, 'EmpId')));
+            let mId = String(getVal(rel, 'MenuId'));
+            if (acc && mId && !acc.denyMenus.includes(mId)) acc.denyMenus.push(mId);
         });
 
         // 3. 轉換 Roles (⭐️ 雙軌相容讀取)
@@ -303,7 +343,25 @@ async function fetchInitialDataFromDB() {
         window.getAppItems = function () { return window.appState.apps || []; };
         window.getRequests = function () { return window.appState.requests || []; };
 
-        // ⭐️ 核心修復：絕不可在這裡呼叫 initDashboardUI()，否則儲存時會觸發版面全數重置與跳頁！
+        // 🛡️ Lazy Loading：向後端取得登入者自身的詳細權限 (因為 InitialData 已剔除全量權限)
+        try {
+            const myProfileRes = await fetch('/api/Auth/MyProfile');
+            if (myProfileRes.ok) {
+                const myProfile = await myProfileRes.json();
+                let myAcc = window.appState.accounts.find(a => String(a.empId) === String(myProfile.empId));
+                if (myAcc) {
+                    myAcc.assignedRoles = myProfile.assignedRoles || [];
+                    myAcc.manageableMenus = myProfile.manageableMenus || [];
+                    myAcc.extraMenus = myProfile.extraMenus || [];
+                    myAcc.denyMenus = myProfile.denyMenus || [];
+                    myAcc.defaultPages = myProfile.defaultPages || {};
+                }
+            }
+        } catch (e) {
+            console.error("無法取得個人權限", e);
+        }
+
+        // ⭐️ 超級覆寫：確保不論在這裡之後才呼叫 initDashboardUI()，也不會因為載入順序而讀到靜態設定
         if (typeof window.renderSidebarMenus === 'function') {
             window.renderSidebarMenus();
         }
@@ -427,6 +485,12 @@ function getDatabasePayload() {
     payload.Map_Role_Menu = []; roles.forEach(r => { if (r.allowedMenuIds) r.allowedMenuIds.forEach((mId, idx) => payload.Map_Role_Menu.push({ RoleId: String(r.id), MenuId: String(mId), SortOrder: idx * 10 })); });
     payload.Map_Menu_Structure = []; menus.forEach(m => { if (m.parentIds && m.parentIds.length > 0) { m.parentIds.forEach(pId => payload.Map_Menu_Structure.push({ ParentMenuId: String(pId), ChildMenuId: String(m.id), SortOrder: m.parentOrders ? (m.parentOrders[pId] || 0) : 0 })); } else if (m.parentId) { payload.Map_Menu_Structure.push({ ParentMenuId: String(m.parentId), ChildMenuId: String(m.id), SortOrder: m.order || 0 }); } });
     payload.Map_Account_DefaultPage = []; accs.forEach(a => { if (a.defaultPages) { for (let fab in a.defaultPages) { payload.Map_Account_DefaultPage.push({ EmpId: String(a.empId), FabId: String(fab), MenuId: String(a.defaultPages[fab]) }); } } });
+    // 個別覆寫
+    payload.Map_Account_ExtraMenu = []; accs.forEach(a => { if (a.extraMenus) a.extraMenus.forEach(mId => payload.Map_Account_ExtraMenu.push({ EmpId: String(a.empId), MenuId: String(mId) })); });
+    payload.Map_Account_DenyMenu = []; accs.forEach(a => { if (a.denyMenus) a.denyMenus.forEach(mId => payload.Map_Account_DenyMenu.push({ EmpId: String(a.empId), MenuId: String(mId) })); });
+    // Menu 層級存取控制
+    payload.Map_Menu_AllowAccount = []; menus.forEach(m => { if (m.allowedEmpIds) m.allowedEmpIds.forEach(eId => payload.Map_Menu_AllowAccount.push({ MenuId: String(m.id), EmpId: String(eId) })); });
+    payload.Map_Menu_DenyAccount = []; menus.forEach(m => { if (m.deniedEmpIds) m.deniedEmpIds.forEach(eId => payload.Map_Menu_DenyAccount.push({ MenuId: String(m.id), EmpId: String(eId) })); });
 
     return payload;
 }

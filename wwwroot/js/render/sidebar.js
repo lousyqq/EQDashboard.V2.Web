@@ -1,4 +1,4 @@
-﻿// === render/sidebar.js - 側邊欄選單渲染 ===
+// === render/sidebar.js - 側邊欄選單渲染 ===
 // ====== render.js 最上方的修復 ======
 window.cleanId = function (id) {
     // 檢查是否為空值 (null, undefined, NaN)
@@ -215,14 +215,54 @@ function renderSidebarMenus() {
             if (allowed) initialMenuIds.push(...allowed);
         });
 
+        // === 權限優先序：Menu ACL > Account extra/deny > Role-based =================
+        // 預先計算 menu-level ACL 對當前使用者的效果
+        const curEmpId = window.cleanId(currentUser.id || currentUser.empId || '');
+        const menuAclDeny = new Set();        // 看板自己 deny — 絕對封鎖
+        const menuAclForceAllow = new Set();  // 看板白名單命中 — 絕對開放，可蓋過帳號 deny
+
+        menus.forEach(m => {
+            const cId = window.cleanId(m.id);
+            if (!cId) return;
+            const allowList = (m.allowedEmpIds || []).map(window.cleanId);
+            const denyList = (m.deniedEmpIds || []).map(window.cleanId);
+
+            if (denyList.includes(curEmpId)) {
+                menuAclDeny.add(cId);                         // 在黑名單 → 絕對 deny
+            } else if (allowList.length > 0) {
+                if (allowList.includes(curEmpId)) {
+                    menuAclForceAllow.add(cId);               // 白名單命中 → 絕對 allow
+                } else {
+                    menuAclDeny.add(cId);                     // 白名單存在但不在 → 等同 deny
+                }
+            }
+        });
+
+        // 帳號層級 extra (在 Role 之外額外開放)
+        const extraMenus = currentUser.extraMenus || currentUser.ExtraMenus || [];
+        if (extraMenus.length > 0) initialMenuIds.push(...extraMenus);
+
         let allowedSet = new Set(initialMenuIds.map(window.cleanId).filter(id => id !== ''));
 
+        // 帳號層級 deny — 但若該 menu 被 Menu ACL force-allow，仍視為允許 (Menu 優先)
+        const accountDenySet = new Set((currentUser.denyMenus || currentUser.DenyMenus || []).map(window.cleanId).filter(id => id !== ''));
+        accountDenySet.forEach(id => {
+            if (!menuAclForceAllow.has(id)) allowedSet.delete(id);
+        });
+
+        // Menu ACL 套用 (最高優先) — force-allow 強加進來、deny 強拿掉
+        menuAclForceAllow.forEach(id => allowedSet.add(id));
+        menuAclDeny.forEach(id => allowedSet.delete(id));
+
+        // 子節點展開：絕對不能展進「menu ACL deny」或「account.deny 且未被 menu force-allow」
         let added = true;
         while (added) {
             added = false;
             menus.forEach(m => {
                 let cId = window.cleanId(m.id);
                 if (!cId || allowedSet.has(cId)) return;
+                if (menuAclDeny.has(cId)) return;                                    // menu ACL deny 絕對封鎖
+                if (accountDenySet.has(cId) && !menuAclForceAllow.has(cId)) return;  // account deny (menu 沒 force-allow 才生效)
                 let hasAllowedParent = menus.some(pNode => pNode.id !== m.id && allowedSet.has(window.cleanId(pNode.id)) && (window.isParentMatch(m.parentId, pNode) || (m.parentIds || []).some(pid => window.isParentMatch(pid, pNode))));
                 if (hasAllowedParent) { allowedSet.add(cId); added = true; }
             });
@@ -255,7 +295,8 @@ function renderSidebarMenus() {
             });
         }
 
-        // 對齊 TEST_20260429.html:3216 — disabled 項目對所有人（含 admin）都不顯示在側邊欄/上方導覽
+        // disabled 項目對所有人（含 admin）都不顯示在側邊欄/上方導覽
+        // (ACL/extra/deny 已在 allowedSet 計算階段全部處理完畢，這裡只剩 enabled 過濾)
         const inPersonalMode = (currentLayoutMode === 'personal');
         let validMenus = menus.filter(m => {
             let cId = window.cleanId(m.id);
@@ -339,7 +380,7 @@ function renderSidebarMenus() {
                 let dName = root.displayName || root.name || '未命名選單';
                 if (typeof i18n !== 'undefined' && i18n[currentLang] && i18n[currentLang]['dyn_' + root.id] && !root.isEdited) dName = i18n[currentLang]['dyn_' + root.id];
                 const isActive = window.cleanId(root.id) === window.cleanId(window.currentActiveTopMenuId) ? 'active' : '';
-                topLinksHtml += `<a class="top-menu-link text-truncate ${isActive}" onclick="selectTopMenu('${root.id}')" title="${dName}">${dName}</a>`;
+                topLinksHtml += `<a class="top-menu-link text-truncate ${isActive}" onclick="selectTopMenu('${root.id}')" title="${window.escapeHTML(dName)}">${window.escapeHTML(dName)}</a>`;
             });
         }
         const topMenusContainer = document.getElementById('top-dynamic-menus');
@@ -369,7 +410,7 @@ function renderSidebarMenus() {
                 { id: 'page-menu-manage', icon: 'fas fa-sitemap', i18nKey: 'menu_menu_manage', fallback: '選單配置管理', display: canManage },
                 { id: 'page-fab-manage', icon: 'fas fa-building', i18nKey: 'menu_fab_manage', fallback: '廠區管理', display: role === 'admin' },
                 { id: 'page-role-manage', icon: 'fas fa-users-cog', i18nKey: 'menu_role_manage', fallback: '權限管理', display: role === 'admin' },
-                { id: 'page-account-manage', icon: 'fas fa-user-shield', i18nKey: 'menu_account_manage', fallback: '帳號管理', display: role === 'admin' },
+                { id: 'page-account-manage', icon: 'fas fa-user-shield', i18nKey: 'menu_account_manage', fallback: '帳號管理', display: role === 'admin' || (currentUser && currentUser.canEditOthers) },
                 { id: 'page-audit-manage', icon: 'fas fa-clipboard-check', i18nKey: 'menu_audit_manage', fallback: '申請審核管理', display: role === 'admin' },
                 { id: 'page-apply', icon: 'fas fa-paper-plane', i18nKey: 'menu_apply', fallback: '需求申請', display: role !== 'admin' },
                 { id: 'page-config-manage', icon: 'fas fa-database', i18nKey: 'db_sync', fallback: '資料庫與同步', display: role === 'admin' }

@@ -29,38 +29,37 @@ function initDashboardUI() {
     if (typeof renderHomeDashboard === 'function') renderHomeDashboard();
 }
 
-function enforceLoginState() {
+// 還原 localStorage 已有的 currentUser；若沒有則 return false（讓 tryAutoLogin 接手）
+function restoreLoginFromStorage() {
     const storedUser = localStorage.getItem('umc_current_user');
-    const loginOverlay = document.getElementById('login-overlay');
+    if (!storedUser || storedUser === 'null' || storedUser === 'undefined') return false;
 
-    if (storedUser && storedUser !== 'null' && storedUser !== 'undefined') {
-        try {
-            let tempUser = JSON.parse(storedUser);
+    try {
+        let tempUser = JSON.parse(storedUser);
 
-            if (typeof getAccounts === 'function') {
-                let freshAcc = getAccounts().find(a => String(a.empId).toLowerCase() === String(tempUser.id).toLowerCase());
-                if (freshAcc) {
-                    tempUser.roleLevel = freshAcc.roleLevel;
-                    tempUser.assignedRoles = freshAcc.assignedRoles || [];
-                    tempUser.manageableMenus = freshAcc.manageableMenus || [];
-                    tempUser.canEditOthers = freshAcc.canEditOthers || false;
-                    tempUser.defaultPages = freshAcc.defaultPages || {};
-                }
+        if (typeof getAccounts === 'function') {
+            let freshAcc = getAccounts().find(a => String(a.empId).toLowerCase() === String(tempUser.id).toLowerCase());
+            if (!freshAcc) {
+                // Account 已被刪除 → 強制重新登入
+                localStorage.removeItem('umc_current_user');
+                return false;
             }
-
-            currentUser = tempUser;
-            localStorage.setItem('umc_current_user', JSON.stringify(currentUser));
-
-            if (loginOverlay) loginOverlay.style.setProperty('display', 'none', 'important');
-            const nameEl = document.getElementById('user-name');
-            if (nameEl) nameEl.innerText = currentUser.id;
-        } catch (e) {
-            currentUser = null;
+            tempUser.roleLevel = freshAcc.roleLevel;
+            tempUser.assignedRoles = freshAcc.assignedRoles || [];
+            tempUser.manageableMenus = freshAcc.manageableMenus || [];
+            tempUser.canEditOthers = freshAcc.canEditOthers || false;
+            tempUser.defaultPages = freshAcc.defaultPages || {};
         }
-    }
 
-    if (!currentUser) {
-        if (loginOverlay) loginOverlay.style.setProperty('display', 'flex', 'important');
+        currentUser = tempUser;
+        localStorage.setItem('umc_current_user', JSON.stringify(currentUser));
+
+        const nameEl = document.getElementById('user-name');
+        if (nameEl) nameEl.innerText = currentUser.id;
+        return true;
+    } catch (e) {
+        currentUser = null;
+        return false;
     }
 }
 
@@ -94,11 +93,18 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
 
         loadingOverlay.remove();
-        enforceLoginState();
         initModalInstances();
 
-        if (currentUser) {
+        // 1) 先嘗試還原 localStorage 中既有的 currentUser
+        const restored = restoreLoginFromStorage();
+
+        if (restored) {
             initDashboardUI();
+        } else {
+            // 2) 沒有既有 session → 走自動偵測流程，自動失敗就會顯示登入框（手動模式）
+            if (typeof tryAutoLogin === 'function') {
+                await tryAutoLogin();
+            }
         }
     } catch (error) {
         if (!document.body.contains(loadingOverlay)) document.body.appendChild(loadingOverlay);

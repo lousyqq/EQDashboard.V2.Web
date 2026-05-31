@@ -41,7 +41,10 @@ function renderPersonalMenuManage() {
 
         let allowedIds = window.getAllowedIdsWithHierarchy(menusData, initialMenuIds);
         let menus = JSON.parse(JSON.stringify(menusData)).filter(m => allowedIds.has(m.id) && m.enabled !== false);
-        let pSets = getPersonalSettings(currentUser.id);
+        // 用 effective 版本：有 pending 拖曳變更時走 pending、沒有才退回 localStorage
+        let pSets = (typeof window.getEffectivePersonalSettings === 'function')
+            ? window.getEffectivePersonalSettings(currentUser.id)
+            : getPersonalSettings(currentUser.id);
         menus.forEach(m => {
             m.order = (pSets[m.id] && pSets[m.id].order != null) ? pSets[m.id].order : (m.order || 999);
         });
@@ -133,6 +136,9 @@ function renderPersonalMenuManage() {
         });
         tbody.innerHTML = htmlBuffer.join('');
 
+        // 同步右上角「儲存變更 / 放棄」按鈕的顯示狀態
+        if (typeof window.updatePersonalSaveButton === 'function') window.updatePersonalSaveButton();
+
         // 2) 初始化 DataTable（分頁筆數只算主選單）
         if (typeof $ === 'undefined' || !$.fn || !$.fn.DataTable) return;
         setTimeout(() => {
@@ -160,10 +166,19 @@ function renderPersonalMenuManage() {
 }
 
 // 顯示/隱藏：寫 LocalStorage + 自動同步至 DB
+// ⚠️ 若此時有 pending 拖曳變更未儲存，這次的 hidden 切換也會合進 pending，
+//    避免使用者按下「儲存變更」時 pending 蓋回 localStorage、把剛切的 hidden 洗掉。
 window.togglePersonalProp = function (menuId, prop, value) {
     let pSets = getPersonalSettings(currentUser.id);
     if (!pSets[menuId]) pSets[menuId] = {};
     pSets[menuId][prop] = value;
+
+    // 同步進 pending (若存在)
+    if (window._personalPendingDirty && window._personalPendingPSets) {
+        if (!window._personalPendingPSets[menuId]) window._personalPendingPSets[menuId] = {};
+        window._personalPendingPSets[menuId][prop] = value;
+    }
+
     savePersonalSettings(currentUser.id, pSets);
     if (typeof syncDataToDB === 'function') syncDataToDB();
     if (typeof renderPersonalMenuManage === 'function') renderPersonalMenuManage();

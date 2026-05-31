@@ -17,4 +17,6 @@ public class Account
     public ICollection<MapAccountRole>? MapAccountRoles { get; set; }
     public ICollection<MapAccountManageMenu>? MapAccountManageMenus { get; set; }
     public ICollection<MapAccountDefaultPage>? MapAccountDefaultPages { get; set; }
+    public ICollection<MapAccountExtraMenu>? MapAccountExtraMenus { get; set; }
+    public ICollection<MapAccountDenyMenu>? MapAccountDenyMenus { get; set; }
 }

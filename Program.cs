@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.EntityFrameworkCore;
 using EQDashboard.V2.Web.Data;
 using EQDashboard.V2.Web.Services;
@@ -19,14 +20,23 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // 註冊 Service 層（DI 依賴注入）
 builder.Services.AddScoped<ISettingsService, SettingsService>();
 builder.Services.AddScoped<IAccountService, AccountService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<ISchemaBootstrap, SchemaBootstrap>();
 
-// 註冊 Cookie 身分驗證機制
-builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+// === 身份驗證：Cookies (主) + Negotiate (Windows 自動偵測) ===
+// 預設 scheme 仍是 Cookies — 一般 API/頁面靠它識別；
+// Negotiate 只在 /api/Auth/WhoAmI 時被瀏覽器以 401 → WWW-Authenticate: Negotiate 觸發。
+builder.Services
+    .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
         options.Cookie.Name = "EQDashboard.Auth";
         options.ExpireTimeSpan = TimeSpan.FromHours(12);
         options.SlidingExpiration = true;
+        // ⭐️ 安全強化：Cookie 安全設定
+        options.Cookie.SameSite = SameSiteMode.Lax;    // 防止 CSRF 跨站請求偽造
+        options.Cookie.HttpOnly = true;                 // 防止 JS 讀取 Cookie (XSS 防護)
+        options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest; // HTTPS 時自動啟用 Secure 標記
         options.Events.OnRedirectToLogin = context =>
         {
             context.Response.StatusCode = 401;
@@ -37,11 +47,51 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
             context.Response.StatusCode = 403;
             return Task.CompletedTask;
         };
-    });
+    })
+    .AddNegotiate();
+
+builder.Services.AddAuthorization(options =>
+{
+    // 預設不強制要求認證 — 保留與舊行為相容，每支 Controller/Action 個別決定。
+    options.FallbackPolicy = null;
+});
 
 var app = builder.Build();
 
+// === Schema bootstrap (idempotent；每次啟動跑一次) ===
+// 自動建立缺失的覆寫表 + 種入 TestAccounts 中尚未存在的工號
+using (var scope = app.Services.CreateScope())
+{
+    var bootstrap = scope.ServiceProvider.GetRequiredService<ISchemaBootstrap>();
+    await bootstrap.RunAsync();
+}
+
+// ⭐️ 全域例外處理：避免洩漏 Stack Trace 與內部路徑
+app.UseExceptionHandler(errorApp =>
+{
+    errorApp.Run(async context =>
+    {
+        context.Response.StatusCode = 500;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsync(
+            System.Text.Json.JsonSerializer.Serialize(new
+            {
+                success = false,
+                message = "伺服器發生未預期的錯誤，請聯繫系統管理員。"
+            }));
+    });
+});
+
 app.UseHttpsRedirection();
+
+// ⭐️ 安全標頭中介軟體：防止點擊劫持、MIME 嗅探等攻擊
+app.Use(async (context, next) =>
+{
+    context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    context.Response.Headers["X-Frame-Options"] = "DENY";
+    context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    await next();
+});
 
 // ⭐️ 關鍵 1：設定預設檔案 (伺服器啟動時會自動去 wwwroot 尋找 index.html)
 app.UseDefaultFiles();
@@ -59,3 +109,4 @@ app.MapControllerRoute(
     pattern: "{controller=Home}/{action=Index}/{id?}");
 
 app.Run();
+
