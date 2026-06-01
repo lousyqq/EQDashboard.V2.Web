@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using EQDashboard.V2.Web.Services.Interfaces;
@@ -26,30 +27,58 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
-    /// 嘗試讀取桌機目前 Windows 登入者的工號。
-    /// 允許匿名：若瀏覽器有送 Windows 認證票證 (Negotiate/NTLM)，會回工號；否則 empId 為 null，前端就會落到手動登入。
+    /// 給前端進入點：回前端「現在這個環境允許哪些登入方式」。允許匿名 — 因為登入頁本身要先知道才知道要不要藏掉手動 tab。
+    /// </summary>
+    [HttpGet("Config")]
+    [AllowAnonymous]
+    public IActionResult GetConfig()
+    {
+        var allowManual = _config.GetValue<bool>("Auth:AllowManualLogin", true);
+        return Ok(new
+        {
+            allowManualLogin = allowManual,
+            // 之後若要再加「強制 Windows 自動 / 開啟測試帳號提示」之類也都掛在這
+        });
+    }
+
+    /// <summary>
+    /// 取得桌機目前 Windows 登入者的工號。
+    ///
+    /// 與舊版差別：改成 [Authorize(AuthenticationSchemes = Negotiate)] — 沒帶 Windows 認證票證的請求
+    /// 會收到 401 + WWW-Authenticate: Negotiate，瀏覽器若在網域、會自動補上認證；非網域機則直接 401，
+    /// 前端 catch 401 就改顯示手動登入框。
+    ///
+    /// 萃取工號用使用者測試過可行的最簡 pattern：
+    ///     var empId = (User?.Identity?.Name ?? "").Replace("UMC\\", "");
+    /// 但 "UMC" 改用 appsettings.Auth.WindowsDomainStripPrefix 控制，部署到不同網域時不必改 code。
     /// </summary>
     [HttpGet("WhoAmI")]
-    [AllowAnonymous]
+    [Authorize(AuthenticationSchemes = NegotiateDefaults.AuthenticationScheme)]
     public async Task<IActionResult> WhoAmI()
     {
-        var identity = HttpContext.User?.Identity;
-        var rawName = identity?.IsAuthenticated == true ? identity.Name : null;
-        var empId = _authService.ExtractEmpIdFromWindowsIdentity(rawName);
+        var stripPrefix = _config["Auth:WindowsDomainStripPrefix"] ?? "UMC";
+        var rawName = User?.Identity?.Name ?? "";
+
+        // 跟你測過的範例一致：先剝 DOMAIN\、再剝 @domain.com (Kerberos UPN 形態的保險)
+        var empId = rawName
+            .Replace($"{stripPrefix}\\", "", StringComparison.OrdinalIgnoreCase)
+            .Trim();
+        var atIdx = empId.IndexOf('@');
+        if (atIdx > 0) empId = empId[..atIdx];
 
         if (string.IsNullOrWhiteSpace(empId))
         {
             return Ok(new
             {
-                success = true,
+                success = false,
                 authenticated = false,
                 empId = (string?)null,
-                source = (string?)null,
-                message = "尚未偵測到 Windows 登入身份"
+                rawName,
+                message = "未偵測到 Windows 登入身份，請改用手動登入。"
             });
         }
 
-        // 檢查工號是否存在於 Accounts 表；不存在 → 拒絕，提示聯絡管理員（依使用者選擇的政策）
+        // 檢查 Accounts 表 — 無此工號就回「無瀏覽權限」訊息給前端，由前端顯示在登入框上
         var account = await _authService.FindAccountAsync(empId);
         if (account == null)
         {
@@ -59,18 +88,49 @@ public class AuthController : ControllerBase
                 success = false,
                 authenticated = true,
                 empId,
+                rawName,
                 source = "windows",
-                message = $"偵測到 Windows 帳號 [{empId}]，但系統內尚未建立此帳號，請聯絡管理員。"
+                message = $"目前偵測到的工號 [{empId}] 在系統中沒有瀏覽權限，請聯繫開發人員。"
             });
         }
+
+        // 找到帳號 — 也順手發一張 Cookie，這樣 [Authorize] 的 API (例如 PersonalSettings) 後續才能用
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, account.EmpId),
+            new(ClaimTypes.Name, account.Name ?? account.EmpId),
+            new(ClaimTypes.Role, (account.RoleLevel ?? "user").ToLower()),
+            new("LoginSource", "windows")
+        };
+        var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+        await HttpContext.SignInAsync(
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            new ClaimsPrincipal(claimsIdentity),
+            new AuthenticationProperties
+            {
+                IsPersistent = true,
+                ExpiresUtc = DateTimeOffset.UtcNow.AddHours(12)
+            });
 
         return Ok(new
         {
             success = true,
             authenticated = true,
             empId = account.EmpId,
+            rawName,
             source = "windows",
-            roleLevel = account.RoleLevel
+            roleLevel = account.RoleLevel,
+            account = new
+            {
+                empId = account.EmpId,
+                name = account.Name ?? account.EmpId,
+                department = account.Department ?? "",
+                roleLevel = account.RoleLevel ?? "user",
+                canEditOthers = account.CanEditOthers,
+                assignedRoles = Array.Empty<string>(),
+                manageableMenus = Array.Empty<string>(),
+                defaultPages = new Dictionary<string, string>()
+            }
         });
     }
 
@@ -109,6 +169,17 @@ public class AuthController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> Login([FromBody] LoginRequest req)
     {
+        // 部署到正式環境後可把 appsettings.Auth.AllowManualLogin 設為 false，整個手動登入入口會被擋住、
+        // 強制所有人走 Windows 自動偵測；前端 tab 也會藏起來。
+        if (!_config.GetValue<bool>("Auth:AllowManualLogin", true))
+        {
+            return Unauthorized(new
+            {
+                success = false,
+                message = "本環境已停用手動登入，請改用桌機 Windows 帳號自動登入。"
+            });
+        }
+
         if (string.IsNullOrWhiteSpace(req.EmpId))
             return BadRequest(new { success = false, message = "工號不得為空" });
 

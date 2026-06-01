@@ -155,7 +155,6 @@ C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\compressed\pspsml
 C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\compressed\3mkowvz2j4-uefv2gt2ff.gz
 C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\compressed\gdndu8nb3a-h8rlolhhpt.gz
 C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\compressed\pbfnwefzpb-61n19gt1b8.gz
-C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\compressed\rbxxp3bpiw-0oz1b00n6f.gz
 C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\compressed\w9bbgshd4t-g1h5rdo8hk.gz
 C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\compressed\2kahrqrxpe-uf3zdp8lwz.gz
 C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\compressed\k6hi9bjo68-7o5rwsqy27.gz
@@ -163,7 +162,6 @@ C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\compressed\alqpip
 C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\compressed\fxtw0gd98w-x3fkapkoli.gz
 C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\compressed\3kckx8aid5-8yox12jv9e.gz
 C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\compressed\ut025ls366-0zyhp91oc2.gz
-C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\compressed\v449gy1u36-bqhlqeip7v.gz
 C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\compressed\pexjj0n96g-4ebnb7mcin.gz
 C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\compressed\32awchl9vg-i8f4l0x1d2.gz
 C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\compressed\yw31eifrdn-0xcadt0xii.gz
@@ -178,8 +176,15 @@ C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\staticwebassets.b
 C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\staticwebassets.build.json.cache
 C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\staticwebassets.development.json
 C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\staticwebassets.build.endpoints.json
-C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\staticwebassets.upToDateCheck.txt
 C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\EQDashbo.DF35D60F.Up2Date
 C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\EQDashboard.V2.Web.dll
 C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\refint\EQDashboard.V2.Web.dll
 C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\EQDashboard.V2.Web.pdb
+C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\bin\Debug\net9.0\EQDashboard.V2.Web.deps.json
+C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\bin\Debug\net9.0\EQDashboard.V2.Web.runtimeconfig.json
+C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\bin\Debug\net9.0\EQDashboard.V2.Web.pdb
+C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\EQDashboard.V2.Web.genruntimeconfig.cache
+C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\ref\EQDashboard.V2.Web.dll
+C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\compressed\rbxxp3bpiw-3vpqykq3go.gz
+C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\compressed\v449gy1u36-xj1y0pkq4v.gz
+C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\obj\Debug\net9.0\staticwebassets.upToDateCheck.txt

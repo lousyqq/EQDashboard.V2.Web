@@ -19,7 +19,6 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 // 註冊 Service 層（DI 依賴注入）
 builder.Services.AddScoped<ISettingsService, SettingsService>();
-builder.Services.AddScoped<IAccountService, AccountService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ISchemaBootstrap, SchemaBootstrap>();
 

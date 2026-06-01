@@ -13,29 +13,60 @@ const FORCE_MANUAL_KEY = 'umc_force_manual_login';
 let _whoamiResult = null;
 
 // =============================================================
-// 1) 主進入點：呼叫 whoami，能自動就自動，不能就顯示登入框
+// 0) 取得後端 Auth 設定 (allowManualLogin 等)；UI 依此決定要不要藏掉手動 tab
+// =============================================================
+window._authConfig = { allowManualLogin: true };  // 預設值，fetch 失敗時退回 true
+
+async function fetchAuthConfig() {
+    try {
+        const resp = await fetch('/api/Auth/Config', { credentials: 'include' });
+        if (resp.ok) {
+            const c = await resp.json();
+            if (c) window._authConfig = { allowManualLogin: c.allowManualLogin !== false };
+        }
+    } catch (e) { console.warn('Auth/Config 失敗:', e); }
+    applyAuthConfigToUI(window._authConfig);
+    return window._authConfig;
+}
+
+function applyAuthConfigToUI(config) {
+    const manualTabBtn = document.getElementById('tab-manual');
+    const manualTabLi = manualTabBtn ? manualTabBtn.closest('li') : null;
+    const winTabBtn = document.getElementById('tab-windows');
+    if (!config.allowManualLogin) {
+        // 藏掉手動 tab，強制使用 Windows 自動偵測
+        if (manualTabLi) manualTabLi.style.display = 'none';
+        if (winTabBtn && window.bootstrap?.Tab) {
+            try { bootstrap.Tab.getOrCreateInstance(winTabBtn).show(); } catch (e) { }
+        }
+    } else {
+        if (manualTabLi) manualTabLi.style.display = '';
+    }
+}
+
+// =============================================================
+// 1) 主進入點：先抓 config → 嘗試 whoami → 能自動就自動，不能就顯示登入框
 // =============================================================
 async function tryAutoLogin() {
+    const config = await fetchAuthConfig();
     const forceManual = localStorage.getItem(FORCE_MANUAL_KEY) === '1';
 
-    if (forceManual) {
-        // 使用者剛剛主動登出 → 不要立刻又被 Windows Auth 拉進來
+    // 使用者剛主動登出且環境允許手動 → 停在手動 tab、避免被 Windows Auth 立刻拉回去
+    if (forceManual && config.allowManualLogin) {
         showLoginOverlay('manual');
         return false;
     }
 
     const result = await fetchWhoAmI();
 
-    if (result.success && result.authenticated && result.empId) {
-        // Windows 認證成功 + Accounts 表有此帳號 → 自動登入
-        const ok = await completeLoginAfterAuth(result.empId, 'windows');
+    if (result && result.success && result.authenticated && result.empId) {
+        const ok = await completeLoginAfterAuth(result.empId, 'windows', result.account || null);
         if (ok) return true;
-        // 走到這代表 completeLoginAfterAuth 內部已經 showLoginOverlay 了
-        return false;
     }
 
-    // 自動偵測失敗（可能是匿名、可能是帳號不存在）→ 顯示登入框
-    showLoginOverlay('windows');
+    // 自動偵測失敗或拿到工號但無權限 → 顯示登入框
+    // 若 allowManualLogin=false → 強制留在 Windows tab，使用者只能按重試或請聯絡管理員
+    showLoginOverlay(config.allowManualLogin ? 'manual' : 'windows');
     return false;
 }
 window.tryAutoLogin = tryAutoLogin;
@@ -46,6 +77,10 @@ window.tryAutoLogin = tryAutoLogin;
 async function fetchWhoAmI() {
     const statusEl = document.getElementById('whoami-status');
     const btn = document.getElementById('btn-windows-continue');
+    const config = window._authConfig || { allowManualLogin: true };
+    const fallbackHint = config.allowManualLogin
+        ? '<div class="small text-muted mt-1">請改用手動輸入</div>'
+        : '<div class="small text-muted mt-1">本環境僅允許 Windows 自動登入，請聯絡管理員確認桌機網域設定</div>';
 
     if (statusEl) {
         statusEl.className = 'alert alert-light border text-center py-3 mb-3';
@@ -58,23 +93,37 @@ async function fetchWhoAmI() {
             method: 'GET',
             credentials: 'include'
         });
+
+        // 401 = Negotiate-challenge 失敗：可能是非網域機、瀏覽器拒絕送認證、或站台沒在 Intranet zone
+        if (resp.status === 401) {
+            const data = { success: false, authenticated: false, message: '未偵測到 Windows 登入身份' };
+            _whoamiResult = data;
+            if (statusEl) {
+                statusEl.className = 'alert alert-light border text-center py-3 mb-3';
+                statusEl.innerHTML = '<i class="fas fa-info-circle me-1 text-muted"></i> 未偵測到 Windows 登入帳號' + fallbackHint;
+            }
+            return data;
+        }
+
         const data = await resp.json();
         _whoamiResult = data;
 
-        // 填 UI
         if (statusEl) {
             if (data.success && data.authenticated && data.empId) {
                 statusEl.className = 'alert alert-success border text-center py-3 mb-3';
                 statusEl.innerHTML = `<i class="fas fa-user-check me-1"></i> 偵測到 Windows 帳號：<b>${escapeHtml(data.empId)}</b>`;
                 if (btn) btn.disabled = false;
             } else if (data.authenticated && data.empId && !data.success) {
-                // 偵測到 Windows 帳號但 Accounts 表沒有
+                // 拿到工號但 Accounts 沒有 → 顯示明確訊息 + 建議聯絡開發人員
                 statusEl.className = 'alert alert-warning border text-center py-3 mb-3';
-                statusEl.innerHTML = `<i class="fas fa-exclamation-triangle me-1"></i> ${escapeHtml(data.message || '此 Windows 帳號未在系統建立')}`;
+                statusEl.innerHTML = `<i class="fas fa-exclamation-triangle me-1"></i> ${escapeHtml(data.message || '此 Windows 帳號在系統中沒有瀏覽權限')}`;
+                if (data.rawName) {
+                    statusEl.innerHTML += `<div class="small text-muted mt-1">原始識別字串：<code>${escapeHtml(data.rawName)}</code></div>`;
+                }
                 if (btn) btn.disabled = true;
             } else {
                 statusEl.className = 'alert alert-light border text-center py-3 mb-3';
-                statusEl.innerHTML = '<i class="fas fa-info-circle me-1 text-muted"></i> 未偵測到 Windows 登入帳號<div class="small text-muted mt-1">請改用手動輸入</div>';
+                statusEl.innerHTML = '<i class="fas fa-info-circle me-1 text-muted"></i> 未偵測到 Windows 登入帳號' + fallbackHint;
                 if (btn) btn.disabled = true;
             }
         }

@@ -79,9 +79,9 @@
     "ReturnTypes": []
   },
   {
-    "ContainingType": "EQDashboard.V2.Web.Controllers.AppsController",
-    "Method": "Get",
-    "RelativePath": "api/Apps",
+    "ContainingType": "EQDashboard.V2.Web.Controllers.AuthController",
+    "Method": "GetConfig",
+    "RelativePath": "api/Auth/Config",
     "HttpMethod": "GET",
     "IsController": true,
     "Order": 0,
