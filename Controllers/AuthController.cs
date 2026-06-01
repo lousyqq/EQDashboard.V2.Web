@@ -138,7 +138,8 @@ public class AuthController : ControllerBase
     [Authorize]
     public async Task<IActionResult> MyProfile()
     {
-        var empId = User.Identity?.Name;
+        // ⚠️ User.Identity?.Name 在我們的 Cookie scheme 下會回「姓名」(ClaimTypes.Name)；EmpId 放在 NameIdentifier。
+        var empId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(empId)) return Unauthorized();
 
         var a = await _context.Accounts

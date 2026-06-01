@@ -21,6 +21,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddScoped<ISettingsService, SettingsService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ISchemaBootstrap, SchemaBootstrap>();
+builder.Services.AddScoped<IAccountService, AccountService>();
+builder.Services.AddScoped<IMenuAuthService, MenuAuthService>();
 
 // === 身份驗證：Cookies (主) + Negotiate (Windows 自動偵測) ===
 // 預設 scheme 仍是 Cookies — 一般 API/頁面靠它識別；
@@ -83,9 +85,21 @@ app.UseExceptionHandler(errorApp =>
 
 app.UseHttpsRedirection();
 
-// ⭐️ 安全標頭中介軟體：防止點擊劫持、MIME 嗅探等攻擊
+// ⭐️ 安全標頭中介軟體：防止點擊劫持、MIME 嗅探等攻擊與 CSRF 防護
 app.Use(async (context, next) =>
 {
+    var method = context.Request.Method;
+    if (method == "POST" || method == "PUT" || method == "DELETE")
+    {
+        if (!context.Request.Headers.ContainsKey("X-Requested-With") || 
+            context.Request.Headers["X-Requested-With"] != "XMLHttpRequest")
+        {
+            context.Response.StatusCode = 400;
+            await context.Response.WriteAsync("CSRF validation failed.");
+            return;
+        }
+    }
+
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
     context.Response.Headers["X-Frame-Options"] = "DENY";
     context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";

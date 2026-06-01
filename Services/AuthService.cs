@@ -56,8 +56,8 @@ public class AuthService : IAuthService
         var ldapEnabled = _config.GetValue<bool>("Auth:Ldap:Enabled");
         if (!ldapEnabled)
         {
-            _logger.LogWarning("LDAP 未啟用，直接放行 (empId={EmpId})", empId);
-            return (true, null);
+            _logger.LogWarning("LDAP 驗證未啟用，拒絕登入 (empId={EmpId})", empId);
+            return (false, "LDAP 驗證未啟用");
         }
 
         var server = _config["Auth:Ldap:Server"] ?? "";

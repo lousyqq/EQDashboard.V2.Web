@@ -1,4 +1,4 @@
-﻿function initModalSafely(id) { const el = document.getElementById(id); return el ? new bootstrap.Modal(el) : null; }
+function initModalSafely(id) { const el = document.getElementById(id); return el ? new bootstrap.Modal(el) : null; }
 
 function initDashboardUI() {
     if (!currentUser) return;
@@ -87,21 +87,21 @@ document.addEventListener("DOMContentLoaded", async () => {
             isDbLoaded = await fetchInitialDataFromDB();
         }
 
-        if (!isDbLoaded) {
-            loadingOverlay.innerHTML = '<i class="fas fa-exclamation-triangle text-danger" style="font-size: 4rem; margin-bottom: 20px;"></i><h2 class="text-danger">資料庫連線或 API 異常</h2><p>無法取得最新設定資料，請檢查後端是否正常運行。</p>';
-            return;
-        }
-
         loadingOverlay.remove();
         initModalInstances();
 
-        // 1) 先嘗試還原 localStorage 中既有的 currentUser
-        const restored = restoreLoginFromStorage();
-
-        if (restored) {
-            initDashboardUI();
+        if (isDbLoaded) {
+            // 1) 有 DB 資料時，嘗試還原 localStorage 中既有的 currentUser
+            const restored = restoreLoginFromStorage();
+            if (restored) {
+                initDashboardUI();
+            } else {
+                if (typeof tryAutoLogin === 'function') {
+                    await tryAutoLogin();
+                }
+            }
         } else {
-            // 2) 沒有既有 session → 走自動偵測流程，自動失敗就會顯示登入框（手動模式）
+            // 2) 無 DB 資料 (可能為 401 未登入)，走自動偵測或顯示手動登入
             if (typeof tryAutoLogin === 'function') {
                 await tryAutoLogin();
             }

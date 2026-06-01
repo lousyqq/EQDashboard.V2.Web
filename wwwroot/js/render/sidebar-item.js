@@ -22,24 +22,25 @@ function generateSidebarMenuItem(menu, allMenus, level, forceExpand = true) {
     // ⭐️ 核心修正：棄用 Bootstrap 原生觸發器，改用完全自己掌控的 onclick，絕對不卡死！
     let actionAttr = '';
     if (hasChildren) actionAttr = `onclick="window.toggleSubMenu(event, '${safeDomId}', this)"`;
-    else if (menu.menuMode === 'app_grid') actionAttr = `onclick="window.activateMenu('${menu.id}')"`;
+    else if (menu.menuMode === 'app_grid') actionAttr = `onclick="window.activateMenu('${window.escapeHTML(menu.id).replace(/'/g, "\\'")}')"`;
     else if (menu.url) {
-        if (menu.target === 'blank') actionAttr = `onclick="window.open('${menu.url}', '_blank')"`
-        else actionAttr = `onclick="window.activateMenu('${menu.id}')"`;
+        if (menu.target === 'blank') actionAttr = `onclick="window.open('${window.escapeHTML(menu.url).replace(/'/g, "\\'")}', '_blank')"`
+        else actionAttr = `onclick="window.activateMenu('${window.escapeHTML(menu.id).replace(/'/g, "\\'")}')"`;
     }
-    else if (menu.targetPage) actionAttr = `onclick="window.activateMenu('${menu.id}')"`;
+    else if (menu.targetPage) actionAttr = `onclick="window.activateMenu('${window.escapeHTML(menu.id).replace(/'/g, "\\'")}')"`;
 
     let dName = menu.displayName || menu.name || '未命名選單';
     if (typeof i18n !== 'undefined' && i18n[currentLang] && i18n[currentLang]['dyn_' + menu.id] && !menu.isEdited) {
         dName = i18n[currentLang]['dyn_' + menu.id];
     }
+    const safeDName = window.escapeHTML(dName);
 
     if (hasChildren) {
         const expClass = isExpanded ? 'show' : '';
         const ariaAttr = isExpanded ? 'true' : 'false';
         const collapsedClass = isExpanded ? '' : 'collapsed';
-        let html = `<div class="menu-item ${collapsedClass}" ${actionAttr} title="${dName}" aria-expanded="${ariaAttr}" style="cursor:pointer;">
-                        ${iconHtml}<span class="text-truncate">${dName}</span>
+        let html = `<div class="menu-item ${collapsedClass}" ${actionAttr} title="${safeDName}" aria-expanded="${ariaAttr}" style="cursor:pointer;">
+                        ${iconHtml}<span class="text-truncate">${safeDName}</span>
                         <i class="fas fa-chevron-right dropdown-arrow"></i>
                     </div>
                     <div class="collapse ${expClass}" id="${safeDomId}" style="${isExpanded ? 'display:block;' : 'display:none;'}">
@@ -49,7 +50,7 @@ function generateSidebarMenuItem(menu, allMenus, level, forceExpand = true) {
         return html;
     } else {
         const itemClass = level > 1 ? 'menu-item sub-item' : 'menu-item';
-        return `<div class="${itemClass}" ${actionAttr} title="${dName}" style="cursor:pointer;">${iconHtml}<span class="text-truncate">${dName}</span></div>`;
+        return `<div class="${itemClass}" ${actionAttr} title="${safeDName}" style="cursor:pointer;">${iconHtml}<span class="text-truncate">${safeDName}</span></div>`;
     }
 }
 

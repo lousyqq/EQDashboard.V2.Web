@@ -6,11 +6,18 @@ window.fetch = async function(...args) {
     if (args[0] && typeof args[0] === 'string') {
         if (!args[1]) args[1] = {};
         args[1].credentials = 'same-origin';
+        
+        if (!args[1].headers) args[1].headers = {};
+        if (args[1].headers instanceof Headers) {
+            args[1].headers.append('X-Requested-With', 'XMLHttpRequest');
+        } else {
+            args[1].headers['X-Requested-With'] = 'XMLHttpRequest';
+        }
     }
     const response = await originalFetch.apply(this, args);
     const urlStr = typeof args[0] === 'string' ? args[0] : '';
-    // 如果後端回傳 401 (未登入或 Cookie 失效)，自動觸發登出
-    if (response.status === 401 && !urlStr.includes('/api/Auth/Login')) {
+    // 如果後端回傳 401 (未登入或 Cookie 失效)，自動觸發登出 (排除允許 401 的 API)
+    if (response.status === 401 && !urlStr.includes('/api/Auth/Login') && !urlStr.includes('/Settings/GetInitialData') && !urlStr.includes('/api/Auth/WhoAmI')) {
         if (typeof logout === 'function') {
             logout();
         }

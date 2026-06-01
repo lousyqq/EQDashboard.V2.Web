@@ -230,6 +230,14 @@ function showManualError(msg) {
 //    fallbackAccount: 後端 Login API 回傳的 account 物件 (TestAccount 用)
 // =============================================================
 async function completeLoginAfterAuth(empId, source, fallbackAccount) {
+    if (window.appState.accounts.length === 0 && typeof fetchInitialDataFromDB === 'function') {
+        const ok = await fetchInitialDataFromDB();
+        if (!ok) {
+            if (typeof customAlert === 'function') customAlert("無法載入資料庫，請重新整理網頁");
+            return false;
+        }
+    }
+
     const lowerId = String(empId).toLowerCase();
 
     // 從 appState 撈完整帳號資訊（appState 在 main.js 進入點時就已經 fetch 過）

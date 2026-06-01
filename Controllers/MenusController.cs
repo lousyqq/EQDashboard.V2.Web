@@ -5,6 +5,7 @@ using EQDashboard.V2.Web.Models;
 using EQDashboard.V2.Web.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using System.ComponentModel.DataAnnotations;
+using System.Security.Claims;
 
 namespace EQDashboard.V2.Web.Controllers;
 
@@ -15,11 +16,13 @@ public class MenusController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly ISettingsService _settingsService;
+    private readonly IMenuAuthService _menuAuthService;
 
-    public MenusController(AppDbContext context, ISettingsService settingsService)
+    public MenusController(AppDbContext context, ISettingsService settingsService, IMenuAuthService menuAuthService)
     {
         _context = context;
         _settingsService = settingsService;
+        _menuAuthService = menuAuthService;
     }
 
     [HttpGet]
@@ -56,9 +59,18 @@ public class MenusController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "admin")]
     public async Task<IActionResult> CreateMenu([FromBody] MenuDto dto)
     {
+        var isAdmin = User.IsInRole("admin");
+        // ⚠️ 不可用 User.Identity?.Name — 那會回 ClaimTypes.Name (姓名 e.g. "林玉婷")，不是 EmpId。
+//    Login/WhoAmI 設定 claims 時把 EmpId 放在 NameIdentifier、Name 放在「姓名」，所以這裡務必抓 NameIdentifier。
+var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+        
+        // 委派授權檢查：新增選單時，檢查其 ParentId 是否在授權範圍內
+        var checkId = !string.IsNullOrEmpty(dto.ParentId) ? dto.ParentId : dto.Id;
+        if (!await _menuAuthService.CanManageMenuAsync(empId, checkId, isAdmin))
+            return Forbid();
+
         if (await _context.Menus.AnyAsync(m => m.MenuId == dto.Id))
             return BadRequest("選單ID已存在");
 
@@ -90,9 +102,15 @@ public class MenusController : ControllerBase
     }
 
     [HttpPut("{id}")]
-    [Authorize(Roles = "admin")]
     public async Task<IActionResult> UpdateMenu(string id, [FromBody] MenuDto dto)
     {
+        var isAdmin = User.IsInRole("admin");
+        // ⚠️ 不可用 User.Identity?.Name — 那會回 ClaimTypes.Name (姓名 e.g. "林玉婷")，不是 EmpId。
+//    Login/WhoAmI 設定 claims 時把 EmpId 放在 NameIdentifier、Name 放在「姓名」，所以這裡務必抓 NameIdentifier。
+var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+        if (!await _menuAuthService.CanManageMenuAsync(empId, id, isAdmin))
+            return Forbid();
+
         var menu = await _context.Menus
             .Include(m => m.MapMenuStructuresChild)
             .Include(m => m.MapMenuAllowAccounts)
@@ -133,9 +151,15 @@ public class MenusController : ControllerBase
     }
 
     [HttpDelete("{id}")]
-    [Authorize(Roles = "admin")]
     public async Task<IActionResult> DeleteMenu(string id)
     {
+        var isAdmin = User.IsInRole("admin");
+        // ⚠️ 不可用 User.Identity?.Name — 那會回 ClaimTypes.Name (姓名 e.g. "林玉婷")，不是 EmpId。
+//    Login/WhoAmI 設定 claims 時把 EmpId 放在 NameIdentifier、Name 放在「姓名」，所以這裡務必抓 NameIdentifier。
+var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+        if (!await _menuAuthService.CanManageMenuAsync(empId, id, isAdmin))
+            return Forbid();
+
         var menu = await _context.Menus.FindAsync(id);
         if (menu == null) return NotFound();
 
@@ -148,9 +172,21 @@ public class MenusController : ControllerBase
     }
 
     [HttpPost("batch")]
-    [Authorize(Roles = "admin")]
     public async Task<IActionResult> BatchUpdateMenus([FromBody] List<MenuDto> dtos)
     {
+        var isAdmin = User.IsInRole("admin");
+        // ⚠️ 不可用 User.Identity?.Name — 那會回 ClaimTypes.Name (姓名 e.g. "林玉婷")，不是 EmpId。
+//    Login/WhoAmI 設定 claims 時把 EmpId 放在 NameIdentifier、Name 放在「姓名」，所以這裡務必抓 NameIdentifier。
+var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+        
+        // 批次更新時，簡單做法是檢查所有受影響的 ID (此處簡單檢查，如果清單中有任一無權限則拒絕)
+        foreach(var dto in dtos)
+        {
+             var checkId = !string.IsNullOrEmpty(dto.ParentId) ? dto.ParentId : dto.Id;
+             if (!await _menuAuthService.CanManageMenuAsync(empId, checkId, isAdmin))
+                 return Forbid();
+        }
+
         using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
@@ -212,9 +248,19 @@ public class MenusController : ControllerBase
 }
 
     [HttpDelete("batch")]
-    [Authorize(Roles = "admin")]
     public async Task<IActionResult> BatchDeleteMenus([FromBody] List<string> ids)
     {
+        var isAdmin = User.IsInRole("admin");
+        // ⚠️ 不可用 User.Identity?.Name — 那會回 ClaimTypes.Name (姓名 e.g. "林玉婷")，不是 EmpId。
+//    Login/WhoAmI 設定 claims 時把 EmpId 放在 NameIdentifier、Name 放在「姓名」，所以這裡務必抓 NameIdentifier。
+var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+
+        foreach(var id in ids)
+        {
+             if (!await _menuAuthService.CanManageMenuAsync(empId, id, isAdmin))
+                 return Forbid();
+        }
+
         if (ids == null || ids.Count == 0) return Ok(new { success = true });
 
         await DetachMenuReferencesAsync(ids);
