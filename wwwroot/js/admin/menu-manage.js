@@ -480,6 +480,7 @@ async function saveMenuNodeItem(e) {
         let menus = getCustomMenus();
 
         let mObj = id ? menus.find(x => window.cleanId(x.id) === window.cleanId(id)) : { id: 'm_' + Date.now(), isPoolItem: false, createdBy: currentUser.id, parentId: null, parentIds: [] };
+        mObj._wasTouched = true;
 
         mObj.name = document.getElementById('nodeName').value.trim();
         mObj.displayName = document.getElementById('nodeDisplayName').value.trim();
@@ -506,6 +507,10 @@ async function saveMenuNodeItem(e) {
                 .forEach(m => { oldDescendants.push(m.id); getOldDesc(m.id); });
         }
         if (mObj.id) getOldDesc(mObj.id);
+        oldDescendants.forEach(dId => {
+            let m = menus.find(x => window.cleanId(x.id) === window.cleanId(dId));
+            if (m) m._wasTouched = true;
+        });
 
         let foldersToDelete = [];
 
@@ -517,10 +522,19 @@ async function saveMenuNodeItem(e) {
 
             const myId = window.cleanId(mObj.id);
             menus.forEach(m => {
+                let touched = false;
                 if (window.cleanId(m.id) === myId) return; 
-                if (window.cleanId(m.parentId) === myId) m.parentId = null;
-                if (m.parentIds) m.parentIds = m.parentIds.filter(pid => window.cleanId(pid) !== myId);
-                if (m.parentOrders) delete m.parentOrders[mObj.id];
+                if (window.cleanId(m.parentId) === myId) { m.parentId = null; touched = true; }
+                if (m.parentIds) {
+                    const before = m.parentIds.length;
+                    m.parentIds = m.parentIds.filter(pid => window.cleanId(pid) !== myId);
+                    if (m.parentIds.length !== before) touched = true;
+                }
+                if (m.parentOrders && m.parentOrders[mObj.id] !== undefined) {
+                    delete m.parentOrders[mObj.id];
+                    touched = true;
+                }
+                if (touched) m._wasTouched = true;
             });
             foldersToDelete = oldDescendants;
             menus = menus.filter(m => !oldDescendants.includes(m.id));
@@ -534,14 +548,20 @@ async function saveMenuNodeItem(e) {
 
             const myIds = new Set([window.cleanId(mObj.id), ...oldDescendants.map(window.cleanId)]);
             menus.forEach(m => {
+                let touched = false;
                 if (myIds.has(window.cleanId(m.id))) return; 
-                if (myIds.has(window.cleanId(m.parentId))) m.parentId = null;
-                if (m.parentIds) m.parentIds = m.parentIds.filter(pid => !myIds.has(window.cleanId(pid)));
+                if (myIds.has(window.cleanId(m.parentId))) { m.parentId = null; touched = true; }
+                if (m.parentIds) {
+                    const before = m.parentIds.length;
+                    m.parentIds = m.parentIds.filter(pid => !myIds.has(window.cleanId(pid)));
+                    if (m.parentIds.length !== before) touched = true;
+                }
                 if (m.parentOrders) {
                     Object.keys(m.parentOrders).forEach(k => {
-                        if (myIds.has(window.cleanId(k))) delete m.parentOrders[k];
+                        if (myIds.has(window.cleanId(k))) { delete m.parentOrders[k]; touched = true; }
                     });
                 }
+                if (touched) m._wasTouched = true;
             });
 
             treeNodes.forEach(node => {
@@ -549,9 +569,11 @@ async function saveMenuNodeItem(e) {
                 if (!m) {
                     if (node.type === 'folder') {
                         m = { id: node.id, name: node.name, displayName: node.name, menuMode: 'folder', enabled: true, isEdited: true, parentId: null, parentIds: [], parentOrders: {}, createdBy: currentUser.id, isPoolItem: false };
+                        m._wasTouched = true;
                         menus.push(m);
                     } else return;
                 }
+                m._wasTouched = true;
                 if (!m.parentIds) m.parentIds = [];
                 if (!m.parentOrders) m.parentOrders = {};
 
@@ -569,7 +591,10 @@ async function saveMenuNodeItem(e) {
             });
         }
 
-        const result = await batchSaveMenusAPI(menus);
+        const menusToSend = menus.filter(m => m._wasTouched === true);
+        menus.forEach(m => delete m._wasTouched);
+
+        const result = await batchSaveMenusAPI(menusToSend);
         if (foldersToDelete.length > 0) {
             try { await batchDeleteMenusAPI(foldersToDelete); }
             catch (e) { console.error('batchDeleteMenusAPI 失敗', e); }
@@ -622,7 +647,12 @@ async function deleteMenuNodeItem(id) {
                     if (x.parentIds.length !== before) wasAffected = true;
                 }
                 if (x.parentOrders) {
-                    linkageToClear.forEach(pid => delete x.parentOrders[pid]);
+                    linkageToClear.forEach(pid => {
+                        if (x.parentOrders[pid] !== undefined) {
+                            delete x.parentOrders[pid];
+                            wasAffected = true;
+                        }
+                    });
                 }
                 if (wasAffected
                     && !x.parentId
@@ -630,6 +660,7 @@ async function deleteMenuNodeItem(id) {
                     && (x.menuMode || '').toLowerCase() !== 'folder') {
                     x.isPoolItem = true;
                 }
+                if (wasAffected) x._wasTouched = true;
             });
 
             const idsToDelete = menus.filter(m =>
@@ -637,9 +668,12 @@ async function deleteMenuNodeItem(id) {
                 oldDescendants.includes(m.id)
             ).map(m => m.id);
 
+            const menusToSend = menus.filter(m => m._wasTouched === true);
+            menus.forEach(m => delete m._wasTouched);
+
             menus = menus.filter(m => !idsToDelete.includes(m.id));
 
-            const result = await batchSaveMenusAPI(menus);
+            const result = await batchSaveMenusAPI(menusToSend);
             const delResult = await batchDeleteMenusAPI(idsToDelete);
 
             if (!result.success || !delResult.success) {

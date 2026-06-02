@@ -79,6 +79,59 @@
     "ReturnTypes": []
   },
   {
+    "ContainingType": "EQDashboard.V2.Web.Controllers.AppsController",
+    "Method": "CreateApp",
+    "RelativePath": "api/Apps",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "dto",
+        "Type": "EQDashboard.V2.Web.Controllers.AppDto",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "EQDashboard.V2.Web.Controllers.AppsController",
+    "Method": "UpdateApp",
+    "RelativePath": "api/Apps/{id}",
+    "HttpMethod": "PUT",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.String",
+        "IsRequired": true
+      },
+      {
+        "Name": "dto",
+        "Type": "EQDashboard.V2.Web.Controllers.AppDto",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "EQDashboard.V2.Web.Controllers.AppsController",
+    "Method": "DeleteApp",
+    "RelativePath": "api/Apps/{id}",
+    "HttpMethod": "DELETE",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.String",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
     "ContainingType": "EQDashboard.V2.Web.Controllers.AuthController",
     "Method": "GetConfig",
     "RelativePath": "api/Auth/Config",
@@ -327,8 +380,8 @@
     "Order": 0,
     "Parameters": [
       {
-        "Name": "req",
-        "Type": "EQDashboard.V2.Web.Models.Request",
+        "Name": "dto",
+        "Type": "EQDashboard.V2.Web.Controllers.CreateRequestDto",
         "IsRequired": true
       }
     ],

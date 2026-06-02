@@ -3,6 +3,18 @@
   "WorkspaceRootPath": "C:\\EQDashboard\\EQDashboard\\EQDashboard.V2.Web\\",
   "Documents": [
     {
+      "AbsoluteMoniker": "D:0:0:{610DAD2E-2B4A-D3D3-25E1-D56D33738077}|EQDashboard.V2.Web.csproj|c:\\eqdashboard\\eqdashboard\\eqdashboard.v2.web\\wwwroot\\js\\main.js||{14D17961-FE51-464D-9111-C4AF11D7D99A}",
+      "RelativeMoniker": "D:0:0:{610DAD2E-2B4A-D3D3-25E1-D56D33738077}|EQDashboard.V2.Web.csproj|solutionrelative:wwwroot\\js\\main.js||{14D17961-FE51-464D-9111-C4AF11D7D99A}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{610DAD2E-2B4A-D3D3-25E1-D56D33738077}|EQDashboard.V2.Web.csproj|c:\\eqdashboard\\eqdashboard\\eqdashboard.v2.web\\wwwroot\\js\\auth.js||{14D17961-FE51-464D-9111-C4AF11D7D99A}",
+      "RelativeMoniker": "D:0:0:{610DAD2E-2B4A-D3D3-25E1-D56D33738077}|EQDashboard.V2.Web.csproj|solutionrelative:wwwroot\\js\\auth.js||{14D17961-FE51-464D-9111-C4AF11D7D99A}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{610DAD2E-2B4A-D3D3-25E1-D56D33738077}|EQDashboard.V2.Web.csproj|c:\\eqdashboard\\eqdashboard\\eqdashboard.v2.web\\wwwroot\\js\\api.js||{14D17961-FE51-464D-9111-C4AF11D7D99A}",
+      "RelativeMoniker": "D:0:0:{610DAD2E-2B4A-D3D3-25E1-D56D33738077}|EQDashboard.V2.Web.csproj|solutionrelative:wwwroot\\js\\api.js||{14D17961-FE51-464D-9111-C4AF11D7D99A}"
+    },
+    {
       "AbsoluteMoniker": "D:0:0:{610DAD2E-2B4A-D3D3-25E1-D56D33738077}|EQDashboard.V2.Web.csproj|c:\\eqdashboard\\eqdashboard\\eqdashboard.v2.web\\wwwroot\\index.html||{40D31677-CBC0-4297-A9EF-89D907823A98}",
       "RelativeMoniker": "D:0:0:{610DAD2E-2B4A-D3D3-25E1-D56D33738077}|EQDashboard.V2.Web.csproj|solutionrelative:wwwroot\\index.html||{40D31677-CBC0-4297-A9EF-89D907823A98}"
     },
@@ -27,6 +39,45 @@
             {
               "$type": "Document",
               "DocumentIndex": 0,
+              "Title": "main.js",
+              "DocumentMoniker": "C:\\EQDashboard\\EQDashboard\\EQDashboard.V2.Web\\wwwroot\\js\\main.js",
+              "RelativeDocumentMoniker": "wwwroot\\js\\main.js",
+              "ToolTip": "C:\\EQDashboard\\EQDashboard\\EQDashboard.V2.Web\\wwwroot\\js\\main.js",
+              "RelativeToolTip": "wwwroot\\js\\main.js",
+              "ViewState": "AgIAAAkAAAAAAAAAAAAcwBMAAAANAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001646|",
+              "WhenOpened": "2026-06-02T12:35:40.848Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "auth.js",
+              "DocumentMoniker": "C:\\EQDashboard\\EQDashboard\\EQDashboard.V2.Web\\wwwroot\\js\\auth.js",
+              "RelativeDocumentMoniker": "wwwroot\\js\\auth.js",
+              "ToolTip": "C:\\EQDashboard\\EQDashboard\\EQDashboard.V2.Web\\wwwroot\\js\\auth.js",
+              "RelativeToolTip": "wwwroot\\js\\auth.js",
+              "ViewState": "AgIAAKEBAAAAAAAAAAAcwL0BAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001646|",
+              "WhenOpened": "2026-06-02T12:35:19.158Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "api.js",
+              "DocumentMoniker": "C:\\EQDashboard\\EQDashboard\\EQDashboard.V2.Web\\wwwroot\\js\\api.js",
+              "RelativeDocumentMoniker": "wwwroot\\js\\api.js",
+              "ToolTip": "C:\\EQDashboard\\EQDashboard\\EQDashboard.V2.Web\\wwwroot\\js\\api.js",
+              "RelativeToolTip": "wwwroot\\js\\api.js",
+              "ViewState": "AgIAAOkCAAAAAAAAAAAcwCYDAAAjAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001646|",
+              "WhenOpened": "2026-06-02T12:34:35.943Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
               "Title": "index.html",
               "DocumentMoniker": "C:\\EQDashboard\\EQDashboard\\EQDashboard.V2.Web\\wwwroot\\index.html",
               "RelativeDocumentMoniker": "wwwroot\\index.html",
@@ -39,7 +90,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 4,
               "Title": "SettingsService.cs",
               "DocumentMoniker": "C:\\EQDashboard\\EQDashboard\\EQDashboard.V2.Web\\Services\\SettingsService.cs",
               "RelativeDocumentMoniker": "Services\\SettingsService.cs",

@@ -51,22 +51,26 @@ async function tryAutoLogin() {
     const config = await fetchAuthConfig();
     const forceManual = localStorage.getItem(FORCE_MANUAL_KEY) === '1';
 
-    // 使用者剛主動登出且環境允許手動 → 停在手動 tab、避免被 Windows Auth 立刻拉回去
     if (forceManual && config.allowManualLogin) {
         showLoginOverlay('manual');
+        localStorage.removeItem(FORCE_MANUAL_KEY); // ← 加這行：不要永遠卡住
         return false;
     }
+
 
     const result = await fetchWhoAmI();
 
     if (result && result.success && result.authenticated && result.empId) {
+        localStorage.removeItem(FORCE_MANUAL_KEY);
         const ok = await completeLoginAfterAuth(result.empId, 'windows', result.account || null);
         if (ok) return true;
     }
 
+
     // 自動偵測失敗或拿到工號但無權限 → 顯示登入框
     // 若 allowManualLogin=false → 強制留在 Windows tab，使用者只能按重試或請聯絡管理員
-    showLoginOverlay(config.allowManualLogin ? 'manual' : 'windows');
+    showLoginOverlay('windows'); // 失敗也先讓使用者看到自動偵測結果/提示
+
     return false;
 }
 window.tryAutoLogin = tryAutoLogin;
@@ -94,13 +98,22 @@ async function fetchWhoAmI() {
             credentials: 'include'
         });
 
-        // 401 = Negotiate-challenge 失敗：可能是非網域機、瀏覽器拒絕送認證、或站台沒在 Intranet zone
         if (resp.status === 401) {
             const data = { success: false, authenticated: false, message: '未偵測到 Windows 登入身份' };
             _whoamiResult = data;
             if (statusEl) {
                 statusEl.className = 'alert alert-light border text-center py-3 mb-3';
                 statusEl.innerHTML = '<i class="fas fa-info-circle me-1 text-muted"></i> 未偵測到 Windows 登入帳號' + fallbackHint;
+            }
+            return data;
+        }
+
+        if (!resp.ok) {
+            const data = { success: false, authenticated: false, message: `WhoAmI HTTP ${resp.status}` };
+            _whoamiResult = data;
+            if (statusEl) {
+                statusEl.className = 'alert alert-light border text-center py-3 mb-3';
+                statusEl.innerHTML = '<i class="fas fa-times-circle me-1 text-danger"></i> 自動偵測失敗 (HTTP ' + resp.status + ')' + fallbackHint;
             }
             return data;
         }
@@ -113,14 +126,10 @@ async function fetchWhoAmI() {
                 statusEl.className = 'alert alert-success border text-center py-3 mb-3';
                 statusEl.innerHTML = `<i class="fas fa-user-check me-1"></i> 偵測到 Windows 帳號：<b>${escapeHtml(data.empId)}</b>`;
                 if (btn) btn.disabled = false;
-            } else if (data.authenticated && data.empId && !data.success) {
-                // 拿到工號但 Accounts 沒有 → 顯示明確訊息 + 建議聯絡開發人員
-                statusEl.className = 'alert alert-warning border text-center py-3 mb-3';
-                statusEl.innerHTML = `<i class="fas fa-exclamation-triangle me-1"></i> ${escapeHtml(data.message || '此 Windows 帳號在系統中沒有瀏覽權限')}`;
-                if (data.rawName) {
-                    statusEl.innerHTML += `<div class="small text-muted mt-1">原始識別字串：<code>${escapeHtml(data.rawName)}</code></div>`;
-                }
-                if (btn) btn.disabled = true;
+
+                // ★ 若你要「偵測到就直接登入」，在這裡直接做：
+                localStorage.removeItem(FORCE_MANUAL_KEY);
+                await completeLoginAfterAuth(data.empId, 'windows', data.account || null);
             } else {
                 statusEl.className = 'alert alert-light border text-center py-3 mb-3';
                 statusEl.innerHTML = '<i class="fas fa-info-circle me-1 text-muted"></i> 未偵測到 Windows 登入帳號' + fallbackHint;
@@ -128,11 +137,16 @@ async function fetchWhoAmI() {
             }
         }
         return data;
+
     } catch (e) {
-        console.warn('WhoAmI 失敗:', e);
+        clearTimeout(timer);
+        const msg = (e && e.name === 'AbortError')
+            ? '偵測逾時（請確認瀏覽器/站台 Windows Auth 設定）'
+            : '無法連線到伺服器';
+
         if (statusEl) {
             statusEl.className = 'alert alert-light border text-center py-3 mb-3';
-            statusEl.innerHTML = '<i class="fas fa-times-circle me-1 text-danger"></i> 無法連線到伺服器';
+            statusEl.innerHTML = '<i class="fas fa-times-circle me-1 text-danger"></i> ' + msg + fallbackHint;
         }
         return { success: false, authenticated: false };
     }
@@ -362,7 +376,7 @@ function showLoginOverlay(defaultTab) {
     } catch (e) { }
 
     // 若停留在 Windows tab 卻還沒 whoami 過，主動觸發一次
-    if (defaultTab !== 'manual' && !_whoamiResult) {
+    if (defaultTab !== 'manual' && (!_whoamiResult || _whoamiResult.success !== true)) {
         fetchWhoAmI();
     }
 }
@@ -418,3 +432,14 @@ async function safeJson(resp) {
 function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+    const winTabBtn = document.getElementById('tab-windows');
+    if (!winTabBtn) return;
+
+    winTabBtn.addEventListener('shown.bs.tab', () => {
+        // 每次切到 Windows tab 都重新偵測一次
+        _whoamiResult = null;
+        fetchWhoAmI();
+    });
+});

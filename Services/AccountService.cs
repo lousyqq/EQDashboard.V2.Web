@@ -87,6 +87,15 @@ public class AccountService : IAccountService
 
     public async Task<(bool success, string errorMessage)> UpdateAccountAsync(string empId, AccountFullDto dto)
     {
+        // ⚠️ 強制 dto.EmpId = path 的 empId。
+        //   原本 bug：UpdateAccountMappings 用 dto.EmpId 寫到 Map_Account_*，但找 account 用 path 的 empId。
+        //   兩者不一致時 (admin 改錯欄位/惡意提交)：
+        //     - 找到的 account = path 的 (e.g., user)，刪掉它的 mappings
+        //     - 寫新 mappings 用 dto.EmpId (e.g., 00058897)
+        //     - 結果：user 的 mappings 全沒了、00058897 多了不該有的 mappings
+        //   修法：永遠以 path 為事實來源，body 的 EmpId 忽略。
+        dto.EmpId = empId;
+
         var account = await _context.Accounts
             .Include(a => a.MapAccountRoles)
             .Include(a => a.MapAccountManageMenus)
@@ -99,6 +108,12 @@ public class AccountService : IAccountService
 
         account.Name = dto.Name;
         account.Department = dto.Department;
+        
+        if (string.Equals(empId, "admin", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!string.Equals(dto.RoleLevel, "admin", StringComparison.OrdinalIgnoreCase))
+                return (false, "系統預設管理員 (admin) 不可被降級");
+        }
         account.RoleLevel = dto.RoleLevel;
         account.CanEditOthers = dto.CanEditOthers;
 
@@ -128,6 +143,9 @@ public class AccountService : IAccountService
             .FirstOrDefaultAsync(a => a.EmpId == empId);
             
         if (account == null) return (false, "找不到指定的帳號");
+
+        if (string.Equals(empId, "admin", StringComparison.OrdinalIgnoreCase))
+            return (false, "系統預設管理員 (admin) 不可被刪除");
 
         if (account.MapAccountRoles != null && account.MapAccountRoles.Count > 0)
             _context.MapAccountRoles.RemoveRange(account.MapAccountRoles);

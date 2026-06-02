@@ -8,6 +8,23 @@ window.escapeHTML = function(str) {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
 };
+
+// ⚠️ Stored XSS 防護：判斷 URL 是否安全到可以放進 href 或 window.open。
+//   escapeHTML 只擋 HTML entity、不擋 URL scheme — `javascript:alert(...)` 通過 escapeHTML 後仍會在點擊時執行。
+//   後端 DTO 已加 RegularExpression 把關（http(s)://、/），這裡是 defense-in-depth：
+//     - 萬一 DB 內有歷史 dirty data (上線前就存進去的)
+//     - 萬一前端從別處取得 URL 沒先過後端
+//   一律只放行：http(s)://、/、空字串；其他 (javascript:/data:/vbscript:/file:/...) 轉成 '#' 阻斷。
+//   trim/lowercase + 把不可見字元 (\t \n \r \0 空白) 全部去掉再比，避免 `java\tscript:` 之類繞過。
+window.safeExternalUrl = function(url) {
+    if (!url) return '#';
+    const cleaned = String(url).replace(/[\s\u0000-\u001f]/g, '').toLowerCase();
+    if (cleaned === '') return '#';
+    if (cleaned.startsWith('http://') || cleaned.startsWith('https://') || cleaned.startsWith('/')) {
+        return String(url); // 通過驗證，回原值 (保留大小寫 query string 等)
+    }
+    return '#';
+};
 function renderPersonalMenuManage() {
     try {
         if (typeof $ !== 'undefined' && $.fn && $.fn.DataTable && $.fn.DataTable.isDataTable('#dtPersonalMenu')) {
@@ -180,7 +197,6 @@ window.togglePersonalProp = function (menuId, prop, value) {
     }
 
     savePersonalSettings(currentUser.id, pSets);
-    if (typeof syncDataToDB === 'function') syncDataToDB();
     if (typeof renderPersonalMenuManage === 'function') renderPersonalMenuManage();
     if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
 };
@@ -191,7 +207,6 @@ window.setPersonalTarget = function (menuId, target) {
     if (!pSets[menuId]) pSets[menuId] = {};
     pSets[menuId].target = target;
     savePersonalSettings(currentUser.id, pSets);
-    if (typeof syncDataToDB === 'function') syncDataToDB();
     if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
 };
 
@@ -498,10 +513,13 @@ function renderAppGrid(containerId, appList) {
         const aName = window.escapeHTML(app.name || app.AppName);
         const aUrl = window.escapeHTML(app.url || app.Url);
         let imgHtml = (app.iconBase64 || app.IconBase64) ? `<img src="${window.escapeHTML(app.iconBase64 || app.IconBase64)}" class="app-icon-img" alt="${aName}">` : `<i class="fas fa-cube text-muted" style="font-size:2rem;"></i>`;
-        let clickAction = (app.target || app.Target) === 'iframe' ? `openDynamicIframe('${aUrl}', '${aName}', null, false)` : `window.open('${aUrl}', '_blank')`;
-        html += `<div class="app-card" title="${aName}"><div class="app-actions d-flex flex-nowrap justify-content-center gap-2"><button class="app-btn-action app-btn-edit" onclick="event.stopPropagation(); openAppGridModal('${window.escapeHTML(app.id || app.AppId)}');"><i class="fas fa-pencil-alt"></i></button><button class="app-btn-action app-btn-delete" onclick="event.stopPropagation(); deleteAppItem('${window.escapeHTML(app.id || app.AppId)}');"><i class="fas fa-times"></i></button></div><div class="app-icon-box" onclick="${clickAction}">${imgHtml}</div><div class="app-name" onclick="${clickAction}">${aName}</div></div>`;
+        let isIframe = (app.target || app.Target) === 'iframe';
+        let actionAttr = isIframe 
+            ? `data-action="open-iframe" data-url="${aUrl}" data-name="${aName}"` 
+            : `data-action="open-url" data-url="${aUrl}"`;
+        html += `<div class="app-card" title="${aName}"><div class="app-actions d-flex flex-nowrap justify-content-center gap-2"><button class="app-btn-action app-btn-edit" data-action="edit-app" data-id="${window.escapeHTML(app.id || app.AppId)}"><i class="fas fa-pencil-alt"></i></button><button class="app-btn-action app-btn-delete" data-action="delete-app" data-id="${window.escapeHTML(app.id || app.AppId)}"><i class="fas fa-times"></i></button></div><div class="app-icon-box" ${actionAttr}>${imgHtml}</div><div class="app-name" ${actionAttr}>${aName}</div></div>`;
     });
-    html += `<div class="app-card app-add" title="新增 APP"><div class="app-icon-box app-add-box" onclick="openAppGridModal();"><i class="fas fa-plus"></i></div><div class="app-name text-muted">新增 APP</div></div>`;
+    html += `<div class="app-card app-add" title="新增 APP"><div class="app-icon-box app-add-box" data-action="add-app"><i class="fas fa-plus"></i></div><div class="app-name text-muted">新增 APP</div></div>`;
     container.innerHTML = html;
 }
 

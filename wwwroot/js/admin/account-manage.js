@@ -63,13 +63,12 @@ async function editAccount(empId) {
         document.getElementById('accName').value = acc.name || ''; document.getElementById('accDept').value = acc.department || '';
         document.getElementById('accRoleLevel').value = acc.roleLevel || 'user';
 
-        // 編輯 admin 帳號 → 隱藏「管理層級」與「委派管理」整個區段（admin 是全域管理者，不需要這些選項）
-        const isAdminAccount = (acc.roleLevel === 'admin') || window.cleanId(acc.empId) === 'admin';
+        // 編輯 admin 帳號 → 隱藏「管理層級」整個區段（系統預設 admin 是全域管理者，無法降級）
+        // 其他被賦予 admin 的帳號仍可顯示層級選單，以便收回權限
+        const isSuperAdmin = window.cleanId(acc.empId) === 'admin';
         const lvlGroup = document.getElementById('accRoleLevelGroup');
-        const delegationGroup = document.getElementById('accDelegationGroup');
-        if (lvlGroup) lvlGroup.style.display = isAdminAccount ? 'none' : '';
-        if (isAdminAccount && delegationGroup) delegationGroup.style.display = 'none';
-        document.getElementById('accRoleLevel').disabled = isAdminAccount;
+        if (lvlGroup) lvlGroup.style.display = isSuperAdmin ? 'none' : '';
+        document.getElementById('accRoleLevel').disabled = isSuperAdmin;
 
         document.getElementById('accEnableDelegation').checked = (acc.manageableMenus && acc.manageableMenus.length > 0);
         document.getElementById('accCanEditOthers').checked = acc.canEditOthers || false;

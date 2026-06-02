@@ -28,11 +28,19 @@ public class MenusController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetMenus()
     {
+        var isAdmin = User.IsInRole("admin");
+        var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+
         var menus = await _context.Menus
             .Include(m => m.MapMenuStructuresChild)
             .Include(m => m.MapMenuAllowAccounts)
             .Include(m => m.MapMenuDenyAccounts)
             .ToListAsync();
+
+        // P1 過濾：非 admin 只回他真的看得到的 menus，避免洩漏全部看板 URL / icon
+        var visibleSet = await _menuAuthService.GetVisibleMenuIdsAsync(empId, isAdmin);
+        if (visibleSet != null)
+            menus = menus.Where(m => visibleSet.Contains(m.MenuId)).ToList();
 
         var result = menus.Select(m => new
         {
@@ -65,11 +73,33 @@ public class MenusController : ControllerBase
         // ⚠️ 不可用 User.Identity?.Name — 那會回 ClaimTypes.Name (姓名 e.g. "林玉婷")，不是 EmpId。
 //    Login/WhoAmI 設定 claims 時把 EmpId 放在 NameIdentifier、Name 放在「姓名」，所以這裡務必抓 NameIdentifier。
 var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
-        
-        // 委派授權檢查：新增選單時，檢查其 ParentId 是否在授權範圍內
-        var checkId = !string.IsNullOrEmpty(dto.ParentId) ? dto.ParentId : dto.Id;
-        if (!await _menuAuthService.CanManageMenuAsync(empId, checkId, isAdmin))
-            return Forbid();
+
+        // ⚠️ 跨界 ACL 防護：只有 admin 可設定 AllowedEmpIds / DeniedEmpIds。
+        //   委派 user 新建的 menu 一律無 ACL，避免他用 menu ACL 反向控制其他正常 user 的可見性。
+        if (!isAdmin)
+        {
+            dto.AllowedEmpIds = null;
+            dto.DeniedEmpIds = null;
+        }
+
+        if (dto.ParentIds != null && dto.ParentIds.Count > 0)
+        {
+            foreach (var pId in dto.ParentIds)
+            {
+                if (!await _menuAuthService.CanManageStructureAsync(empId, pId, isAdmin))
+                    return Forbid();
+            }
+        }
+        else if (!string.IsNullOrEmpty(dto.ParentId))
+        {
+            if (!await _menuAuthService.CanManageStructureAsync(empId, dto.ParentId, isAdmin))
+                return Forbid();
+        }
+        else
+        {
+            if (!await _menuAuthService.IsDelegatedAdminAsync(empId, isAdmin))
+                return Forbid();
+        }
 
         if (await _context.Menus.AnyAsync(m => m.MenuId == dto.Id))
             return BadRequest("選單ID已存在");
@@ -84,7 +114,9 @@ var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
             TargetPage = dto.TargetPage,
             OpenTarget = dto.Target,
             Icon = dto.Icon,
-            CreatedBy = dto.CreatedBy,
+            // ⚠️ Mass Assignment 防護：CreatedBy 永遠 = 實際登入者，不接受 dto.CreatedBy。
+            // 早先漏洞：委派 user 可送 dto.CreatedBy="admin" 偽造成 admin 建立、影響後續 isMyOwn 判定。
+            CreatedBy = empId,
             IsEnabled = dto.Enabled,
             IsPoolItem = dto.IsPoolItem,
             IsEdited = dto.IsEdited,
@@ -94,7 +126,7 @@ var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
         _context.Menus.Add(menu);
 
         UpdateMenuMappings(dto);
-        UpdateMenuAcl(dto);
+        if (isAdmin) UpdateMenuAcl(dto);  // 非 admin 已在上方被清空 ACL，跳過保險
 
         await _context.SaveChangesAsync();
         _settingsService.InvalidateInitialDataCache();
@@ -108,8 +140,44 @@ var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
         // ⚠️ 不可用 User.Identity?.Name — 那會回 ClaimTypes.Name (姓名 e.g. "林玉婷")，不是 EmpId。
 //    Login/WhoAmI 設定 claims 時把 EmpId 放在 NameIdentifier、Name 放在「姓名」，所以這裡務必抓 NameIdentifier。
 var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
-        if (!await _menuAuthService.CanManageMenuAsync(empId, id, isAdmin))
+
+        // ⚠️ 強制 dto.Id = path 的 id。
+        //   原本 bug：找 menu 用 path id、做權限檢查也用 path id，
+        //   但下游 UpdateMenuMappings(dto)/UpdateMenuAcl(dto) 用 dto.Id 寫 ChildMenuId / MenuId。
+        //   兩者不一致時 (惡意提交)：
+        //     - 找到並更新 path id 的 menu (e.g. m_ze_1)
+        //     - 刪掉 path id 的 mapping/ACL
+        //     - 寫新 mapping/ACL 用 dto.Id (e.g. m_admin_secret)
+        //     - 結果：m_ze_1 mapping 全沒、m_admin_secret 多了沒經過權限檢查的 mapping/ACL
+        //   修法：永遠以 path 為事實來源，body 的 Id 忽略 (跟 AccountService.UpdateAccountAsync 同模式)。
+        dto.Id = id;
+
+        // ⚠️ 跨界 ACL 防護：AllowedEmpIds / DeniedEmpIds 是「決定其他 user 看不看得到該 menu」的工具，
+        //   委派 user 不應越界決定其他 user 的可見性 (即使該 menu 在他編輯權範圍內)。
+        //   只有 admin 可寫；非 admin 直接把 ACL 欄位清掉，保留 DB 中現有設定不變動。
+        if (!isAdmin)
+        {
+            dto.AllowedEmpIds = null;
+            dto.DeniedEmpIds = null;
+        }
+
+        if (!await _menuAuthService.CanEditOrDeleteMenuAsync(empId, id, isAdmin))
             return Forbid();
+
+        // 搬家防護：檢查是否有權掛載到新的 Parent 節點之下
+        if (dto.ParentIds != null && dto.ParentIds.Count > 0)
+        {
+            foreach (var pId in dto.ParentIds)
+            {
+                if (!await _menuAuthService.CanManageStructureAsync(empId, pId, isAdmin))
+                    return Forbid();
+            }
+        }
+        else if (!string.IsNullOrEmpty(dto.ParentId))
+        {
+            if (!await _menuAuthService.CanManageStructureAsync(empId, dto.ParentId, isAdmin))
+                return Forbid();
+        }
 
         var menu = await _context.Menus
             .Include(m => m.MapMenuStructuresChild)
@@ -126,24 +194,31 @@ var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
         menu.TargetPage = dto.TargetPage;
         menu.OpenTarget = dto.Target;
         menu.Icon = dto.Icon;
-        menu.CreatedBy = dto.CreatedBy;
+        // ⚠️ CreatedBy 是 immutable — 不接受 PUT 改動，否則委派 user 可把 admin 建立的 menu「過戶」到自己名下。
         menu.IsEnabled = dto.Enabled;
         menu.IsPoolItem = dto.IsPoolItem;
         menu.IsEdited = dto.IsEdited;
         menu.GlobalOrder = dto.Order;
 
-        // ⚠️ 三張 Map 表都用「全刪+重建」模式，必須在 Add 之前先 SaveChanges 把 DELETE flush 到 DB，
+        // ⚠️ Map 表用「全刪+重建」模式，必須在 Add 之前先 SaveChanges 把 DELETE flush 到 DB，
         //     否則 EF Core 同時 track DELETE + INSERT 同一個 PK 會撞衝突。
         if (menu.MapMenuStructuresChild != null)
             _context.MapMenuStructures.RemoveRange(menu.MapMenuStructuresChild);
-        if (menu.MapMenuAllowAccounts != null)
-            _context.MapMenuAllowAccounts.RemoveRange(menu.MapMenuAllowAccounts);
-        if (menu.MapMenuDenyAccounts != null)
-            _context.MapMenuDenyAccounts.RemoveRange(menu.MapMenuDenyAccounts);
+
+        // ⚠️ ACL 只有 admin 才能改動 (跨界保護)：
+        //   非 admin 編輯時跳過整段「刪舊 ACL → 寫新 ACL」流程，DB 中現有 ACL 維持不變，
+        //   即使 dto 帶 AllowedEmpIds/DeniedEmpIds 也已在上方被清為 null、不會生效。
+        if (isAdmin)
+        {
+            if (menu.MapMenuAllowAccounts != null)
+                _context.MapMenuAllowAccounts.RemoveRange(menu.MapMenuAllowAccounts);
+            if (menu.MapMenuDenyAccounts != null)
+                _context.MapMenuDenyAccounts.RemoveRange(menu.MapMenuDenyAccounts);
+        }
         await _context.SaveChangesAsync(); // ← 一次 flush 所有 pending DELETE
 
         UpdateMenuMappings(dto);
-        UpdateMenuAcl(dto);
+        if (isAdmin) UpdateMenuAcl(dto);
 
         await _context.SaveChangesAsync();
         _settingsService.InvalidateInitialDataCache();
@@ -157,7 +232,7 @@ var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
         // ⚠️ 不可用 User.Identity?.Name — 那會回 ClaimTypes.Name (姓名 e.g. "林玉婷")，不是 EmpId。
 //    Login/WhoAmI 設定 claims 時把 EmpId 放在 NameIdentifier、Name 放在「姓名」，所以這裡務必抓 NameIdentifier。
 var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
-        if (!await _menuAuthService.CanManageMenuAsync(empId, id, isAdmin))
+        if (!await _menuAuthService.CanEditOrDeleteMenuAsync(empId, id, isAdmin))
             return Forbid();
 
         var menu = await _context.Menus.FindAsync(id);
@@ -178,13 +253,47 @@ var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
         // ⚠️ 不可用 User.Identity?.Name — 那會回 ClaimTypes.Name (姓名 e.g. "林玉婷")，不是 EmpId。
 //    Login/WhoAmI 設定 claims 時把 EmpId 放在 NameIdentifier、Name 放在「姓名」，所以這裡務必抓 NameIdentifier。
 var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
-        
-        // 批次更新時，簡單做法是檢查所有受影響的 ID (此處簡單檢查，如果清單中有任一無權限則拒絕)
+
+        // ⚠️ 跨界 ACL 防護：批次模式同樣 — 非 admin 一律清掉每個 dto 的 ACL 欄位，
+        //   避免委派 user 透過 batch endpoint 偷渡 ACL 改動影響其他 user。
+        if (!isAdmin)
+        {
+            foreach (var dto in dtos)
+            {
+                dto.AllowedEmpIds = null;
+                dto.DeniedEmpIds = null;
+            }
+        }
+
+        // 批次更新時，必須對每個受影響的項目嚴格檢查：1. 是否有原選單的編輯權限 2. 是否有新父目錄的掛載權限
         foreach(var dto in dtos)
         {
-             var checkId = !string.IsNullOrEmpty(dto.ParentId) ? dto.ParentId : dto.Id;
-             if (!await _menuAuthService.CanManageMenuAsync(empId, checkId, isAdmin))
-                 return Forbid();
+             bool exists = await _context.Menus.AnyAsync(m => m.MenuId == dto.Id);
+             
+             if (exists)
+             {
+                 if (!await _menuAuthService.CanEditOrDeleteMenuAsync(empId, dto.Id, isAdmin))
+                     return Forbid();
+             }
+             else if ((dto.ParentIds == null || dto.ParentIds.Count == 0) && string.IsNullOrEmpty(dto.ParentId))
+             {
+                 if (!await _menuAuthService.IsDelegatedAdminAsync(empId, isAdmin))
+                     return Forbid();
+             }
+
+             if (dto.ParentIds != null && dto.ParentIds.Count > 0)
+             {
+                 foreach (var pId in dto.ParentIds)
+                 {
+                     if (!await _menuAuthService.CanManageStructureAsync(empId, pId, isAdmin))
+                         return Forbid();
+                 }
+             }
+             else if (!string.IsNullOrEmpty(dto.ParentId))
+             {
+                 if (!await _menuAuthService.CanManageStructureAsync(empId, dto.ParentId, isAdmin))
+                     return Forbid();
+             }
         }
 
         using var transaction = await _context.Database.BeginTransactionAsync();
@@ -201,38 +310,46 @@ var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
                     .Include(m => m.MapMenuDenyAccounts)
                     .FirstOrDefaultAsync(m => m.MenuId == dto.Id);
 
-                if (menu == null)
+                bool isNewlyCreated = menu == null;
+                if (isNewlyCreated)
                 {
                     menu = new Menu { MenuId = dto.Id };
                     _context.Menus.Add(menu);
                 }
                 else
                 {
-                    // ⚠️ 三張 Map 表都「全刪+重建」，要先 flush DELETE 才能 Add 同 PK 不撞 tracking 衝突
-                    if (menu.MapMenuStructuresChild != null)
+                    // ⚠️ Map 表「全刪+重建」，要先 flush DELETE 才能 Add 同 PK 不撞 tracking 衝突
+                    if (menu!.MapMenuStructuresChild != null)
                         _context.MapMenuStructures.RemoveRange(menu.MapMenuStructuresChild);
-                    if (menu.MapMenuAllowAccounts != null)
-                        _context.MapMenuAllowAccounts.RemoveRange(menu.MapMenuAllowAccounts);
-                    if (menu.MapMenuDenyAccounts != null)
-                        _context.MapMenuDenyAccounts.RemoveRange(menu.MapMenuDenyAccounts);
+                    // 非 admin 不能動 ACL — 跳過刪除以保留 DB 原狀
+                    if (isAdmin)
+                    {
+                        if (menu.MapMenuAllowAccounts != null)
+                            _context.MapMenuAllowAccounts.RemoveRange(menu.MapMenuAllowAccounts);
+                        if (menu.MapMenuDenyAccounts != null)
+                            _context.MapMenuDenyAccounts.RemoveRange(menu.MapMenuDenyAccounts);
+                    }
                     await _context.SaveChangesAsync();
                 }
 
-            menu.SysName = dto.Name;
+            menu!.SysName = dto.Name;
             menu.DisplayName = dto.DisplayName;
             menu.MenuMode = dto.MenuMode;
             menu.Url = dto.Url;
             menu.TargetPage = dto.TargetPage;
             menu.OpenTarget = dto.Target;
             menu.Icon = dto.Icon;
-            menu.CreatedBy = dto.CreatedBy;
+            // ⚠️ Mass Assignment 防護：
+            //   - 新建：強制 CreatedBy = 實際登入者，不接受 dto.CreatedBy 偽造
+            //   - 既有：完全不動 CreatedBy (immutable)
+            if (isNewlyCreated) menu.CreatedBy = empId;
             menu.IsEnabled = dto.Enabled;
             menu.IsPoolItem = dto.IsPoolItem;
             menu.IsEdited = dto.IsEdited;
             menu.GlobalOrder = dto.Order;
 
             UpdateMenuMappings(dto);
-            UpdateMenuAcl(dto);
+            if (isAdmin) UpdateMenuAcl(dto);  // 非 admin 已在上方被清空 ACL，跳過保險
         }
 
         await _context.SaveChangesAsync();
@@ -257,7 +374,7 @@ var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
 
         foreach(var id in ids)
         {
-             if (!await _menuAuthService.CanManageMenuAsync(empId, id, isAdmin))
+             if (!await _menuAuthService.CanEditOrDeleteMenuAsync(empId, id, isAdmin))
                  return Forbid();
         }
 
@@ -314,12 +431,13 @@ var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
         }
     }
 
-    /// <summary>寫入 Menu 層級的白名單 / 黑名單</summary>
+    /// <summary>寫入 Menu 層級的白名單 / 黑名單。每個 EmpId 也卡 50 字元上限，避免 DTO 沒檔住的元素長度</summary>
     private void UpdateMenuAcl(MenuDto dto)
     {
         if (dto.AllowedEmpIds != null)
         {
-            foreach (var empId in dto.AllowedEmpIds.Distinct().Where(x => !string.IsNullOrWhiteSpace(x)))
+            foreach (var empId in dto.AllowedEmpIds.Distinct()
+                .Where(x => !string.IsNullOrWhiteSpace(x) && x.Trim().Length <= 50))
             {
                 _context.MapMenuAllowAccounts.Add(new MapMenuAllowAccount
                 {
@@ -330,7 +448,8 @@ var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
         }
         if (dto.DeniedEmpIds != null)
         {
-            foreach (var empId in dto.DeniedEmpIds.Distinct().Where(x => !string.IsNullOrWhiteSpace(x)))
+            foreach (var empId in dto.DeniedEmpIds.Distinct()
+                .Where(x => !string.IsNullOrWhiteSpace(x) && x.Trim().Length <= 50))
             {
                 _context.MapMenuDenyAccounts.Add(new MapMenuDenyAccount
                 {
@@ -341,39 +460,40 @@ var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
         }
     }
 
+    /// <summary>ParentId 元素長度防呆：DB MenuId 上限 50；超出視同無效 (silent drop) 避免整個 PUT 因一個 element 失敗。</summary>
     private void UpdateMenuMappings(MenuDto dto)
     {
         if (dto.ParentIds != null)
         {
-            foreach (var pId in dto.ParentIds)
+            foreach (var pId in dto.ParentIds.Where(x => !string.IsNullOrWhiteSpace(x) && x.Length <= 50))
             {
                 int order = 0;
                 if (dto.ParentOrders != null && dto.ParentOrders.ContainsKey(pId))
                 {
                     order = dto.ParentOrders[pId];
                 }
-                
-                _context.MapMenuStructures.Add(new MapMenuStructure 
-                { 
-                    ParentMenuId = pId, 
-                    ChildMenuId = dto.Id, 
-                    SortOrder = order 
+
+                _context.MapMenuStructures.Add(new MapMenuStructure
+                {
+                    ParentMenuId = pId,
+                    ChildMenuId = dto.Id,
+                    SortOrder = order
                 });
             }
         }
-        else if (!string.IsNullOrEmpty(dto.ParentId))
+        else if (!string.IsNullOrEmpty(dto.ParentId) && dto.ParentId.Length <= 50)
         {
-            _context.MapMenuStructures.Add(new MapMenuStructure 
-            { 
-                ParentMenuId = dto.ParentId, 
-                ChildMenuId = dto.Id, 
-                SortOrder = dto.Order ?? 0 
+            _context.MapMenuStructures.Add(new MapMenuStructure
+            {
+                ParentMenuId = dto.ParentId,
+                ChildMenuId = dto.Id,
+                SortOrder = dto.Order ?? 0
             });
         }
     }
 }
 
-public class MenuDto
+public class MenuDto : IValidatableObject
 {
     [Required(ErrorMessage = "ID 必填")]
     [StringLength(50)]
@@ -389,18 +509,23 @@ public class MenuDto
     [StringLength(20)]
     public string? MenuMode { get; set; }
     
+    // ⚠️ Stored XSS 防護：由 Controller 層級檢查 javascript: 避免過度嚴格的正則表達式擋住合法的相對路徑 (如 "1111222")。
     [StringLength(1000)]
     public string? Url { get; set; }
-    
+
+    // targetPage 是 DOM section id (e.g. "page-home")，只允許英數+底線+連字號避免 selector injection
     [StringLength(200)]
+    [RegularExpression(@"^[a-zA-Z][a-zA-Z0-9_-]*$", ErrorMessage = "targetPage 只能包含英數、底線、連字號")]
     public string? TargetPage { get; set; }
     
     [StringLength(20)]
     public string? Target { get; set; }
     
-    [StringLength(100)]
+    // ⚠️ Icon 可能是 FA class (e.g. "fas fa-folder") 或 base64 data URI ("data:image/jpeg;base64,...")，
+    //    前端 compressImageFile 會壓到 80×80 約 5-8 KB，舊版鎖 100 char 會直接 400。放寬到 200KB。
+    [StringLength(200_000, ErrorMessage = "Icon 不可超過 200KB")]
     public string? Icon { get; set; }
-    
+
     [StringLength(50)]
     public string? CreatedBy { get; set; }
     
@@ -408,11 +533,29 @@ public class MenuDto
     public bool IsPoolItem { get; set; }
     public bool IsEdited { get; set; }
     public int? Order { get; set; }
+
+    [StringLength(50)]
     public string? ParentId { get; set; }
+
+    // 一支 menu 不會掛在 100+ 個父節點下；卡個合理上限避免被塞爆。
+    [MaxLength(100, ErrorMessage = "ParentIds 最多 100 個")]
     public List<string>? ParentIds { get; set; }
+
     public Dictionary<string, int>? ParentOrders { get; set; }
 
-    // Menu-level ACL (空 list = 不卡控)
+    // Menu-level ACL (空 list = 不卡控)。卡 1000 筆上限：實務上不會有單一 menu 對 1000+ 工號做白/黑名單，
+    // 真到那規模應該改設計用 role / group。
+    [MaxLength(1000, ErrorMessage = "AllowedEmpIds 最多 1000 個")]
     public List<string>? AllowedEmpIds { get; set; }
+
+    [MaxLength(1000, ErrorMessage = "DeniedEmpIds 最多 1000 個")]
     public List<string>? DeniedEmpIds { get; set; }
+
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (!string.IsNullOrWhiteSpace(Url) && Url.Trim().StartsWith("javascript:", StringComparison.OrdinalIgnoreCase))
+        {
+            yield return new ValidationResult("URL 不可包含 javascript: 以防範 XSS 攻擊", new[] { nameof(Url) });
+        }
+    }
 }

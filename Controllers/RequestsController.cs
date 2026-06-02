@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -39,20 +40,39 @@ public class RequestsController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create([FromBody] Request req)
+    public async Task<IActionResult> Create([FromBody] CreateRequestDto dto)
     {
         var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(currentUserId)) return Unauthorized();
 
-        // 🛡️ IDOR 防護：強制覆寫為當前登入者
-        req.EmpId = currentUserId;
-        req.EmpName = User.FindFirstValue(ClaimTypes.Name) ?? currentUserId;
-        
-        // 確保新申請預設狀態正確
-        req.Status = "pending";
-        req.Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var existingReq = await _context.Requests.FindAsync(dto.RequestId);
+        if (existingReq != null)
+        {
+            // 🛡️ IDOR 防護：只能重新送出自己的申請
+            if (existingReq.EmpId != currentUserId) return Forbid();
+            existingReq.ReqType = dto.ReqType;
+            existingReq.Fab = dto.Fab;
+            existingReq.Reason = dto.Reason;
+            existingReq.Status = "pending";
+            existingReq.Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            _context.Requests.Update(existingReq);
+        }
+        else
+        {
+            var req = new Request
+            {
+                RequestId = string.IsNullOrWhiteSpace(dto.RequestId) ? ("req_" + Guid.NewGuid().ToString("N")) : dto.RequestId,
+                ReqType = dto.ReqType,
+                Fab = dto.Fab,
+                Reason = dto.Reason,
+                EmpId = currentUserId,
+                EmpName = User.FindFirstValue(ClaimTypes.Name) ?? currentUserId,
+                Status = "pending",
+                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+            };
+            _context.Requests.Add(req);
+        }
 
-        _context.Requests.Add(req);
         await _context.SaveChangesAsync();
         _settingsService.InvalidateInitialDataCache(); // 確保下次快取更新
 
@@ -118,13 +138,39 @@ public class RequestsController : ControllerBase
     }
 }
 
+public class CreateRequestDto
+{
+    [StringLength(50)]
+    public string? RequestId { get; set; }
+
+    [Required(ErrorMessage = "申請類別必填")]
+    [StringLength(50)]
+    public string? ReqType { get; set; }
+
+    [Required(ErrorMessage = "廠區必填")]
+    [StringLength(50)]
+    public string? Fab { get; set; }
+
+    [Required(ErrorMessage = "需求說明必填")]
+    [StringLength(1000)]
+    public string? Reason { get; set; }
+}
+
 public class WithdrawDto
 {
+    [StringLength(1000)]
     public string? Reason { get; set; }
 }
 
 public class AuditDto
 {
+    // ⚠️ 必須對齊前端 tables.js 的 statusMap 與 admin/user 流程實際送的值，
+    //    否則 admin 從 UI 按「已完成」(resolved) 等會被 400 擋掉、審核功能斷掉。
+    [Required]
+    [RegularExpression("^(pending|processing|resolved|rejected|withdrawn)$", ErrorMessage = "無效的審核狀態")]
+    [StringLength(20)]
     public string? Status { get; set; }
+
+    [StringLength(1000)]
     public string? Reply { get; set; }
 }

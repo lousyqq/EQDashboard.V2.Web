@@ -2,11 +2,11 @@
 
 // ⭐️ 全域 fetch 攔截器：處理 401 Unauthorized，強制退回登入畫面
 const originalFetch = window.fetch;
-window.fetch = async function(...args) {
+window.fetch = async function (...args) {
     if (args[0] && typeof args[0] === 'string') {
         if (!args[1]) args[1] = {};
         args[1].credentials = 'same-origin';
-        
+
         if (!args[1].headers) args[1].headers = {};
         if (args[1].headers instanceof Headers) {
             args[1].headers.append('X-Requested-With', 'XMLHttpRequest');
@@ -73,8 +73,28 @@ const getVal = (obj, key) => {
 // ⭐️ 核心：從後端 API 獲取資料，並將 SQL 關聯表「組裝」回前端 UI 預期的結構
 async function fetchInitialDataFromDB() {
     try {
-        const response = await fetch('/Settings/GetInitialData');
-        const result = await response.json();
+        const response = await fetch('/Settings/GetInitialData', { cache: 'no-store' });
+
+        // 先擋掉非 200
+        if (!response.ok) {
+            console.warn('GetInitialData failed:', response.status);
+            return false;
+        }
+
+        // 避免空 body/非 JSON 導致 response.json() 直接爆
+        const text = await response.text();
+        if (!text) {
+            console.warn('GetInitialData empty response');
+            return false;
+        }
+
+        let result;
+        try {
+            result = JSON.parse(text);
+        } catch (e) {
+            console.error('GetInitialData not JSON:', text.slice(0, 200));
+            return false;
+        }
 
         if (result.error) {
             console.error("後端回傳錯誤:", result.message);
@@ -554,19 +574,19 @@ window.syncDataToDB = syncDataToDB;
 async function saveFabAPI(isNew, fabData) {
     const url = isNew ? '/api/Fabs' : `/api/Fabs/${fabData.id}`;
     const method = isNew ? 'POST' : 'PUT';
-    
+
     try {
         const res = await fetch(url, {
             method: method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(fabData)
         });
-        
+
         if (!res.ok) {
             const err = await res.text();
             throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
         }
-        
+
         return { success: true };
     } catch (error) {
         console.error("儲存廠區失敗:", error);
@@ -593,19 +613,19 @@ window.deleteFabAPI = deleteFabAPI;
 async function saveRoleAPI(isNew, roleData) {
     const url = isNew ? '/api/Roles' : `/api/Roles/${roleData.id}`;
     const method = isNew ? 'POST' : 'PUT';
-    
+
     try {
         const res = await fetch(url, {
             method: method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(roleData)
         });
-        
+
         if (!res.ok) {
             const err = await res.text();
             throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
         }
-        
+
         return { success: true };
     } catch (error) {
         console.error("儲存權限群組失敗:", error);
@@ -632,19 +652,19 @@ window.deleteRoleAPI = deleteRoleAPI;
 async function saveAccountAPI(isNew, accountData) {
     const url = isNew ? '/api/Accounts' : `/api/Accounts/${accountData.empId}`;
     const method = isNew ? 'POST' : 'PUT';
-    
+
     try {
         const res = await fetch(url, {
             method: method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(accountData)
         });
-        
+
         if (!res.ok) {
             const err = await res.text();
             throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
         }
-        
+
         return { success: true };
     } catch (error) {
         console.error("儲存帳號失敗:", error);
@@ -671,19 +691,19 @@ window.deleteAccountAPI = deleteAccountAPI;
 async function saveMenuAPI(isNew, menuData) {
     const url = isNew ? '/api/Menus' : `/api/Menus/${menuData.id}`;
     const method = isNew ? 'POST' : 'PUT';
-    
+
     try {
         const res = await fetch(url, {
             method: method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(menuData)
         });
-        
+
         if (!res.ok) {
             const err = await res.text();
             throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
         }
-        
+
         return { success: true };
     } catch (error) {
         console.error("儲存選單失敗:", error);
@@ -714,7 +734,7 @@ async function batchSaveMenusAPI(menusData) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(menusData)
         });
-        
+
         if (!res.ok) {
             const err = await res.text();
             throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
@@ -734,7 +754,7 @@ async function batchDeleteMenusAPI(ids) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(ids)
         });
-        
+
         if (!res.ok) {
             const err = await res.text();
             throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
@@ -746,3 +766,42 @@ async function batchDeleteMenusAPI(ids) {
     }
 }
 window.batchDeleteMenusAPI = batchDeleteMenusAPI;
+
+async function saveAppAPI(isNew, appData) {
+    const url = isNew ? '/api/Apps' : `/api/Apps/${appData.id}`;
+    const method = isNew ? 'POST' : 'PUT';
+
+    try {
+        const res = await fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(appData)
+        });
+
+        if (!res.ok) {
+            const err = await res.text();
+            throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
+        }
+
+        return { success: true };
+    } catch (error) {
+        console.error("儲存應用項目失敗:", error);
+        return { success: false, message: error.message };
+    }
+}
+window.saveAppAPI = saveAppAPI;
+
+async function deleteAppAPI(id) {
+    try {
+        const res = await fetch(`/api/Apps/${id}`, { method: 'DELETE' });
+        if (!res.ok) {
+            const err = await res.text();
+            throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
+        }
+        return { success: true };
+    } catch (error) {
+        console.error("刪除應用項目失敗:", error);
+        return { success: false, message: error.message };
+    }
+}
+window.deleteAppAPI = deleteAppAPI;

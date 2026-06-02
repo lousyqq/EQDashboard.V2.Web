@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -15,11 +16,13 @@ public class PersonalSettingsController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly ISettingsService _settingsService;
+    private readonly IMenuAuthService _menuAuthService;
 
-    public PersonalSettingsController(AppDbContext context, ISettingsService settingsService)
+    public PersonalSettingsController(AppDbContext context, ISettingsService settingsService, IMenuAuthService menuAuthService)
     {
         _context = context;
         _settingsService = settingsService;
+        _menuAuthService = menuAuthService;
     }
 
     /// <summary>
@@ -34,11 +37,18 @@ public class PersonalSettingsController : ControllerBase
             return Unauthorized();
         }
 
+        // 🛡️ MenuId 必須屬於 user 可見集合，否則：
+        //   1. user 可塞「不存在的 MenuId」或「無權看的 MenuId」累積 DB 垃圾
+        //   2. 雖然 sidebar 過濾後不會真的顯示，但會在 PersonalSettings 表留下不可信的 row
+        //   admin 沒限制 (GetVisibleMenuIdsAsync(_, true) 回 null 跳過過濾)
+        var isAdmin = User.IsInRole("admin");
+        var visibleSet = await _menuAuthService.GetVisibleMenuIdsAsync(currentUserId, isAdmin);
+
         // 1. 為了確保資料乾淨，先刪除該使用者的舊有設定
         var existingSettings = await _context.PersonalSettings
             .Where(p => p.EmpId == currentUserId)
             .ToListAsync();
-            
+
         if (existingSettings.Any())
         {
             _context.PersonalSettings.RemoveRange(existingSettings);
@@ -48,7 +58,9 @@ public class PersonalSettingsController : ControllerBase
         foreach (var dto in settings)
         {
             if (string.IsNullOrEmpty(dto.MenuId)) continue;
-            
+            // 🛡️ 跳過不可見的 MenuId — admin (visibleSet==null) 全放行
+            if (visibleSet != null && !visibleSet.Contains(dto.MenuId)) continue;
+
             _context.PersonalSettings.Add(new PersonalSetting
             {
                 EmpId = currentUserId, // 🛡️ 強制綁定，不信任前端傳來的 EmpId
@@ -71,9 +83,15 @@ public class PersonalSettingsController : ControllerBase
 
 public class PersonalSettingDto
 {
+    [StringLength(50)]
     public string? MenuId { get; set; }
     public bool? IsHidden { get; set; }
+    
+    [StringLength(20)]
     public string? OpenTarget { get; set; }
+    
+    [StringLength(50)]
     public string? Icon { get; set; }
+    
     public int? SortOrder { get; set; }
 }

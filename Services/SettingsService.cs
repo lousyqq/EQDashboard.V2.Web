@@ -297,7 +297,7 @@ public class SettingsService : ISettingsService
             {
                 trans.Rollback();
                 _logger.LogError(ex, "[{TableName}] 批次匯入失敗，已退回所有變更", tableName);
-                return (false, $"[{tableName}] 資料寫入失敗，已取消全部異動。錯誤原因：{ex.Message}");
+                return (false, $"[{tableName}] 資料寫入失敗，已取消全部異動。請聯絡系統管理員。");
             }
         }
 

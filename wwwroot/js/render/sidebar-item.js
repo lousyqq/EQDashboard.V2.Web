@@ -21,13 +21,13 @@ function generateSidebarMenuItem(menu, allMenus, level, forceExpand = true) {
 
     // ⭐️ 核心修正：棄用 Bootstrap 原生觸發器，改用完全自己掌控的 onclick，絕對不卡死！
     let actionAttr = '';
-    if (hasChildren) actionAttr = `onclick="window.toggleSubMenu(event, '${safeDomId}', this)"`;
-    else if (menu.menuMode === 'app_grid') actionAttr = `onclick="window.activateMenu('${window.escapeHTML(menu.id).replace(/'/g, "\\'")}')"`;
+    if (hasChildren) actionAttr = `data-action="toggle-submenu" data-target="${safeDomId}"`;
+    else if (menu.menuMode === 'app_grid') actionAttr = `data-action="activate-menu" data-id="${window.escapeHTML(menu.id)}"`;
     else if (menu.url) {
-        if (menu.target === 'blank') actionAttr = `onclick="window.open('${window.escapeHTML(menu.url).replace(/'/g, "\\'")}', '_blank')"`
-        else actionAttr = `onclick="window.activateMenu('${window.escapeHTML(menu.id).replace(/'/g, "\\'")}')"`;
+        if (menu.target === 'blank') actionAttr = `data-action="open-url" data-url="${window.escapeHTML(menu.url)}"`;
+        else actionAttr = `data-action="activate-menu" data-id="${window.escapeHTML(menu.id)}"`;
     }
-    else if (menu.targetPage) actionAttr = `onclick="window.activateMenu('${window.escapeHTML(menu.id).replace(/'/g, "\\'")}')"`;
+    else if (menu.targetPage) actionAttr = `data-action="activate-menu" data-id="${window.escapeHTML(menu.id)}"`;
 
     let dName = menu.displayName || menu.name || '未命名選單';
     if (typeof i18n !== 'undefined' && i18n[currentLang] && i18n[currentLang]['dyn_' + menu.id] && !menu.isEdited) {

@@ -305,6 +305,7 @@ function renderSidebarMenus() {
             return true;
         });
         menus = validMenus;
+        window._currentValidMenus = validMenus; // ⭐️ 掛載到 window 以供 navigation.js 全域安全存取
 
         // 排序（對齊 TEST_20260429.html:3217）：
         //  - 系統模式下，root 依「目前可看到的群組 allowedMenuIds 串接後的順序」排（dedupedInitIds）

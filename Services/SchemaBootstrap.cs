@@ -36,7 +36,14 @@ public class SchemaBootstrap : ISchemaBootstrap
         catch (Exception ex)
         {
             // 不擋啟動 — 只在 log 大聲喊
-            _logger.LogError(ex, "⚠️ SchemaBootstrap 失敗：{Message} (應用會繼續啟動，請手動檢查 DB)", ex.Message);
+            try
+            {
+                _logger.LogError(ex, "⚠️ SchemaBootstrap 失敗：{Message} (應用會繼續啟動，請手動檢查 DB)", ex.Message);
+            }
+            catch
+            {
+                // 若 Windows EventLog 沒有權限，連 LogError 都會拋錯，這裡吞掉避免進程崩潰
+            }
         }
     }
 

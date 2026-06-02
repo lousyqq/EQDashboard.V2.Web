@@ -1,4 +1,4 @@
-﻿// === ui/navigation.js - 語系切換、選單導航、路由、iframe ===
+// === ui/navigation.js - 語系切換、選單導航、路由、iframe ===
 function changeLanguage(lang) {
     currentLang = lang;
 
@@ -387,11 +387,12 @@ function goDefaultHome() {
             }
         }
 
-        // 3. 終極防呆：仍找不到 → 第一個非資料夾的看板
-        if (!defPage || !menus.find(m => window.cleanId(m.id) === window.cleanId(defPage))) {
-            let firstVisible = menus.find(m => (m.menuMode || '').toLowerCase() !== 'folder');
+        // 3. 終極防呆：仍找不到或合法權限已被拔除 → 從安全過濾後的清單尋找
+        let validList = window._currentValidMenus || [];
+        if (!defPage || !validList.find(m => window.cleanId(m.id) === window.cleanId(defPage))) {
+            let firstVisible = validList.find(m => (m.menuMode || '').toLowerCase() !== 'folder');
             if (firstVisible) defPage = firstVisible.id;
-            else if (menus.length > 0) defPage = menus[0].id;
+            else defPage = null; // ⭐️ 安全防護：無可用看板時寧可空白，避免越權顯示
         }
 
         if (defPage) activateMenu(defPage);

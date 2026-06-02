@@ -273,7 +273,7 @@ function openAppGridModal(id = null) {
     } catch (e) { console.error("[openAppGridModal] 錯誤:", e); }
 }
 
-function saveAppItem(e) {
+async function saveAppItem(e) {
     // ⭐️ 核心防重整
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     else if (window.event && typeof window.event.preventDefault === 'function') window.event.preventDefault();
@@ -287,15 +287,31 @@ function saveAppItem(e) {
         const finalIcon = document.getElementById('appIconPreview').style.display === 'block' ? iconSrc : '';
 
         let apps = getAppItems();
+        let appData;
+        let isNew = false;
+        
         if (id) {
             let idx = apps.findIndex(a => window.cleanId(a.id) === window.cleanId(id));
-            if (idx > -1) { apps[idx].name = name; apps[idx].url = url; apps[idx].target = target; apps[idx].iconBase64 = finalIcon; }
+            if (idx > -1) { 
+                apps[idx].name = name; apps[idx].url = url; apps[idx].target = target; apps[idx].iconBase64 = finalIcon; 
+                appData = apps[idx];
+            }
         } else {
-            apps.push({ id: 'app_' + Date.now(), menuId: currentAppGridMenuId, name: name, url: url, target: target, iconBase64: finalIcon });
+            isNew = true;
+            appData = { id: 'app_' + Date.now(), menuId: currentAppGridMenuId, name: name, url: url, target: target, iconBase64: finalIcon };
+            apps.push(appData);
         }
 
-        // 異動立即靜默同步到 DB（一般操作不需手動觸發）
-        if (typeof syncDataToDB === 'function') syncDataToDB();
+        if (typeof saveAppAPI === 'function' && appData) {
+            let result = await saveAppAPI(isNew, appData);
+            if (!result.success) {
+                if (typeof customAlert === 'function') customAlert("儲存失敗: " + result.message);
+                else alert("儲存失敗: " + result.message);
+                return false;
+            }
+        } else if (typeof syncDataToDB === 'function') {
+            syncDataToDB();
+        }
 
         hideModalSafely('appGridModal');
         if (currentAppGridMenuId && typeof renderAppGrid === 'function') renderAppGrid('app-grid-container', getAppItems().filter(a => window.cleanId(a.menuId) === window.cleanId(currentAppGridMenuId)));
@@ -307,12 +323,20 @@ function saveAppItem(e) {
 
 function deleteAppItem(id) {
     try {
-        customConfirm('確定要刪除此 APP 嗎？', () => {
+        customConfirm('確定要刪除此 APP 嗎？', async () => {
             let apps = getAppItems().filter(a => window.cleanId(a.id) !== window.cleanId(id));
             window.appState.apps = apps;
 
-            // 異動立即靜默同步到 DB（一般操作不需手動觸發）
-        if (typeof syncDataToDB === 'function') syncDataToDB();
+            if (typeof deleteAppAPI === 'function') {
+                let result = await deleteAppAPI(id);
+                if (!result.success) {
+                    if (typeof customAlert === 'function') customAlert("刪除失敗: " + result.message);
+                    else alert("刪除失敗: " + result.message);
+                    return false;
+                }
+            } else if (typeof syncDataToDB === 'function') {
+                syncDataToDB();
+            }
 
             if (currentAppGridMenuId && typeof renderAppGrid === 'function') renderAppGrid('app-grid-container', apps.filter(a => window.cleanId(a.menuId) === window.cleanId(currentAppGridMenuId)));
         });

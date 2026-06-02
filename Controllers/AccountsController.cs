@@ -63,16 +63,20 @@ public class AccountFullDto
     [Required(ErrorMessage = "工號必填")]
     [StringLength(50)]
     public string EmpId { get; set; } = string.Empty;
-    
+
     [StringLength(100)]
     public string? Name { get; set; }
-    
+
     [StringLength(100)]
     public string? Department { get; set; }
-    
+
+    // 必須限定枚舉：否則可建出 RoleLevel='superuser' 等奇怪字串，混亂 sidebar/權限判定。
+    // 系統只認 'admin' 與 'user'（不分大小寫，AuthController 會 .ToLower() 寫入 claim）。
+    [Required(ErrorMessage = "RoleLevel 必填")]
+    [RegularExpression("^(admin|user|ADMIN|USER|Admin|User)$", ErrorMessage = "RoleLevel 只能是 admin 或 user")]
     [StringLength(20)]
     public string? RoleLevel { get; set; }
-    
+
     public bool CanEditOthers { get; set; }
     public List<string>? AssignedRoles { get; set; }
     public List<string>? ManageableMenus { get; set; }

@@ -29,6 +29,15 @@ function initDashboardUI() {
     if (typeof renderHomeDashboard === 'function') renderHomeDashboard();
 }
 
+async function waitForTryAutoLogin(timeoutMs = 5000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        if (typeof window.tryAutoLogin === 'function') return true;
+        await new Promise(r => setTimeout(r, 50));
+    }
+    return false;
+}
+
 // 還原 localStorage 已有的 currentUser；若沒有則 return false（讓 tryAutoLogin 接手）
 function restoreLoginFromStorage() {
     const storedUser = localStorage.getItem('umc_current_user');
@@ -73,6 +82,54 @@ window.addEventListener('error', function (event) {
     }
 }, true);
 
+// 全域事件委派 (Event Delegation) 處理 data-action，防止 XSS
+document.addEventListener('click', function(e) {
+    const toggleSubMenuBtn = e.target.closest('[data-action="toggle-submenu"]');
+    if (toggleSubMenuBtn) {
+        if (typeof window.toggleSubMenu === 'function') window.toggleSubMenu(e, toggleSubMenuBtn.getAttribute('data-target'), toggleSubMenuBtn);
+        return;
+    }
+    const activateBtn = e.target.closest('[data-action="activate-menu"]');
+    if (activateBtn) {
+        if (typeof window.activateMenu === 'function') window.activateMenu(activateBtn.getAttribute('data-id'));
+        return;
+    }
+    const openUrlBtn = e.target.closest('[data-action="open-url"]');
+    if (openUrlBtn) {
+        let url = openUrlBtn.getAttribute('data-url');
+        if (url && !url.trim().toLowerCase().startsWith('javascript:')) {
+            window.open(url, '_blank');
+        }
+        return;
+    }
+    const openIframeBtn = e.target.closest('[data-action="open-iframe"]');
+    if (openIframeBtn) {
+        let url = openIframeBtn.getAttribute('data-url');
+        let name = openIframeBtn.getAttribute('data-name');
+        if (url && !url.trim().toLowerCase().startsWith('javascript:')) {
+            if (typeof window.openDynamicIframe === 'function') window.openDynamicIframe(url, name, null, false);
+        }
+        return;
+    }
+    const editAppBtn = e.target.closest('[data-action="edit-app"]');
+    if (editAppBtn) {
+        e.stopPropagation();
+        if (typeof window.openAppGridModal === 'function') window.openAppGridModal(editAppBtn.getAttribute('data-id'));
+        return;
+    }
+    const deleteAppBtn = e.target.closest('[data-action="delete-app"]');
+    if (deleteAppBtn) {
+        e.stopPropagation();
+        if (typeof window.deleteAppItem === 'function') window.deleteAppItem(deleteAppBtn.getAttribute('data-id'));
+        return;
+    }
+    const addAppBtn = e.target.closest('[data-action="add-app"]');
+    if (addAppBtn) {
+        if (typeof window.openAppGridModal === 'function') window.openAppGridModal();
+        return;
+    }
+});
+
 document.addEventListener("DOMContentLoaded", async () => {
     // console.log("正在從資料庫載入資料...");
     const loadingOverlay = document.createElement('div');
@@ -96,15 +153,27 @@ document.addEventListener("DOMContentLoaded", async () => {
             if (restored) {
                 initDashboardUI();
             } else {
-                if (typeof tryAutoLogin === 'function') {
-                    await tryAutoLogin();
+                const ready = await waitForTryAutoLogin(5000);
+                if (ready) {
+                    await window.tryAutoLogin();
+                } else {
+                    console.error('tryAutoLogin 尚未載入（auth.js 載入順序/路徑可能有問題）');
+                    // 保底：至少顯示登入框
+                    if (typeof showLoginOverlay === 'function') showLoginOverlay('windows');
                 }
+
             }
         } else {
             // 2) 無 DB 資料 (可能為 401 未登入)，走自動偵測或顯示手動登入
-            if (typeof tryAutoLogin === 'function') {
-                await tryAutoLogin();
+            const ready = await waitForTryAutoLogin(5000);
+            if (ready) {
+                await window.tryAutoLogin();
+            } else {
+                console.error('tryAutoLogin 尚未載入（auth.js 載入順序/路徑可能有問題）');
+                // 保底：至少顯示登入框
+                if (typeof showLoginOverlay === 'function') showLoginOverlay('windows');
             }
+
         }
     } catch (error) {
         if (!document.body.contains(loadingOverlay)) document.body.appendChild(loadingOverlay);

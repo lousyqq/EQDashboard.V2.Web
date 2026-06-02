@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -298,6 +299,10 @@ public class AuthController : ControllerBase
 
 public class LoginRequest
 {
+    [Required(ErrorMessage = "工號不得為空")]
+    [StringLength(50)]
     public string EmpId { get; set; } = string.Empty;
+
+    [StringLength(100)]
     public string? Password { get; set; }
 }
