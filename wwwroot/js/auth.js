@@ -82,9 +82,7 @@ async function fetchWhoAmI() {
     const statusEl = document.getElementById('whoami-status');
     const btn = document.getElementById('btn-windows-continue');
     const config = window._authConfig || { allowManualLogin: true };
-    const fallbackHint = config.allowManualLogin
-        ? '<div class="small text-muted mt-1">請改用手動輸入</div>'
-        : '<div class="small text-muted mt-1">本環境僅允許 Windows 自動登入，請聯絡管理員確認桌機網域設定</div>';
+    const fallbackHint = '<div class="small text-muted mt-1">請聯繫網頁管理員</div>';
 
     if (statusEl) {
         statusEl.className = 'alert alert-light border text-center py-3 mb-3';
@@ -103,7 +101,7 @@ async function fetchWhoAmI() {
             _whoamiResult = data;
             if (statusEl) {
                 statusEl.className = 'alert alert-light border text-center py-3 mb-3';
-                statusEl.innerHTML = '<i class="fas fa-info-circle me-1 text-muted"></i> 未偵測到 Windows 登入帳號' + fallbackHint;
+                statusEl.innerHTML = '<i class="fas fa-info-circle me-1 text-muted"></i> ' + escapeHtml(data.message) + fallbackHint;
             }
             return data;
         }
@@ -113,7 +111,7 @@ async function fetchWhoAmI() {
             _whoamiResult = data;
             if (statusEl) {
                 statusEl.className = 'alert alert-light border text-center py-3 mb-3';
-                statusEl.innerHTML = '<i class="fas fa-times-circle me-1 text-danger"></i> 自動偵測失敗 (HTTP ' + resp.status + ')' + fallbackHint;
+                statusEl.innerHTML = '<i class="fas fa-times-circle me-1 text-danger"></i> ' + escapeHtml(data.message) + fallbackHint;
             }
             return data;
         }
@@ -126,27 +124,27 @@ async function fetchWhoAmI() {
                 statusEl.className = 'alert alert-success border text-center py-3 mb-3';
                 statusEl.innerHTML = `<i class="fas fa-user-check me-1"></i> 偵測到 Windows 帳號：<b>${escapeHtml(data.empId)}</b>`;
                 if (btn) btn.disabled = false;
-
-                // ★ 若你要「偵測到就直接登入」，在這裡直接做：
-                localStorage.removeItem(FORCE_MANUAL_KEY);
-                await completeLoginAfterAuth(data.empId, 'windows', data.account || null);
+                // ⚠️ 不在此呼叫 completeLoginAfterAuth — 改由唯一呼叫者 tryAutoLogin() 在外層做。
+                //   原本兩處都呼叫造成 LoginCount +2、UpdateLoginStats 被打兩次 (Round-5 修)。
             } else {
                 statusEl.className = 'alert alert-light border text-center py-3 mb-3';
-                statusEl.innerHTML = '<i class="fas fa-info-circle me-1 text-muted"></i> 未偵測到 Windows 登入帳號' + fallbackHint;
+                const msg = data.message || '未偵測到 Windows 登入帳號';
+                statusEl.innerHTML = '<i class="fas fa-info-circle me-1 text-muted"></i> ' + escapeHtml(msg) + fallbackHint;
                 if (btn) btn.disabled = true;
             }
         }
         return data;
 
     } catch (e) {
-        clearTimeout(timer);
+        // ⚠️ 原本這裡有 `clearTimeout(timer)` 但 `timer` 從未宣告 → ReferenceError 會讓整段 catch 中斷、
+        //   UI 永遠卡在 spinner、btn 也不會 enable。Round-5 移除。
         const msg = (e && e.name === 'AbortError')
             ? '偵測逾時（請確認瀏覽器/站台 Windows Auth 設定）'
             : '無法連線到伺服器';
 
         if (statusEl) {
             statusEl.className = 'alert alert-light border text-center py-3 mb-3';
-            statusEl.innerHTML = '<i class="fas fa-times-circle me-1 text-danger"></i> ' + msg + fallbackHint;
+            statusEl.innerHTML = '<i class="fas fa-times-circle me-1 text-danger"></i> ' + escapeHtml(msg) + fallbackHint;
         }
         return { success: false, authenticated: false };
     }
@@ -365,6 +363,17 @@ function showLoginOverlay(defaultTab) {
     if (!ov) return;
     ov.style.setProperty('display', 'flex', 'important');
 
+    // ⚠️ 帳號已被刪除提示：main.js restoreLoginFromStorage() 若發現本地 user 在 DB 已查無，
+    //   會設這個旗標。在這裡彈一次訊息，避免使用者誤以為單純 session 過期 (Round-5)
+    try {
+        if (sessionStorage.getItem('umc_account_deleted_hint') === '1') {
+            sessionStorage.removeItem('umc_account_deleted_hint');
+            if (typeof customAlert === 'function') {
+                customAlert('您的帳號已被系統管理員移除，請重新登入或聯絡管理員確認。');
+            }
+        }
+    } catch (e) {}
+
     // 切到指定 tab
     try {
         const tabBtn = (defaultTab === 'manual')
@@ -400,6 +409,19 @@ async function logout() {
     try { localStorage.setItem(FORCE_MANUAL_KEY, '1'); } catch (e) { }
 
     localStorage.removeItem('umc_current_user');
+
+    // Round-5 B10：把所有「使用者個人」快取一併清掉，避免共用電腦切換帳號時讀到上一個人的舊資料。
+    //   會清：umc_user_stats_<empId>、umc_user_personal_<empId> 等所有 umc_user_* 前綴；
+    //   FORCE_MANUAL_KEY 上面才剛設、要保留。
+    try {
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && k.startsWith('umc_user_')) keysToRemove.push(k);
+        }
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+    } catch (e) { /* localStorage 無法讀寫時靜默忽略 */ }
+
     currentUser = null;
     _whoamiResult = null;
 

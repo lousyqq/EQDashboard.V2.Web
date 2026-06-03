@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using EQDashboard.V2.Web.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
@@ -75,7 +76,7 @@ public class AuthController : ControllerBase
                 authenticated = false,
                 empId = (string?)null,
                 rawName,
-                message = "未偵測到 Windows 登入身份，請改用手動登入。"
+                message = "未偵測到 Windows 登入帳號"
             });
         }
 
@@ -91,7 +92,7 @@ public class AuthController : ControllerBase
                 empId,
                 rawName,
                 source = "windows",
-                message = $"目前偵測到的工號 [{empId}] 在系統中沒有瀏覽權限，請聯繫開發人員。"
+                message = $"[{empId}] 無瀏覽此網頁的權限"
             });
         }
 
@@ -169,6 +170,7 @@ public class AuthController : ControllerBase
     /// </summary>
     [HttpPost("Login")]
     [AllowAnonymous]
+    [EnableRateLimiting("login-ip")]  // Round-3 P1 #4：每 IP 60 秒最多 5 次嘗試，擋暴力破解
     public async Task<IActionResult> Login([FromBody] LoginRequest req)
     {
         // 部署到正式環境後可把 appsettings.Auth.AllowManualLogin 設為 false，整個手動登入入口會被擋住、

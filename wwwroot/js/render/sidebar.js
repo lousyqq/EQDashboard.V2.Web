@@ -141,12 +141,12 @@ window.getMenuPermissions = function (nodeId, nodeCreatedBy) {
         }
     }
     if (isAncestor) {
-        perms.canManageStructure = true;
+        // 僅允許檢視，不可管理結構
     }
 
     if (perms.canEdit || perms.canManageStructure || isDelegatedNode || isUnder || isAncestor) {
-        perms.canAddChild = true;
         perms.canView = true;
+        perms.canAddChild = perms.canManageStructure;
     }
     return perms;
 };

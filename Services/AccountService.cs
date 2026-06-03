@@ -132,7 +132,7 @@ public class AccountService : IAccountService
         return (true, string.Empty);
     }
 
-    public async Task<(bool success, string errorMessage)> DeleteAccountAsync(string empId)
+    public async Task<(bool success, string errorMessage)> DeleteAccountAsync(string empId, string? currentEmpId = null)
     {
         var account = await _context.Accounts
             .Include(a => a.MapAccountRoles)
@@ -141,11 +141,25 @@ public class AccountService : IAccountService
             .Include(a => a.MapAccountExtraMenus)
             .Include(a => a.MapAccountDenyMenus)
             .FirstOrDefaultAsync(a => a.EmpId == empId);
-            
+
         if (account == null) return (false, "找不到指定的帳號");
 
         if (string.Equals(empId, "admin", StringComparison.OrdinalIgnoreCase))
             return (false, "系統預設管理員 (admin) 不可被刪除");
+
+        // 🛡️ 擋自刪：避免 admin 把自己刪了之後 cookie 還在但 DB 已查無，後續所有 [Authorize] 查 DB 都會踩 NotFound
+        if (!string.IsNullOrEmpty(currentEmpId) && string.Equals(empId, currentEmpId, StringComparison.OrdinalIgnoreCase))
+            return (false, "不可刪除目前登入中的帳號");
+
+        // 🛡️ 擋最後一個 admin：刪掉後若整個系統剩 0 個 RoleLevel='admin' 帳號 → 永久失去管理員、需改 DB 救援
+        if (string.Equals(account.RoleLevel, "admin", StringComparison.OrdinalIgnoreCase))
+        {
+            var remainingAdmins = await _context.Accounts
+                .Where(a => a.EmpId != empId && a.RoleLevel != null && a.RoleLevel.ToLower() == "admin")
+                .CountAsync();
+            if (remainingAdmins == 0)
+                return (false, "不可刪除系統中唯一的管理員帳號");
+        }
 
         if (account.MapAccountRoles != null && account.MapAccountRoles.Count > 0)
             _context.MapAccountRoles.RemoveRange(account.MapAccountRoles);

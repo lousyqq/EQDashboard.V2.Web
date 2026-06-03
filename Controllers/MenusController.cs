@@ -59,8 +59,14 @@ public class MenusController : ControllerBase
             order = m.GlobalOrder,
             parentIds = m.MapMenuStructuresChild?.Select(p => p.ParentMenuId).ToList() ?? new List<string>(),
             parentOrders = m.MapMenuStructuresChild?.ToDictionary(p => p.ParentMenuId, p => p.SortOrder ?? 0) ?? new Dictionary<string, int>(),
-            allowedEmpIds = m.MapMenuAllowAccounts?.Select(a => a.EmpId).ToList() ?? new List<string>(),
-            deniedEmpIds = m.MapMenuDenyAccounts?.Select(a => a.EmpId).ToList() ?? new List<string>()
+            // ⚠️ 非 admin 只看自己這份 ACL — 完整 ACL 含其他人工號 = 內部 EmpId 列舉風險。
+            //   admin 仍看完整列表 (要管理白/黑名單必須看得到)。
+            allowedEmpIds = isAdmin
+                ? (m.MapMenuAllowAccounts?.Select(a => a.EmpId).ToList() ?? new List<string>())
+                : new List<string>(),
+            deniedEmpIds = isAdmin
+                ? (m.MapMenuDenyAccounts?.Select(a => a.EmpId).ToList() ?? new List<string>())
+                : new List<string>()
         });
 
         return Ok(result);

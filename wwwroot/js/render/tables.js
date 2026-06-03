@@ -326,11 +326,13 @@ function renderWebpageTable() {
         const targetHtml = mMode === 'app_grid' ? '<span class="text-muted small">-</span>' : (targetMap[mTarget] || targetMap['iframe']);
 
         // 網址（第二行，完整顯示、會自動換行；word-break 避免長網址撐破版面）
-        const safeUrl = window.escapeHTML(mUrl);
+        // ⚠️ href 必須先過 safeExternalUrl，否則 `javascript:` 等 payload 通過 escapeHTML 後仍可點擊執行 (Stored XSS)
+        const safeUrlForHref = window.safeExternalUrl(mUrl);
+        const safeUrl = window.escapeHTML(mUrl);  // 顯示文字仍用 escapeHTML
         const urlHtml = mMode === 'app_grid'
             ? '<span class="text-success fw-bold small">內部應用集合區</span>'
             : (mUrl
-                ? `<a href="${safeUrl}" target="_blank" class="small text-decoration-none" style="word-break:break-all;"><i class="fas fa-info-circle text-secondary me-1"></i>${safeUrl}</a>`
+                ? `<a href="${window.escapeHTML(safeUrlForHref)}" target="_blank" rel="noopener noreferrer" class="small text-decoration-none" style="word-break:break-all;"><i class="fas fa-info-circle text-secondary me-1"></i>${safeUrl}</a>`
                 : '<span class="text-muted small">無設定路徑</span>');
 
         const pathCellHtml = `
@@ -458,9 +460,11 @@ function renderApplyTable() {
     let htmlBuffer = [];
     reqs.forEach(r => {
         let dateStr = r.timestamp || r.Timestamp;
-        if (typeof dateStr === 'number') {
-            let now = new Date(dateStr); let pad = (n) => n < 10 ? '0' + n : n;
-            dateStr = now.getFullYear() + '/' + pad(now.getMonth() + 1) + '/' + pad(now.getDate()) + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+        let d = new Date(dateStr);
+        if (typeof dateStr === 'string' && /^\d+$/.test(dateStr)) { d = new Date(parseInt(dateStr, 10)); }
+        if (!isNaN(d.getTime())) {
+            let pad = (n) => n < 10 ? '0' + n : n;
+            dateStr = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
         }
         const typeBadge = `<span class="badge border border-secondary text-secondary bg-light mb-1">${window.escapeHTML(r.reqType || r.ReqType || '系統需求')}</span>`;
         const replyTxt = r.reply || r.Reply;
@@ -489,9 +493,11 @@ function renderAuditTable() {
     let htmlBuffer = [];
     reqs.forEach(r => {
         let dateStr = r.timestamp || r.Timestamp;
-        if (typeof dateStr === 'number') {
-            let now = new Date(dateStr); let pad = (n) => n < 10 ? '0' + n : n;
-            dateStr = now.getFullYear() + '/' + pad(now.getMonth() + 1) + '/' + pad(now.getDate()) + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+        let d = new Date(dateStr);
+        if (typeof dateStr === 'string' && /^\d+$/.test(dateStr)) { d = new Date(parseInt(dateStr, 10)); }
+        if (!isNaN(d.getTime())) {
+            let pad = (n) => n < 10 ? '0' + n : n;
+            dateStr = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
         }
         const typeBadge = `<span class="badge border border-secondary text-secondary bg-light mb-1">${window.escapeHTML(r.reqType || r.ReqType || '系統需求')}</span>`;
         const rStatus = r.status || r.Status || 'pending';

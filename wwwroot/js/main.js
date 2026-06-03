@@ -49,7 +49,9 @@ function restoreLoginFromStorage() {
         if (typeof getAccounts === 'function') {
             let freshAcc = getAccounts().find(a => String(a.empId).toLowerCase() === String(tempUser.id).toLowerCase());
             if (!freshAcc) {
-                // Account 已被刪除 → 強制重新登入
+                // Account 已被刪除 → 強制重新登入，並設旗標讓登入框跳出明確訊息
+                //   (Round-5: 原本靜默 clear localStorage 跳登入框，使用者會誤以為單純 session 過期)
+                try { sessionStorage.setItem('umc_account_deleted_hint', '1'); } catch (e) {}
                 localStorage.removeItem('umc_current_user');
                 return false;
             }
@@ -72,11 +74,12 @@ function restoreLoginFromStorage() {
     }
 }
 
-// 靜默攔截底層全域錯誤，不彈出紅框
+// 靜默攔截 VS Browser Link / dev tools 注入腳本的雜訊；不再盲吞 `toLowerCase` 錯誤 (Round-5)
+//   舊版「msg.includes('toLowerCase')」會把真正的 root cause bug 也吞掉、永遠找不到。
+//   現在只攔 browserLink 來源的錯誤；其餘讓它正常拋。
 window.addEventListener('error', function (event) {
-    const msg = event.message || '';
     const src = event.filename || '';
-    if (msg.includes('toLowerCase') || msg.includes('browserLink')) {
+    if (src.includes('browserLink')) {
         event.preventDefault();
         event.stopImmediatePropagation();
     }
@@ -97,8 +100,10 @@ document.addEventListener('click', function(e) {
     const openUrlBtn = e.target.closest('[data-action="open-url"]');
     if (openUrlBtn) {
         let url = openUrlBtn.getAttribute('data-url');
-        if (url && !url.trim().toLowerCase().startsWith('javascript:')) {
-            window.open(url, '_blank');
+        // ⚠️ 改用 safeExternalUrl：舊版只擋 startsWith('javascript:')，會被 `\tjavascript:` / `data:text/html` 等繞過
+        const safe = (typeof window.safeExternalUrl === 'function') ? window.safeExternalUrl(url) : url;
+        if (safe && safe !== '#') {
+            window.open(safe, '_blank', 'noopener,noreferrer');
         }
         return;
     }
@@ -106,8 +111,9 @@ document.addEventListener('click', function(e) {
     if (openIframeBtn) {
         let url = openIframeBtn.getAttribute('data-url');
         let name = openIframeBtn.getAttribute('data-name');
-        if (url && !url.trim().toLowerCase().startsWith('javascript:')) {
-            if (typeof window.openDynamicIframe === 'function') window.openDynamicIframe(url, name, null, false);
+        const safeIfr = (typeof window.safeExternalUrl === 'function') ? window.safeExternalUrl(url) : url;
+        if (safeIfr && safeIfr !== '#') {
+            if (typeof window.openDynamicIframe === 'function') window.openDynamicIframe(safeIfr, name, null, false);
         }
         return;
     }
@@ -138,12 +144,24 @@ document.addEventListener("DOMContentLoaded", async () => {
     loadingOverlay.innerHTML = '<div class="spinner-border text-info mb-3" style="width: 3rem; height: 3rem;" role="status"></div><h2>系統初始化中...</h2><p class="text-secondary">正在與資料庫連線同步資料</p>';
     document.body.appendChild(loadingOverlay);
 
+    // Round-5 B13：fetchInitialDataFromDB 卡住 (DB 連線失敗 / 後端 hang) → loading 螢幕會永遠不收。
+    //   15 秒 timeout，若還在顯示就把 spinner 換成錯誤訊息 + 重新整理按鈕，避免使用者乾瞪眼。
+    const loadingTimeoutId = setTimeout(() => {
+        if (document.body.contains(loadingOverlay)) {
+            loadingOverlay.innerHTML = '<i class="fas fa-exclamation-triangle text-warning mb-3" style="font-size: 4rem;"></i>'
+                + '<h3 class="text-warning">資料庫連線逾時</h3>'
+                + '<p class="text-secondary mb-4">後端在 15 秒內沒有回應，可能是 DB 連線異常或網路問題。</p>'
+                + '<button class="btn btn-info fw-bold px-4" onclick="location.reload()"><i class="fas fa-sync-alt me-2"></i>重新整理</button>';
+        }
+    }, 15000);
+
     try {
         let isDbLoaded = false;
         if (typeof fetchInitialDataFromDB === 'function') {
             isDbLoaded = await fetchInitialDataFromDB();
         }
 
+        clearTimeout(loadingTimeoutId);
         loadingOverlay.remove();
         initModalInstances();
 
@@ -176,6 +194,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         }
     } catch (error) {
+        clearTimeout(loadingTimeoutId);
         if (!document.body.contains(loadingOverlay)) document.body.appendChild(loadingOverlay);
         loadingOverlay.innerHTML = '<i class="fas fa-times-circle text-danger" style="font-size: 4rem; margin-bottom: 20px;"></i><h2 class="text-danger">系統發生非預期錯誤</h2><p class="fs-5">' + error.message + '</p><div class="text-warning text-start" style="max-width:800px; overflow:auto; max-height:300px;"><pre>' + error.stack + '</pre></div>';
     }

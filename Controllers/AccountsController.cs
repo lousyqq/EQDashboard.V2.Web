@@ -52,8 +52,10 @@ public class AccountsController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteAccount(string id)
     {
-        var (success, errorMessage) = await _accountService.DeleteAccountAsync(id);
-        if (!success) return NotFound(errorMessage);
+        // 取 cookie claim 中的 EmpId 傳給 service，用於擋「刪自己」
+        var currentEmpId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var (success, errorMessage) = await _accountService.DeleteAccountAsync(id, currentEmpId);
+        if (!success) return BadRequest(errorMessage);  // 改回 400 — 拒絕原因應該明確（NotFound 只適用「真的找不到」）
         return Ok(new { success = true });
     }
 }

@@ -9,5 +9,5 @@ public interface IAccountService
     Task<object?> GetAccountDetailsAsync(string empId);
     Task<(bool success, string errorMessage)> CreateAccountAsync(AccountFullDto dto);
     Task<(bool success, string errorMessage)> UpdateAccountAsync(string empId, AccountFullDto dto);
-    Task<(bool success, string errorMessage)> DeleteAccountAsync(string empId);
+    Task<(bool success, string errorMessage)> DeleteAccountAsync(string empId, string? currentEmpId = null);
 }

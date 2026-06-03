@@ -1,6 +1,17 @@
 ﻿// === admin/modal-utils.js - Modal 開關封裝 ===
 // ====== 後台管理 CRUD 與 Drag & Drop 拖曳邏輯 ======
 
+// Round-5 B9：非 admin 開啟 webpageModal / menuNodeModal 時，把 ACL 區段藏起來。
+//   後端 Round-3 已強制 non-admin 的 AllowedEmpIds / DeniedEmpIds 寫入無效 — UI 上若還留著
+//   會造成「使用者填了存了沒效」的鬼狀態。
+function applyAclVisibilityForCurrentRole(modalEl) {
+    if (!modalEl) return;
+    const isAdmin = !!(window.currentUser && String(window.currentUser.roleLevel || '').toLowerCase() === 'admin');
+    modalEl.querySelectorAll('.admin-only-acl').forEach(el => {
+        el.style.display = isAdmin ? '' : 'none';
+    });
+}
+
 // ⭐️ 終極物理開窗模式：徹底繞過 Visual Studio Browser Link 的底層干擾
 function showModalSafely(modalId) {
     const el = document.getElementById(modalId);
@@ -8,6 +19,9 @@ function showModalSafely(modalId) {
         console.error("🚨 系統錯誤：找不到彈窗元素 [" + modalId + "]");
         return;
     }
+
+    // Round-5 B9：開窗前先按身分套用 ACL 顯隱
+    applyAclVisibilityForCurrentRole(el);
 
     try {
         // 先嘗試標準的 Bootstrap 開窗

@@ -197,9 +197,14 @@ function selectTopMenu(menuId) {
 
                 if (mMode === 'app_grid') openAppGridPage(mId, dName, null);
                 else if (mUrl) {
-                    if (mTarget === 'blank') window.open(mUrl, '_blank');
-                    else if (mTarget === 'fullscreen') openDynamicIframe(mUrl, dName, null, true);
-                    else openDynamicIframe(mUrl, dName, null, false);
+                    // ⚠️ XSS 防護：window.open 對 `javascript:` URL 在 same-origin 下會執行；
+                    //   先過 safeExternalUrl 把非 http(s)/相對路徑的危險 URL 全部阻斷
+                    const safeUrl = (typeof window.safeExternalUrl === 'function') ? window.safeExternalUrl(mUrl) : mUrl;
+                    if (safeUrl !== '#') {
+                        if (mTarget === 'blank') window.open(safeUrl, '_blank', 'noopener,noreferrer');
+                        else if (mTarget === 'fullscreen') openDynamicIframe(safeUrl, dName, null, true);
+                        else openDynamicIframe(safeUrl, dName, null, false);
+                    }
                 }
                 else if (mTargetPage) navTo(mTargetPage, null, dName);
                 else {
@@ -281,12 +286,16 @@ function activateMenu(menuId) {
         if (mMode === 'app_grid') openAppGridPage(mId, dName, targetEl);
         else if (mUrl) {
             // 依 OpenTarget 區分：blank=另開分頁 / fullscreen=全螢幕 / 其他=畫面內嵌
-            if (mTarget === 'blank') {
-                window.open(mUrl, '_blank');
-            } else if (mTarget === 'fullscreen') {
-                openDynamicIframe(mUrl, dName, targetEl, true);
-            } else {
-                openDynamicIframe(mUrl, dName, targetEl, false);
+            // ⚠️ XSS 防護：先過 safeExternalUrl
+            const safeUrl = (typeof window.safeExternalUrl === 'function') ? window.safeExternalUrl(mUrl) : mUrl;
+            if (safeUrl !== '#') {
+                if (mTarget === 'blank') {
+                    window.open(safeUrl, '_blank', 'noopener,noreferrer');
+                } else if (mTarget === 'fullscreen') {
+                    openDynamicIframe(safeUrl, dName, targetEl, true);
+                } else {
+                    openDynamicIframe(safeUrl, dName, targetEl, false);
+                }
             }
         }
         else if (mTargetPage) {
@@ -466,6 +475,20 @@ function openDynamicIframe(url, title, element, isFullscreen = false) {
     if (!/^https?:\/\//i.test(finalUrl) && !finalUrl.startsWith('/') && !finalUrl.startsWith('page-')) {
         finalUrl = 'http://' + finalUrl;
     }
+
+    // ⚠️ 動態 sandbox：對 same-origin URL 維持原配置（內部看板需要 cookie/storage 才能用）；
+    //   對 cross-origin URL 移除 allow-same-origin，避免外部頁面可以透過 parent.document 操作本站 DOM。
+    //   (Round-5 修：原本 HTML 固定 sandbox 含 allow-scripts + allow-same-origin，外部站台 = 沒 sandbox)
+    try {
+        const parsed = new URL(finalUrl, window.location.href);
+        const isSameOrigin = parsed.origin === window.location.origin;
+        iframe.setAttribute('sandbox', isSameOrigin
+            ? 'allow-scripts allow-same-origin allow-forms allow-popups allow-downloads'
+            : 'allow-scripts allow-forms allow-popups allow-downloads');
+    } catch (e) {
+        // URL 解析失敗 (例如 page-xxx 偽 URL) → 保留 default sandbox
+    }
+
     iframe.src = finalUrl;
     if (isFullscreen) document.body.classList.add('fullscreen-mode');
     else document.body.classList.remove('fullscreen-mode');

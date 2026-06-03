@@ -1,4 +1,4 @@
-﻿<!-- partials/modals.html - 所有 Bootstrap Modal 集中管理 -->
+<!-- partials/modals.html - 所有 Bootstrap Modal 集中管理 -->
     <!-- ================= 核心 Modals 區塊 (全數補齊恢復) ================= -->
     <!-- 1. 廠區管理 Modal -->
     <div class="modal fade" id="fabModal" tabindex="-1">
@@ -176,7 +176,7 @@
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content border-0 shadow">
                 <div class="modal-header bg-light border-bottom">
-                    <h6 class="modal-title fw-bold text-dark"><i class="fas fa-file-code text-primary me-2"></i><span data-i18n="wp_edit">看板網頁內容配置</h6>
+                    <h6 class="modal-title fw-bold text-dark"><i class="fas fa-file-code text-primary me-2"></i><span data-i18n="wp_edit">看板網頁內容配置</span></h6>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body py-3">
@@ -187,11 +187,11 @@
                                 <label class="form-label fw-bold fs-7 text-muted me-3 mb-0" data-i18n="wp_type">看板類型 <span class="text-danger">*</span></label>
                                 <div class="form-check form-check-inline">
                                     <input class="form-check-input cursor-pointer" type="radio" name="wpMode" id="wpModeLink" value="link" checked onchange="toggleWebpageMode()">
-                                    <label class="form-check-label fw-bold text-primary cursor-pointer small" for="wpModeLink"><i class="fas fa-link"></i><span data-i18n="wp_link"> 網頁連結</label>
+                                    <label class="form-check-label fw-bold text-primary cursor-pointer small" for="wpModeLink"><i class="fas fa-link"></i><span data-i18n="wp_link"> 網頁連結</span></label>
                                 </div>
                                 <div class="form-check form-check-inline">
                                     <input class="form-check-input cursor-pointer" type="radio" name="wpMode" id="wpModeAppGrid" value="app_grid" onchange="toggleWebpageMode()">
-                                    <label class="form-check-label fw-bold text-success cursor-pointer small" for="wpModeAppGrid"><i class="fas fa-th-large"></i><span data-i18n="wp_grid"> 應用集合</label>
+                                    <label class="form-check-label fw-bold text-success cursor-pointer small" for="wpModeAppGrid"><i class="fas fa-th-large"></i><span data-i18n="wp_grid"> 應用集合</span></label>
                                 </div>
                             </div>
 
@@ -236,9 +236,11 @@
                             </div>
 
                             <!-- 存取控制 (白名單 / 黑名單)，折疊起來避免 modal 變太長 -->
-                            <div class="col-12 mt-2 pt-2 border-top">
+                            <!-- Round-5 B9：加上 admin-only-acl class — 非 admin 開啟 modal 時 JS 會把整段 hide，
+                                 避免委派 user 看到能填卻在後端被靜默忽略的鬼狀態 -->
+                            <div class="col-12 mt-2 pt-2 border-top admin-only-acl">
                                 <button type="button" class="btn btn-link p-0 fw-bold text-secondary small text-decoration-none" data-bs-toggle="collapse" data-bs-target="#wpAclSection">
-                                    <i class="fas fa-user-shield me-1"></i> 存取控制 (白名單 / 黑名單)
+                                    <i class="fas fa-user-shield me-1"></i> 存取控制 (白名單 / 黑名單) <small class="text-muted">(僅管理員可設定)</small>
                                 </button>
                                 <div class="collapse mt-2" id="wpAclSection">
                                     <div class="alert alert-light border py-2 mb-2" style="font-size:0.75rem;">
@@ -276,7 +278,8 @@
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content border-0 shadow">
                 <div class="modal-header bg-light border-bottom">
-                    <h5 class="modal-title fw-bold text-primary"><i class="fas fa-sitemap me-2"></i><span data-i18n="menu_edit">配置主選單</h5>
+                    <!-- Round-5 B4：<span data-i18n>...</span> 補閉合 -->
+                    <h5 class="modal-title fw-bold text-primary"><i class="fas fa-sitemap me-2"></i><span data-i18n="menu_edit">配置主選單</span></h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body py-4">
@@ -287,11 +290,11 @@
                             <div class="d-flex gap-4">
                                 <div class="form-check">
                                     <input class="form-check-input" type="radio" name="nodeMode" id="nodeModeFolder" onchange="toggleNodeMode()" checked>
-                                    <label class="form-check-label fw-bold text-primary" for="nodeModeFolder"><i class="fas fa-folder text-warning me-1"></i><span data-i18n="menu_folder">選單群組 <small class="text-muted">(可包含多個子看板)</small></label>
+                                    <label class="form-check-label fw-bold text-primary" for="nodeModeFolder"><i class="fas fa-folder text-warning me-1"></i><span data-i18n="menu_folder">選單群組</span> <small class="text-muted">(可包含多個子看板)</small></label>
                                 </div>
                                 <div class="form-check">
                                     <input class="form-check-input" type="radio" name="nodeMode" id="nodeModeLink" onchange="toggleNodeMode()">
-                                    <label class="form-check-label fw-bold text-primary" for="nodeModeLink"><i class="fas fa-link me-1"></i><span data-i18n="menu_item">獨立看板 <small class="text-muted">(單一網址連結)</small></label>
+                                    <label class="form-check-label fw-bold text-primary" for="nodeModeLink"><i class="fas fa-link me-1"></i><span data-i18n="menu_item">獨立看板</span> <small class="text-muted">(單一網址連結)</small></label>
                                 </div>
                             </div>
                         </div>
@@ -326,16 +329,17 @@
                             <div class="mb-2 text-primary fw-bold"><i class="fas fa-list-ul me-1"></i> 底下包含的看板與群組配置 <small class="text-muted fw-normal">(拖曳左側圖示可排序)</small></div>
                             <div class="border rounded bg-white p-3 shadow-sm">
                                 <div id="treeBuilderContainer" style="min-height: 50px;"></div>
-                                <div class="d-flex gap-2 mt-3 pt-2 border-top border-light">
-                                    <button type="button" class="btn btn-sm btn-outline-primary fw-bold bg-white" onclick="window.tbAddLink(document.getElementById('treeBuilderContainer'))"><i class="fas fa-link me-1"></i>加入現有看板</button>
-                                    <button type="button" class="btn btn-sm btn-dark fw-bold" onclick="window.tbAddFolder(document.getElementById('treeBuilderContainer'))"><i class="fas fa-folder me-1"></i>建立子群組</button>
+                                <div class="d-flex gap-2 mt-3 pt-2 border-top border-light" id="tbRootBtnsContainer">
+                                    <button type="button" id="tbRootAddLinkBtn" class="btn btn-sm btn-outline-primary fw-bold bg-white" onclick="window.tbAddLink(document.getElementById('treeBuilderContainer'))"><i class="fas fa-link me-1"></i>加入現有看板</button>
+                                    <button type="button" id="tbRootAddFolderBtn" class="btn btn-sm btn-dark fw-bold" onclick="window.tbAddFolder(document.getElementById('treeBuilderContainer'))"><i class="fas fa-folder me-1"></i>建立子群組</button>
                                 </div>
                             </div>
                         </div>
                         <!-- 存取控制 (白名單 / 黑名單) — 對「群組」與「獨立看板」都生效；群組被擋會連同子節點看不到 -->
-                        <div class="mt-3 pt-3 border-top">
+                        <!-- Round-5 B9：admin-only-acl class — 非 admin 整段隱藏 -->
+                        <div class="mt-3 pt-3 border-top admin-only-acl">
                             <button type="button" class="btn btn-link p-0 fw-bold text-secondary small text-decoration-none" data-bs-toggle="collapse" data-bs-target="#nodeAclSection">
-                                <i class="fas fa-user-shield me-1"></i> 存取控制 (白名單 / 黑名單)
+                                <i class="fas fa-user-shield me-1"></i> 存取控制 (白名單 / 黑名單) <small class="text-muted">(僅管理員可設定)</small>
                             </button>
                             <div class="collapse mt-2" id="nodeAclSection">
                                 <div class="alert alert-light border py-2 mb-2" style="font-size:0.75rem;">

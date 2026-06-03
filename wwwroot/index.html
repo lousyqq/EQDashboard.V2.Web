@@ -18,10 +18,10 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
     <!-- CSS 模組 (從 style.css 拆分) -->
-    <link href="css/variables.css?v=20260528l" rel="stylesheet">
-    <link href="css/navbar.css?v=20260528l" rel="stylesheet">
-    <link href="css/sidebar.css?v=20260528l" rel="stylesheet">
-    <link href="css/components.css?v=20260528l" rel="stylesheet">
+    <link href="css/variables.css?v=20260603a" rel="stylesheet">
+    <link href="css/navbar.css?v=20260603a" rel="stylesheet">
+    <link href="css/sidebar.css?v=20260603a" rel="stylesheet">
+    <link href="css/components.css?v=20260603a" rel="stylesheet">
 </head>
 <body>
 
@@ -79,11 +79,14 @@
                         <div id="manual-login-error" class="alert alert-danger py-2 mb-3 d-none" style="font-size: 0.8rem;"></div>
                         <button type="submit" class="btn btn-primary btn-sm w-100 fw-bold py-2"><i class="fas fa-sign-in-alt me-1"></i><span data-i18n="login_btn"> 登入</span></button>
                     </form>
-                    <!-- 測試帳號提示（appsettings.Auth.TestAccounts.Enabled=false 後可移除這段） -->
+                    <!-- 測試帳號提示（appsettings.Auth.TestAccounts.Enabled=false 後可移除這段）
+                         Round-5 B8：列表跟 appsettings.json 的 4 組 TestAccount 對齊 -->
                     <div class="alert alert-warning border py-2 mt-3 mb-0" style="font-size: 0.75rem;">
                         <div class="fw-bold mb-1"><i class="fas fa-vial me-1"></i> 測試環境帳號</div>
                         <div><b>admin / admin</b> — 全域管理員</div>
-                        <div><b>user / user</b> — 一般使用者</div>
+                        <div><b>user / user</b> — 一般使用者 (無 role)</div>
+                        <div><b>00058897 / 00058897</b> — 委派管理 m_ze 的 user</div>
+                        <div><b>normal_user / 123456</b> — 無任何 role 的 user</div>
                         <div class="text-muted mt-1" style="font-size: 0.7rem;">正式部署前請在 appsettings.json 把 Auth.TestAccounts.Enabled 改為 false</div>
                     </div>
                 </div>
@@ -111,7 +114,8 @@
                 <div class="dropdown">
                     <button class="util-item dropdown-toggle" id="fabDropdownToggle" type="button" data-bs-toggle="dropdown"
                                                        aria-expanded="false">
-                        <span data-i18n="nav_fab">廠區:</span><span class="text-white ms-1" id="current-fab-name">12A</span>
+                        <!-- 預設值改空字串，避免登入前 / 廠區資料載入前閃 12A、誤導非 12A 用戶 (Round-5 B7) -->
+                        <span data-i18n="nav_fab">廠區:</span><span class="text-white ms-1" id="current-fab-name">…</span>
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0 mt-1" id="fab-dropdown-menu"
                                                aria-labelledby="fabDropdownToggle"></ul>
@@ -162,8 +166,10 @@
                         <div class="d-none d-md-block text-end lh-1 me-2"><div class="fw-bold" style="font-size: 0.85rem;" id="user-name">載入中...</div><div class="text-white-50 mt-1" style="font-size: 0.7rem;" id="user-role">Role</div></div><i class="fas fa-user-circle fs-4 text-white opacity-75"></i>
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end shadow border-0 mt-2 p-0" style="width: 280px; border-radius: 8px; overflow: hidden;">
-                        <div class="p-3 bg-light border-bottom d-flex align-items-center"><div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center shadow-sm" style="width: 45px; height: 45px; font-size: 1.5rem; flex-shrink: 0;"><i class="fas fa-user"></i></div><div class="ms-3 overflow-hidden"><div class="fw-bold text-dark fs-6 text-truncate" id="dropdown-user-name">系統管理員 (admin)</div><div class="text-muted small text-truncate mt-1"><i class="fas fa-sitemap me-1"></i> <span id="dropdown-user-dept">資訊處</span></div></div></div>
-                        <div class="p-3 bg-white"><div class="d-flex justify-content-between align-items-center mb-3"><div class="text-secondary fw-bold"><i class="fas fa-chart-line me-2 text-success"></i><span data-i18n="nav_login_count">累積登入次數</div><div class="badge bg-success bg-opacity-10 text-success px-2 py-1 border border-success border-opacity-25" id="dropdown-user-login-count">0 次</div></div><div class="d-flex justify-content-between align-items-center"><div class="text-secondary fw-bold"><i class="fas fa-clock me-2 text-primary"></i><span data-i18n="nav_login_time">本次登入時間</div><div class="fw-bold text-dark" id="dropdown-user-login-time">00:00 AM</div></div></div>
+                        <!-- Round-5 B4 修：<span data-i18n="..."> 全部閉合，避免 i18n 切換時把後面 badge 一起吃掉 -->
+                        <!-- Round-5 B7 修：預設值「系統管理員 (admin)」「資訊處」改成「載入中…」骨架 -->
+                        <div class="p-3 bg-light border-bottom d-flex align-items-center"><div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center shadow-sm" style="width: 45px; height: 45px; font-size: 1.5rem; flex-shrink: 0;"><i class="fas fa-user"></i></div><div class="ms-3 overflow-hidden"><div class="fw-bold text-dark fs-6 text-truncate" id="dropdown-user-name">載入中…</div><div class="text-muted small text-truncate mt-1"><i class="fas fa-sitemap me-1"></i> <span id="dropdown-user-dept">—</span></div></div></div>
+                        <div class="p-3 bg-white"><div class="d-flex justify-content-between align-items-center mb-3"><div class="text-secondary fw-bold"><i class="fas fa-chart-line me-2 text-success"></i><span data-i18n="nav_login_count">累積登入次數</span></div><div class="badge bg-success bg-opacity-10 text-success px-2 py-1 border border-success border-opacity-25" id="dropdown-user-login-count">— 次</div></div><div class="d-flex justify-content-between align-items-center"><div class="text-secondary fw-bold"><i class="fas fa-clock me-2 text-primary"></i><span data-i18n="nav_login_time">本次登入時間</span></div><div class="fw-bold text-dark" id="dropdown-user-login-time">—</div></div></div>
                         <div class="border-top"><a class="dropdown-item py-3 fw-bold cursor-pointer bg-light d-flex align-items-center" onclick="logout()"><i class="fas fa-sign-out-alt text-danger me-2 fs-5"></i> <span class="text-danger" data-i18n="nav_logout">登出系統</span></a></div>
                     </ul>
                 </div>
@@ -172,8 +178,9 @@
 
         <div class="navbar-row-bottom">
             <div class="top-menus" id="top-dynamic-menus"></div>
-            <!-- TODO: 將下方 your-feedback-url.com 換成實際的意見回饋網址 -->
-            <a href="https://your-feedback-url.com" target="_blank" class="feedback-link" title="提供您的寶貴意見"><i class="fas fa-envelope-open-text me-1"></i><span data-i18n="nav_feedback"> 意見箱</span></a>
+            <!-- Round-5 B3：先不要連到 placeholder URL — 改成 onclick 提示「敬請期待」，
+                 待真正意見箱網址定下來再把 onclick 換成 href。href="#" + preventDefault 避免頁面跳轉。 -->
+            <a href="#" onclick="event.preventDefault(); if (typeof customAlert==='function') customAlert('意見箱功能即將上線，敬請期待！'); else alert('意見箱功能即將上線，敬請期待！');" class="feedback-link" title="提供您的寶貴意見"><i class="fas fa-envelope-open-text me-1"></i><span data-i18n="nav_feedback"> 意見箱</span></a>
         </div>
     </div>
 
@@ -200,8 +207,10 @@
                             <div class="home-card home-card-top-red">
                                 <div class="home-icon-bg shield"><i class="fas fa-shield-alt"></i></div>
                                 <div class="home-card-content">
-                                    <p class="text-muted fw-bold mb-2 small"><i class="fas fa-key me-1"></i><span data-i18n="home_role_title"> 我的系統權限層級</p>
-                                    <h2 class="mb-3 mt-3 fw-bold" style="color: #dc3545;"><span id="home-role-title" data-i18n="home_role_admin">系統管理員</span> <small class="text-danger fs-5 fw-normal opacity-75" id="home-role-level">(Admin)</small></h2>
+                                    <!-- Round-5 B4：<span data-i18n>...</span> 完整閉合 -->
+                                    <!-- Round-5 B7：預設「系統管理員 / (Admin)」改成 — / —，登入後 renderHomeDashboard 才填值 -->
+                                    <p class="text-muted fw-bold mb-2 small"><i class="fas fa-key me-1"></i><span data-i18n="home_role_title"> 我的系統權限層級</span></p>
+                                    <h2 class="mb-3 mt-3 fw-bold" style="color: #dc3545;"><span id="home-role-title">—</span> <small class="text-danger fs-5 fw-normal opacity-75" id="home-role-level">—</small></h2>
                                     <p class="text-muted small mb-0"><i class="fas fa-info-circle me-1"></i> 系統根據您的職務自動派發</p>
                                 </div>
                             </div>
@@ -210,8 +219,10 @@
                             <div class="home-card home-card-top-blue">
                                 <div class="home-icon-bg building"><i class="fas fa-building"></i></div>
                                 <div class="home-card-content">
-                                    <div class="d-flex justify-content-between align-items-start"><p class="text-muted fw-bold mb-2 small"><i class="fas fa-map-marker-alt me-1"></i><span data-i18n="home_fab_title"> 目前選擇廠區</p><span class="badge border text-muted bg-light fw-normal py-1 px-2 shadow-sm" style="font-size: 0.75rem;">可於右上方切換</span></div>
-                                    <h2 class="mb-3 mt-3 fw-bold" style="color: #0284c7;" id="home-fab-display">12A</h2>
+                                    <!-- Round-5 B4：<span data-i18n>...</span> 完整閉合，否則切語系時 badge 會被吃掉 -->
+                                    <!-- Round-5 B7：home-fab-display 預設 12A → —，由 renderHomeDashboard 填值 -->
+                                    <div class="d-flex justify-content-between align-items-start"><p class="text-muted fw-bold mb-2 small"><i class="fas fa-map-marker-alt me-1"></i><span data-i18n="home_fab_title"> 目前選擇廠區</span></p><span class="badge border text-muted bg-light fw-normal py-1 px-2 shadow-sm" style="font-size: 0.75rem;">可於右上方切換</span></div>
+                                    <h2 class="mb-3 mt-3 fw-bold" style="color: #0284c7;" id="home-fab-display">—</h2>
                                     <p class="text-muted small mb-0">目前顯示該廠區之全域配置</p>
                                 </div>
                             </div>
@@ -221,7 +232,8 @@
 
                 <div id="page-personal-manage" class="page-section">
                     <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h5 class="mb-0 fw-bold text-primary"><i class="fas fa-user-cog me-2"></i><span data-i18n="menu_personal_manage"> 個人頁面管理 <span class="fs-6 text-muted fw-normal ms-2">(自訂專屬版面)</span></h5>
+                        <!-- Round-5 B4：外層 <span data-i18n>...</span> 補上閉合，避免切語系時把內層「(自訂專屬版面)」整段刪掉 -->
+                        <h5 class="mb-0 fw-bold text-primary"><i class="fas fa-user-cog me-2"></i><span data-i18n="menu_personal_manage"> 個人頁面管理</span> <span class="fs-6 text-muted fw-normal ms-2">(自訂專屬版面)</span></h5>
                         <div class="d-flex align-items-center gap-2">
                             <!-- 待儲存指示 + 儲存按鈕：拖曳排序後才顯示，按下才真正寫 DB + 重畫上方導覽列 -->
                             <button class="btn btn-sm btn-warning fw-bold shadow-sm d-none" id="btn-per-save-pending" onclick="commitPersonalPendingOrder()">
@@ -405,36 +417,50 @@
     <div class="modal fade" id="systemAlertModal" tabindex="-1" style="z-index: 1060;"><div class="modal-dialog modal-dialog-centered modal-sm"><div class="modal-content border-0 shadow"><div class="modal-body text-center py-4"><i class="fas fa-info-circle text-info mb-3" style="font-size: 2.5rem;"></i><p class="fs-6 fw-bold mb-0 text-dark" id="systemAlertMsg"></p></div><div class="modal-footer justify-content-center border-0 bg-light py-2"><button type="button" class="btn btn-primary btn-sm px-4 fw-bold" data-bs-dismiss="modal">確定</button></div></div></div></div>
     <div class="modal fade" id="systemConfirmModal" tabindex="-1" style="z-index: 1060;"><div class="modal-dialog modal-dialog-centered modal-sm"><div class="modal-content border-0 shadow"><div class="modal-body text-center py-4"><i class="fas fa-exclamation-triangle text-warning mb-3" style="font-size: 2.5rem;"></i><p class="fs-6 fw-bold mb-0 text-dark" id="systemConfirmMsg"></p></div><div class="modal-footer justify-content-center border-0 bg-light py-2"><button type="button" class="btn btn-light btn-sm border px-3 fw-bold" data-bs-dismiss="modal" data-i18n="modal_btn_cancel">取消</button><button type="button" class="btn btn-danger btn-sm px-3 fw-bold" id="systemConfirmBtn" onclick="if(confirmActionCallback) confirmActionCallback(); bootstrap.Modal.getInstance(document.getElementById('systemConfirmModal')).hide();">確定</button></div></div></div></div>
 
-    <!-- ⭐️ 動態載入 Modals partial (跟 JS 共用同一個 cache-bust 版本碼) -->
+    <!-- ⭐️ 動態載入 Modals partial (跟 JS 共用同一個 cache-bust 版本碼)
+         Round-5 B14：失敗時不再只 console.warn — 顯示明確錯誤 banner，因為沒有 modals 後續所有「新增/編輯」按鈕都會死掉。 -->
     <script>
         fetch('partials/modals.html?v=' + (window.__APP_VER__ || ''))
-            .then(r => r.text())
-            .then(html => { document.getElementById('modals-container').innerHTML = html; })
-            .catch(e => console.warn('載入 modals.html 失敗:', e));
+            .then(r => {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.text();
+            })
+            .then(html => {
+                document.getElementById('modals-container').innerHTML = html;
+                window.__modalsLoaded = true;
+            })
+            .catch(e => {
+                console.error('載入 modals.html 失敗:', e);
+                // 直接在頁頂插一條警告 banner — 不依賴 modal 本身（因為 modal 沒載入）
+                const banner = document.createElement('div');
+                banner.style.cssText = 'position:fixed; top:0; left:0; right:0; z-index:10000; background:#dc3545; color:#fff; padding:10px 20px; font-weight:bold; text-align:center; box-shadow:0 2px 8px rgba(0,0,0,0.3);';
+                banner.innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i> 載入 Modal 失敗，請重新整理頁面 (' + (e.message || e) + ') <button onclick="location.reload()" style="margin-left:15px; padding:2px 12px; background:#fff; color:#dc3545; border:0; border-radius:3px; font-weight:bold; cursor:pointer;">重新整理</button>';
+                document.body.appendChild(banner);
+            });
     </script>
 
     <!-- ⭐️ 快取破解碼：確保瀏覽器抓到最新版 JS 檔案！每次部署更新版本號 -->
-    <script>window.__APP_VER__ = '20260528l';</script>
-    <script src="js/config.js?v=20260528l"></script>
-    <script src="js/api.js?v=20260528l"></script>
-    <script src="js/auth.js?v=20260528l"></script>
+    <script>window.__APP_VER__ = '20260603a';</script>
+    <script src="js/config.js?v=20260603a"></script>
+    <script src="js/api.js?v=20260603a"></script>
+    <script src="js/auth.js?v=20260603a"></script>
     <!-- ui 模組 (從 ui.js 拆分) -->
-    <script src="js/ui/layout.js?v=20260528l"></script>
-    <script src="js/ui/navigation.js?v=20260528l"></script>
-    <script src="js/ui/dialogs.js?v=20260528l"></script>
+    <script src="js/ui/layout.js?v=20260603a"></script>
+    <script src="js/ui/navigation.js?v=20260603a"></script>
+    <script src="js/ui/dialogs.js?v=20260603a"></script>
     <!-- render 模組 (從 render.js 拆分) -->
-    <script src="js/render/sidebar.js?v=20260528l"></script>
-    <script src="js/render/sidebar-item.js?v=20260528l"></script>
-    <script src="js/render/tables.js?v=20260528l"></script>
-    <script src="js/render/account-ui.js?v=20260528l"></script>
+    <script src="js/render/sidebar.js?v=20260603a"></script>
+    <script src="js/render/sidebar-item.js?v=20260603a"></script>
+    <script src="js/render/tables.js?v=20260603a"></script>
+    <script src="js/render/account-ui.js?v=20260603a"></script>
     <!-- admin 模組 (從 admin.js 拆分) -->
-    <script src="js/admin/modal-utils.js?v=20260528l"></script>
-    <script src="js/admin/fab-manage.js?v=20260528l"></script>
-    <script src="js/admin/role-manage.js?v=20260528l"></script>
-    <script src="js/admin/account-manage.js?v=20260528l"></script>
-    <script src="js/admin/menu-manage.js?v=20260528l"></script>
-    <script src="js/admin/misc-manage.js?v=20260528l"></script>
-    <script src="js/main.js?v=20260528l"></script>
+    <script src="js/admin/modal-utils.js?v=20260603a"></script>
+    <script src="js/admin/fab-manage.js?v=20260603a"></script>
+    <script src="js/admin/role-manage.js?v=20260603a"></script>
+    <script src="js/admin/account-manage.js?v=20260603a"></script>
+    <script src="js/admin/menu-manage.js?v=20260603a"></script>
+    <script src="js/admin/misc-manage.js?v=20260603a"></script>
+    <script src="js/main.js?v=20260603a"></script>
 
 </body>
 </html>

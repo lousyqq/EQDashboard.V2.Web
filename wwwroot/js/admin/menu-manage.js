@@ -265,11 +265,9 @@ function getLinkOptionsHtml(selectedId) {
     return html;
 }
 
-// 樹狀建構器：當前 user 是否可自由拖曳/編輯既有列（admin 永遠可；user 需 canEditOthers）
+// 樹狀建構器：新加入的未儲存項目預設皆為自己建立，因此預設可拖曳
 window.tbCanReorder = function () {
-    if (!currentUser) return false;
-    if (currentUser.roleLevel === 'admin') return true;
-    return !!currentUser.canEditOthers;
+    return true;
 };
 
 window.tbAddLink = function (container, menuId = null, opts) {
@@ -303,6 +301,7 @@ window.tbAddFolder = function (container, folderName = '', folderId = '', opts) 
     const draggable = opts.draggable !== undefined ? opts.draggable : window.tbCanReorder();
     const removable = opts.removable !== undefined ? opts.removable : true;
     const nameEditable = opts.nameEditable !== undefined ? opts.nameEditable : true;
+    const canAddChild = opts.canAddChild !== undefined ? opts.canAddChild : true;
     let div = document.createElement('div');
     div.className = 'mb-2 bg-white border border-warning rounded p-2 shadow-sm tb-item tb-folder';
     div.setAttribute('data-type', 'folder');
@@ -314,6 +313,11 @@ window.tbAddFolder = function (container, folderName = '', folderId = '', opts) 
     const removeBtnHtml = removable
         ? '<button type="button" class="btn btn-sm btn-outline-danger border-0 ms-2" onclick="this.closest(\'.tb-item\').remove()"><i class="fas fa-trash-alt me-1"></i>移除群組</button>'
         : '';
+    const addChildBtnHtml = canAddChild 
+        ? `<div class="ps-4 ms-2 mt-1">
+            <button type="button" class="btn btn-sm btn-link text-decoration-none fw-bold p-0" onclick="window.tbAddLink(this.closest('.tb-folder').querySelector('.tb-children'))"><i class="fas fa-plus me-1"></i>加入看板</button>
+           </div>`
+        : '';
     div.innerHTML = `
         <div class="d-flex align-items-center mb-2">
             ${handleHtml}
@@ -322,9 +326,7 @@ window.tbAddFolder = function (container, folderName = '', folderId = '', opts) 
             ${removeBtnHtml}
         </div>
         <div class="tb-children ps-4 ms-2 border-start border-warning border-2 pb-1 pt-1" style="min-height: 30px;"></div>
-        <div class="ps-4 ms-2 mt-1">
-            <button type="button" class="btn btn-sm btn-link text-decoration-none fw-bold p-0" onclick="window.tbAddLink(this.closest('.tb-folder').querySelector('.tb-children'))"><i class="fas fa-plus me-1"></i>加入看板</button>
-        </div>
+        ${addChildBtnHtml}
     `;
     if (container) container.appendChild(div);
     return div;
@@ -335,20 +337,22 @@ function buildTreeUI(container, parentId) {
     let children = menus.filter(m => m.id !== parentId && (window.isParentMatch(m.parentId, { id: parentId }) || (m.parentIds || []).some(pid => window.isParentMatch(pid, { id: parentId }))));
     children.sort((a, b) => (a.parentOrders?.[parentId] ?? a.order ?? 0) - (b.parentOrders?.[parentId] ?? b.order ?? 0));
 
-    // 既有的列：是否可拖曳依「該帳號可變更他人內容」；可否移除/編輯名稱依 getMenuPermissions 對該節點的權限
-    const canReorder = window.tbCanReorder();
+    // 既有的列：是否可拖曳、移除、編輯名稱、新增子節點等，皆依據 getMenuPermissions 精準判斷
     children.forEach(c => {
         const perms = window.getMenuPermissions(c.id, c.createdBy);
         const removable = perms.canDelete === true;
         const nameEditable = perms.canEdit === true;
+        const draggable = perms.canEdit === true;
+        const canAddChild = perms.canAddChild === true;
+        
         if (c.menuMode === 'folder') {
             let folderDiv = window.tbAddFolder(container, c.displayName, c.id, {
-                draggable: canReorder, removable, nameEditable
+                draggable: draggable, removable, nameEditable, canAddChild
             });
             buildTreeUI(folderDiv.querySelector('.tb-children'), c.id);
         } else {
             window.tbAddLink(container, c.id, {
-                draggable: canReorder, removable
+                draggable: draggable, removable
             });
         }
     });
@@ -460,9 +464,15 @@ function openAddMenuNodeModal(id = null) {
                 if (nodeDenyTA) nodeDenyTA.value = (m.deniedEmpIds || []).join('\n');
 
                 if (m.menuMode === 'folder') {
+                    const perms = window.getMenuPermissions(m.id, m.createdBy);
+                    const rootBtns = document.getElementById('tbRootBtnsContainer');
+                    if (rootBtns) rootBtns.style.display = perms.canAddChild ? 'flex' : 'none';
                     buildTreeUI(container, m.id);
                 }
             }
+        } else {
+            const rootBtns = document.getElementById('tbRootBtnsContainer');
+            if (rootBtns) rootBtns.style.display = 'flex';
         }
 
         setTimeout(() => initTreeDragAndDrop(), 100);
