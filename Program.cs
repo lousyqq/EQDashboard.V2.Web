@@ -1,19 +1,44 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Negotiate;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using System.Threading.RateLimiting;
 using EQDashboard.V2.Web.Data;
+using EQDashboard.V2.Web.Middleware;
 using EQDashboard.V2.Web.Services;
 using EQDashboard.V2.Web.Services.Interfaces;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// === 部署模式判定 (HTTP / HTTPS) ===
+//   Hosting:RequireHttps  → true 時強制 HTTPS（UseHttpsRedirection + Cookie Secure=Always）
+//                         → false 時允許 HTTP（不 redirect + Cookie Secure=SameAsRequest）
+//   預設值：Production = true (安全優先)；Development = false (本機跑 http://localhost)
+//   IIS 部署在 HTTP 站點的情境：在 web.config / appsettings 設 Hosting:RequireHttps=false
+//     否則 Cookie 帶 Secure flag → 瀏覽器在 HTTP 不會送回 → 每個 request 都被視為未登入。
+var requireHttps = builder.Configuration.GetValue<bool?>("Hosting:RequireHttps")
+    ?? !builder.Environment.IsDevelopment();
 
 // 加入控制器支援 (供 SettingsController API 使用)
 builder.Services.AddControllersWithViews();
 
 // 註冊快取服務
 builder.Services.AddMemoryCache();
+
+// === Data Protection Keys 持久化 ===
+//   ASP.NET Core 用 Data Protection 加密 cookie、antiforgery token 等。
+//   預設 keys 存在 user profile (本機 dev) 或記憶體 (IIS w/o user profile)。
+//   IIS App Pool 預設「不載入使用者設定檔」→ keys 只存在記憶體 → 每次 App Pool
+//   回收、重啟、IIS 重起 → 所有 cookie 失效，全部 user 被踢出來重登。
+//   解法：固定存到磁碟特定目錄 (App_Data/keys)，並用 SetApplicationName 隔離不同 app。
+//   目錄需要 App Pool 身份可讀寫。位置可用 Hosting:DataProtectionKeysPath 覆寫。
+var dpKeysPath = builder.Configuration["Hosting:DataProtectionKeysPath"]
+    ?? Path.Combine(builder.Environment.ContentRootPath, "App_Data", "keys");
+try { Directory.CreateDirectory(dpKeysPath); } catch { /* 權限不足時退回預設 */ }
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(dpKeysPath))
+    .SetApplicationName("EQDashboard");
 
 // 註冊 AppDbContext
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -25,6 +50,7 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ISchemaBootstrap, SchemaBootstrap>();
 builder.Services.AddScoped<IAccountService, AccountService>();
 builder.Services.AddScoped<IMenuAuthService, MenuAuthService>();
+builder.Services.AddScoped<IActivityLogger, ActivityLogger>();
 
 // === 身份驗證：Cookies (主) + Negotiate (Windows 自動偵測) ===
 // 預設 scheme 仍是 Cookies — 一般 API/頁面靠它識別；
@@ -39,12 +65,13 @@ builder.Services
         // ⭐️ 安全強化：Cookie 安全設定
         options.Cookie.SameSite = SameSiteMode.Lax;    // 防止 CSRF 跨站請求偽造
         options.Cookie.HttpOnly = true;                 // 防止 JS 讀取 Cookie (XSS 防護)
-        // Round-3 P1 #5：
-        //   - Development (本機 launch profile http://localhost:5242) → SameAsRequest，否則 http 環境 cookie 不會送回，登入直接壞
-        //   - Production (含 Staging) → Always，避免「反向代理 HTTPS → 後端 HTTP」拓樸下 cookie 不帶 Secure 被內網 MITM
-        options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
-            ? CookieSecurePolicy.SameAsRequest
-            : CookieSecurePolicy.Always;
+        // Round-3 P1 #5 + IIS HTTP 部署修正：
+        //   - requireHttps=true  → Always   (HTTPS 強制；Production 預設)
+        //   - requireHttps=false → SameAsRequest (允許 HTTP；IIS 內網 HTTP 站台、Dev 本機)
+        //   不能無條件 Always — 否則 HTTP 環境下 cookie 不會送回、登入完全壞掉。
+        options.Cookie.SecurePolicy = requireHttps
+            ? CookieSecurePolicy.Always
+            : CookieSecurePolicy.SameAsRequest;
         options.Events.OnRedirectToLogin = context =>
         {
             context.Response.StatusCode = 401;
@@ -178,7 +205,12 @@ app.UseExceptionHandler(errorApp =>
     });
 });
 
-app.UseHttpsRedirection();
+// 只有 requireHttps=true 才強制 HTTPS 重新導向；否則 IIS 在 HTTP 上會吃到
+// 「Failed to determine the https port for redirect」警告或產生 307 → 不可達的 https URL。
+if (requireHttps)
+{
+    app.UseHttpsRedirection();
+}
 
 // ⭐️ 安全標頭中介軟體：防止點擊劫持、MIME 嗅探等攻擊與 CSRF 防護
 app.Use(async (context, next) =>
@@ -211,6 +243,30 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();  // 必須在 UseRouting 之後、MapControllerRoute 之前
+
+// 操作紀錄 middleware — 放在 Authentication 之後才能拿到 User claim
+app.UseMiddleware<ActivityLoggingMiddleware>();
+
+// === IIS 子目錄部署自適應 ===
+// 動態產生 /appbase.js — 前端載入後 window.APP_BASE 就拿到實際的 PathBase。
+// 部署情境：
+//   本機 dotnet run                     → APP_BASE = "/"
+//   IIS 根目錄部署                       → APP_BASE = "/"
+//   IIS 虛擬目錄 /EQDashboard_TEST       → APP_BASE = "/EQDashboard_TEST/"
+//   IIS 多層虛擬目錄 /Apps/EQ/Dashboard  → APP_BASE = "/Apps/EQ/Dashboard/"
+// 前端 api.js 的全域 fetch wrapper 會依此自動 prepend，所有現有 `fetch('/api/...')` 不用改一個字。
+app.MapGet("/appbase.js", (HttpContext ctx) =>
+{
+    var basePath = ctx.Request.PathBase.HasValue ? ctx.Request.PathBase.Value : "";
+    if (!basePath.EndsWith("/")) basePath += "/";
+    // JSON.stringify 等效：用 System.Text.Json 序列化避免特殊字元造成 JS 注入
+    var encoded = System.Text.Json.JsonSerializer.Serialize(basePath);
+    var js = $"window.APP_BASE = {encoded};";
+    // 不快取：若 deploy 路徑變動，瀏覽器舊快取會拿到錯誤 base 路徑
+    ctx.Response.Headers["Cache-Control"] = "no-store, must-revalidate";
+    ctx.Response.Headers["Pragma"] = "no-cache";
+    return Results.Content(js, "application/javascript; charset=utf-8");
+});
 
 // 註冊 API 路由 (讓前端 fetch 能對應到 Controller/Action)
 app.MapControllerRoute(

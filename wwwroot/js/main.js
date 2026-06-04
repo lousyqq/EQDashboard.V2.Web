@@ -46,8 +46,17 @@ function restoreLoginFromStorage() {
     try {
         let tempUser = JSON.parse(storedUser);
 
+        // ⚠️ slimUser 存進去的鍵叫 `empId`，舊程式碼讀成 tempUser.id 永遠是 undefined。
+        //   後果：find 永遠回 undefined → 誤判帳號被刪除 → 假警告 + 強制重新登入 +
+        //   重新登入後 currentUser.id 是 undefined → sidebar.js 用 currentUser.id 做權限判定全錯
+        //   → 上方導覽列空白要等使用者匯入 excel 才復原。
+        //   修法：empId 為主、id 為相容備援。
+        const storedEmpId = tempUser.empId || tempUser.id || '';
+        // 順手補回 id 欄位讓下游用 currentUser.id 的程式碼能正常 (sidebar.js getMenuPermissions 等)
+        if (!tempUser.id) tempUser.id = storedEmpId;
+
         if (typeof getAccounts === 'function') {
-            let freshAcc = getAccounts().find(a => String(a.empId).toLowerCase() === String(tempUser.id).toLowerCase());
+            let freshAcc = getAccounts().find(a => String(a.empId).toLowerCase() === String(storedEmpId).toLowerCase());
             if (!freshAcc) {
                 // Account 已被刪除 → 強制重新登入，並設旗標讓登入框跳出明確訊息
                 //   (Round-5: 原本靜默 clear localStorage 跳登入框，使用者會誤以為單純 session 過期)
@@ -66,7 +75,7 @@ function restoreLoginFromStorage() {
         localStorage.setItem('umc_current_user', JSON.stringify(currentUser));
 
         const nameEl = document.getElementById('user-name');
-        if (nameEl) nameEl.innerText = currentUser.id;
+        if (nameEl) nameEl.innerText = currentUser.id || currentUser.empId || '';
         return true;
     } catch (e) {
         currentUser = null;

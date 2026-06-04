@@ -19,13 +19,20 @@ public class AuthController : ControllerBase
     private readonly IConfiguration _config;
     private readonly ILogger<AuthController> _logger;
     private readonly EQDashboard.V2.Web.Data.AppDbContext _context;
+    private readonly IActivityLogger _activityLogger;
 
-    public AuthController(IAuthService authService, IConfiguration config, ILogger<AuthController> logger, EQDashboard.V2.Web.Data.AppDbContext context)
+    public AuthController(
+        IAuthService authService,
+        IConfiguration config,
+        ILogger<AuthController> logger,
+        EQDashboard.V2.Web.Data.AppDbContext context,
+        IActivityLogger activityLogger)
     {
         _authService = authService;
         _config = config;
         _logger = logger;
         _context = context;
+        _activityLogger = activityLogger;
     }
 
     /// <summary>
@@ -70,6 +77,8 @@ public class AuthController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(empId))
         {
+            await _activityLogger.LogLoginAsync(HttpContext, "(unknown)", null, "windows", false,
+                errorMessage: "未偵測到 Windows 登入身份", detail: $"{{\"rawName\":\"{rawName}\"}}");
             return Ok(new
             {
                 success = false,
@@ -85,6 +94,8 @@ public class AuthController : ControllerBase
         if (account == null)
         {
             _logger.LogWarning("WhoAmI: Windows 帳號 {EmpId} 不存在於 Accounts 表", empId);
+            await _activityLogger.LogLoginAsync(HttpContext, empId, null, "windows", false,
+                errorMessage: "工號不存在於 Accounts 表", detail: $"{{\"rawName\":\"{rawName}\"}}");
             return Ok(new
             {
                 success = false,
@@ -113,6 +124,10 @@ public class AuthController : ControllerBase
                 IsPersistent = true,
                 ExpiresUtc = DateTimeOffset.UtcNow.AddHours(12)
             });
+
+        // 紀錄 Windows 自動登入成功 — middleware 預設不記 Login 類別，這裡明確補
+        await _activityLogger.LogLoginAsync(HttpContext, account.EmpId, account.Name, "windows", true,
+            detail: $"{{\"rawName\":\"{rawName}\"}}");
 
         return Ok(new
         {
@@ -177,6 +192,8 @@ public class AuthController : ControllerBase
         // 強制所有人走 Windows 自動偵測；前端 tab 也會藏起來。
         if (!_config.GetValue<bool>("Auth:AllowManualLogin", true))
         {
+            await _activityLogger.LogLoginAsync(HttpContext, req.EmpId ?? "(empty)", null, "manual", false,
+                errorMessage: "本環境已停用手動登入");
             return Unauthorized(new
             {
                 success = false,
@@ -185,7 +202,11 @@ public class AuthController : ControllerBase
         }
 
         if (string.IsNullOrWhiteSpace(req.EmpId))
+        {
+            await _activityLogger.LogLoginAsync(HttpContext, "(empty)", null, "manual", false,
+                errorMessage: "工號為空");
             return BadRequest(new { success = false, message = "工號不得為空" });
+        }
 
         var empId = req.EmpId.Trim();
         var password = req.Password ?? "";
@@ -215,7 +236,11 @@ public class AuthController : ControllerBase
             // 走 LDAP 驗證
             var (ok, errMsg) = await _authService.VerifyLdapPasswordAsync(empId, password);
             if (!ok)
+            {
+                await _activityLogger.LogLoginAsync(HttpContext, empId, null, "manual", false,
+                    errorMessage: errMsg ?? "LDAP 驗證失敗");
                 return Unauthorized(new { success = false, message = errMsg ?? "驗證失敗" });
+            }
             loginSource = "manual";
         }
 
@@ -240,6 +265,8 @@ public class AuthController : ControllerBase
             }
             else
             {
+                await _activityLogger.LogLoginAsync(HttpContext, empId, null, loginSource, false,
+                    errorMessage: "工號通過密碼驗證但 Accounts 表內無此帳號");
                 return Unauthorized(new
                 {
                     success = false,
@@ -268,6 +295,8 @@ public class AuthController : ControllerBase
                 ExpiresUtc = DateTimeOffset.UtcNow.AddHours(12)
             });
 
+        await _activityLogger.LogLoginAsync(HttpContext, account.EmpId, account.Name, loginSource, true);
+
         return Ok(new
         {
             success = true,
@@ -294,6 +323,14 @@ public class AuthController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> Logout()
     {
+        // 紀錄登出 — 先記再 SignOut，否則 ctx.User 會清空抓不到 EmpId
+        var empId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var name = User.FindFirstValue(ClaimTypes.Name);
+        if (!string.IsNullOrWhiteSpace(empId))
+        {
+            await _activityLogger.LogLogoutAsync(HttpContext, empId, name);
+        }
+
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         return Ok(new { success = true });
     }

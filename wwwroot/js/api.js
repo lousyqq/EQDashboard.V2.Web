@@ -1,9 +1,33 @@
 // === 全域變數：取代原本的 localStorage，達成真正的 DB 讀寫 ===
 
+// ⭐️ IIS 子目錄部署自適應：把絕對路徑 URL 自動 prepend APP_BASE。
+//   背景：所有 fetch('/api/...') / fetch('/Settings/...') 寫的是「以網域根目錄為起點」的絕對路徑。
+//   本機 dotnet run 時 APP_BASE = "/" → 維持原行為
+//   IIS 部署在虛擬目錄 (e.g. /EQDashboard_TEST) 時 APP_BASE = "/EQDashboard_TEST/" → 自動加前綴
+//   appbase.js 已在 index.html 最前面載入並設定 window.APP_BASE。
+//   邏輯：
+//     - 非字串 URL (Request 物件) → 不動，由呼叫者自行處理
+//     - URL 以 http(s):// 開頭 → 不動 (外部 API)
+//     - URL 不以 / 開頭 → 不動 (相對路徑，瀏覽器自己解析)
+//     - URL 以 base 路徑開頭 → 不動 (已經轉換過 / 開發者已手動處理)
+//     - URL 以 / 開頭且 base 非 "/" → 改寫成 base + url
+window.toAppUrl = function (url) {
+    if (typeof url !== 'string') return url;
+    const base = window.APP_BASE || '/';
+    if (base === '/' || !url.startsWith('/')) return url;
+    if (/^https?:\/\//i.test(url)) return url;
+    // base 結尾固定有 /，url 開頭固定有 / → 去掉 base 的尾巴 / 後拼接
+    if (url.startsWith(base)) return url;  // 已經帶 base
+    return base.replace(/\/$/, '') + url;
+};
+
 // ⭐️ 全域 fetch 攔截器：處理 401 Unauthorized，強制退回登入畫面
 const originalFetch = window.fetch;
 window.fetch = async function (...args) {
     if (args[0] && typeof args[0] === 'string') {
+        // IIS 虛擬目錄自動 prepend
+        args[0] = window.toAppUrl(args[0]);
+
         if (!args[1]) args[1] = {};
         args[1].credentials = 'same-origin';
 

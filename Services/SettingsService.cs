@@ -111,9 +111,29 @@ public class SettingsService : ISettingsService
         int successCount = 0;
         var errorLogs = new List<string>();
 
+        // 全量覆寫 17 張表跨 DELETE+BULKINSERT，預設 30 秒對遠端 SQL Server 太短，
+        //   實測 Sariel 遠端 + Excel 大資料量會在 DELETE FROM Menus / BULK INSERT 階段 timeout。
+        //   一律放寬到 5 分鐘；本路徑只給 admin 手動觸發，不會造成 thread starvation 風險。
+        const int CommandTimeoutSec = 300;
+
         using var conn = new SqlConnection(_connStr);
         await conn.OpenAsync();
         using var trans = conn.BeginTransaction();
+
+        // 暫時停用相關資料表的 FK 限制，方便進行無順序的 DELETE/INSERT
+        foreach (var tableName in TableNames)
+        {
+            try
+            {
+                using var disableFkCmd = new SqlCommand($"ALTER TABLE [{tableName}] NOCHECK CONSTRAINT ALL", conn, trans);
+                disableFkCmd.CommandTimeout = CommandTimeoutSec;
+                await disableFkCmd.ExecuteNonQueryAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to disable FK constraints for {TableName}", tableName);
+            }
+        }
 
         foreach (var tableName in TableNames)
         {
@@ -133,6 +153,7 @@ public class SettingsService : ISettingsService
             using (var checkCmd = new SqlCommand(
                 "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = @tb", conn, trans))
             {
+                checkCmd.CommandTimeout = CommandTimeoutSec;
                 checkCmd.Parameters.AddWithValue("@tb", tableName);
                 if ((int)(await checkCmd.ExecuteScalarAsync())! == 0) continue;
             }
@@ -142,6 +163,7 @@ public class SettingsService : ISettingsService
             try
             {
                 using var countCmd = new SqlCommand($"SELECT COUNT(*) FROM [{tableName}]", conn, trans);
+                countCmd.CommandTimeout = CommandTimeoutSec;
                 oldCount = Convert.ToInt32(await countCmd.ExecuteScalarAsync());
             }
             catch { }
@@ -160,6 +182,7 @@ public class SettingsService : ISettingsService
             // 清空舊資料
             using (var cmd = new SqlCommand($"DELETE FROM [{tableName}]", conn, trans))
             {
+                cmd.CommandTimeout = CommandTimeoutSec;
                 await cmd.ExecuteNonQueryAsync();
             }
 
@@ -174,12 +197,14 @@ public class SettingsService : ISettingsService
                     $"SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('[{tableName}]') AND is_identity = 1",
                     conn, trans))
                 {
+                    idCmd.CommandTimeout = CommandTimeoutSec;
                     hasIdentity = (int)(await idCmd.ExecuteScalarAsync())! > 0;
                 }
 
                 using var schemaCmd = new SqlCommand(
                     "SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @tb",
                     conn, trans);
+                schemaCmd.CommandTimeout = CommandTimeoutSec;
                 schemaCmd.Parameters.AddWithValue("@tb", tableName);
                 using var schemaReader = await schemaCmd.ExecuteReaderAsync();
                 while (await schemaReader.ReadAsync())
@@ -198,6 +223,7 @@ public class SettingsService : ISettingsService
                 try
                 {
                     using var cmdOn = new SqlCommand($"SET IDENTITY_INSERT [{tableName}] ON", conn, trans);
+                    cmdOn.CommandTimeout = CommandTimeoutSec;
                     await cmdOn.ExecuteNonQueryAsync();
                 }
                 catch { }
@@ -283,6 +309,7 @@ public class SettingsService : ISettingsService
 
                 var bulkCopyOptions = hasIdentity ? SqlBulkCopyOptions.KeepIdentity : SqlBulkCopyOptions.Default;
                 using var bulkCopy = new SqlBulkCopy(conn, bulkCopyOptions, trans);
+                bulkCopy.BulkCopyTimeout = CommandTimeoutSec;
                 bulkCopy.DestinationTableName = $"[{tableName}]";
                 
                 foreach (DataColumn col in dt.Columns)
@@ -295,9 +322,28 @@ public class SettingsService : ISettingsService
             }
             catch (Exception ex)
             {
-                trans.Rollback();
+                try { trans.Rollback(); } catch { } // 安全的 Rollback，避免因交易已失敗而拋出例外導致 Request 卡死
                 _logger.LogError(ex, "[{TableName}] 批次匯入失敗，已退回所有變更", tableName);
-                return (false, $"[{tableName}] 資料寫入失敗，已取消全部異動。請聯絡系統管理員。");
+                // SaveData 是 admin-only，把實際 SQL 訊息回給 admin 才能定位是哪個欄位/型別問題
+                //   (Round-7：之前怕洩漏所以隱藏，但 admin 看不到等於要去翻 server log，太不友善)
+                var detail = ex.Message;
+                if (ex.InnerException != null) detail += " | " + ex.InnerException.Message;
+                return (false, $"[{tableName}] 資料寫入失敗，已取消全部異動。錯誤詳情：{detail}");
+            }
+        }
+
+        // 重新啟用 FK 限制 (不進行全表掃描檢查舊資料，加速處理)
+        foreach (var tableName in TableNames)
+        {
+            try
+            {
+                using var enableFkCmd = new SqlCommand($"ALTER TABLE [{tableName}] CHECK CONSTRAINT ALL", conn, trans);
+                enableFkCmd.CommandTimeout = CommandTimeoutSec;
+                await enableFkCmd.ExecuteNonQueryAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to re-enable FK constraints for {TableName}", tableName);
             }
         }
 

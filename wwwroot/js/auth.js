@@ -347,7 +347,8 @@ async function completeLoginAfterAuth(empId, source, fallbackAccount) {
         defaultPages: acc.defaultPages || acc.DefaultPages || {},
         loginSource: source || 'manual'  // 'windows' / 'manual' / 'emergency'
     };
-    const slimUser = { empId: currentUser.empId, name: currentUser.name, department: currentUser.department, roleLevel: currentUser.roleLevel, loginSource: currentUser.loginSource };
+    // ⚠️ id 必須一起存 — restoreLoginFromStorage 與 sidebar.js getMenuPermissions 都會用 currentUser.id 判定權限
+    const slimUser = { id: currentUser.id, empId: currentUser.empId, name: currentUser.name, department: currentUser.department, roleLevel: currentUser.roleLevel, loginSource: currentUser.loginSource };
     localStorage.setItem('umc_current_user', JSON.stringify(slimUser));
 
     hideLoginOverlay();

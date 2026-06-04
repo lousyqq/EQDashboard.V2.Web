@@ -30,6 +30,9 @@ public class AppDbContext : DbContext
     public DbSet<MapMenuAllowAccount> MapMenuAllowAccounts { get; set; }
     public DbSet<MapMenuDenyAccount> MapMenuDenyAccounts { get; set; }
 
+    // 操作紀錄
+    public DbSet<UserActivityLog> UserActivityLogs { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

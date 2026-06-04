@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
@@ -18,10 +18,10 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
     <!-- CSS 模組 (從 style.css 拆分) -->
-    <link href="css/variables.css?v=20260603a" rel="stylesheet">
-    <link href="css/navbar.css?v=20260603a" rel="stylesheet">
-    <link href="css/sidebar.css?v=20260603a" rel="stylesheet">
-    <link href="css/components.css?v=20260603a" rel="stylesheet">
+    <link href="css/variables.css?v=20260604d" rel="stylesheet">
+    <link href="css/navbar.css?v=20260604d" rel="stylesheet">
+    <link href="css/sidebar.css?v=20260604d" rel="stylesheet">
+    <link href="css/components.css?v=20260604d" rel="stylesheet">
 </head>
 <body>
 
@@ -377,6 +377,110 @@
                     </div>
                 </div>
 
+                <div id="page-activity-log" class="page-section">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0 fw-bold"><i class="fas fa-history text-primary me-2"></i>操作紀錄</h5>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-sm btn-outline-primary fw-bold" id="btn-activity-refresh" onclick="loadActivityLogs()"><i class="fas fa-sync-alt me-1"></i> 重新整理</button>
+                            <button class="btn btn-sm btn-outline-danger fw-bold" id="btn-activity-purge" onclick="purgeActivityLogs()"><i class="fas fa-trash me-1"></i> 清除 90 天前</button>
+                        </div>
+                    </div>
+                    <div class="card border-0 shadow-sm mb-3">
+                        <div class="card-body p-3">
+                            <div class="row g-2 align-items-end">
+                                <div class="col-md-2">
+                                    <label class="form-label small fw-bold text-secondary mb-1">工號</label>
+                                    <input type="text" id="alEmpId" class="form-control form-control-sm" placeholder="(全部)">
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label small fw-bold text-secondary mb-1">分類</label>
+                                    <select id="alCategory" class="form-select form-select-sm">
+                                        <option value="">(全部)</option>
+                                        <option value="Login">登入</option>
+                                        <option value="Logout">登出</option>
+                                        <option value="Auth">身分驗證</option>
+                                        <option value="Menu">選單</option>
+                                        <option value="Account">帳號</option>
+                                        <option value="Role">權限群組</option>
+                                        <option value="Fab">廠區</option>
+                                        <option value="App">應用集合</option>
+                                        <option value="Request">申請</option>
+                                        <option value="PersonalSettings">個人設定</option>
+                                        <option value="Settings">設定檔</option>
+                                        <option value="Page">主頁</option>
+                                        <option value="Other">其他</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label small fw-bold text-secondary mb-1">開始日期</label>
+                                    <input type="datetime-local" id="alFrom" class="form-control form-control-sm">
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label small fw-bold text-secondary mb-1">結束日期</label>
+                                    <input type="datetime-local" id="alTo" class="form-control form-control-sm">
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label small fw-bold text-secondary mb-1">關鍵字</label>
+                                    <input type="text" id="alKeyword" class="form-control form-control-sm" placeholder="path / action / target">
+                                </div>
+                                <div class="col-md-1">
+                                    <label class="form-label small fw-bold text-secondary mb-1">狀態</label>
+                                    <select id="alSuccess" class="form-select form-select-sm">
+                                        <option value="">全部</option>
+                                        <option value="true">成功</option>
+                                        <option value="false">失敗</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-1">
+                                    <button class="btn btn-sm btn-primary fw-bold w-100" onclick="loadActivityLogs()"><i class="fas fa-search me-1"></i>查詢</button>
+                                </div>
+                            </div>
+                        </div>
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body p-3">
+                            <style>
+                                /* 保險起見的樣式 */
+                                #activity-log-table thead th {
+                                    position: sticky !important;
+                                    top: 0 !important;
+                                    z-index: 1020 !important;
+                                    background-color: #f8fafc !important;
+                                    box-shadow: inset 0 -2px 0 #cbd5e1 !important;
+                                }
+                            </style>
+                            <div class="table-responsive border rounded" style="max-height: 65vh; overflow-y: auto;">
+                                <table id="activity-log-table" class="table table-sm table-hover align-middle text-nowrap mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th style="width:140px; position: sticky; top: 0; background-color: #f8fafc; z-index: 1020;">時間</th>
+                                            <th style="width:90px; position: sticky; top: 0; background-color: #f8fafc; z-index: 1020;">工號</th>
+                                            <th style="width:110px; position: sticky; top: 0; background-color: #f8fafc; z-index: 1020;">姓名</th>
+                                            <th style="width:65px; position: sticky; top: 0; background-color: #f8fafc; z-index: 1020;">來源</th>
+                                            <th style="width:90px; position: sticky; top: 0; background-color: #f8fafc; z-index: 1020;">分類</th>
+                                            <th style="position: sticky; top: 0; background-color: #f8fafc; z-index: 1020;">動作</th>
+                                            <th style="width:60px; position: sticky; top: 0; background-color: #f8fafc; z-index: 1020;">方法</th>
+                                            <th style="position: sticky; top: 0; background-color: #f8fafc; z-index: 1020;">Path</th>
+                                            <th style="width:60px; position: sticky; top: 0; background-color: #f8fafc; z-index: 1020;">狀態</th>
+                                            <th style="width:70px; position: sticky; top: 0; background-color: #f8fafc; z-index: 1020;">耗時(ms)</th>
+                                            <th style="width:120px; position: sticky; top: 0; background-color: #f8fafc; z-index: 1020;">IP</th>
+                                            <th class="text-start" style="position: sticky; top: 0; background-color: #f8fafc; z-index: 1020;">詳情</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="activityLogBody"><tr><td colspan="12" class="text-center text-muted py-4">尚未載入</td></tr></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="card-footer bg-white d-flex justify-content-between align-items-center py-2">
+                            <div class="small text-muted" id="activityLogStats">—</div>
+                            <div class="d-flex align-items-center gap-2">
+                                <button class="btn btn-sm btn-outline-secondary" id="alPrev" onclick="changeActivityPage(-1)"><i class="fas fa-chevron-left"></i></button>
+                                <span class="small fw-bold" id="alPageInfo">— / —</span>
+                                <button class="btn btn-sm btn-outline-secondary" id="alNext" onclick="changeActivityPage(1)"><i class="fas fa-chevron-right"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div id="page-config-manage" class="page-section">
                     <div class="d-flex justify-content-between align-items-center mb-3"><h5 class="mb-0 fw-bold" data-i18n="menu_config_manage">設定檔管理</h5></div>
                     <div class="row g-3">
@@ -417,6 +521,10 @@
     <div class="modal fade" id="systemAlertModal" tabindex="-1" style="z-index: 1060;"><div class="modal-dialog modal-dialog-centered modal-sm"><div class="modal-content border-0 shadow"><div class="modal-body text-center py-4"><i class="fas fa-info-circle text-info mb-3" style="font-size: 2.5rem;"></i><p class="fs-6 fw-bold mb-0 text-dark" id="systemAlertMsg"></p></div><div class="modal-footer justify-content-center border-0 bg-light py-2"><button type="button" class="btn btn-primary btn-sm px-4 fw-bold" data-bs-dismiss="modal">確定</button></div></div></div></div>
     <div class="modal fade" id="systemConfirmModal" tabindex="-1" style="z-index: 1060;"><div class="modal-dialog modal-dialog-centered modal-sm"><div class="modal-content border-0 shadow"><div class="modal-body text-center py-4"><i class="fas fa-exclamation-triangle text-warning mb-3" style="font-size: 2.5rem;"></i><p class="fs-6 fw-bold mb-0 text-dark" id="systemConfirmMsg"></p></div><div class="modal-footer justify-content-center border-0 bg-light py-2"><button type="button" class="btn btn-light btn-sm border px-3 fw-bold" data-bs-dismiss="modal" data-i18n="modal_btn_cancel">取消</button><button type="button" class="btn btn-danger btn-sm px-3 fw-bold" id="systemConfirmBtn" onclick="if(confirmActionCallback) confirmActionCallback(); bootstrap.Modal.getInstance(document.getElementById('systemConfirmModal')).hide();">確定</button></div></div></div></div>
 
+    <!-- ⭐️ 快取破解碼：必須在 modals.html fetch 之前定義，否則 ?v= 會是空字串、
+         部署後使用者拿到舊版 modals (Round-7 修)。其他 <script src> 共用此版本碼。 -->
+    <script>window.__APP_VER__ = '20260604d';</script>
+
     <!-- ⭐️ 動態載入 Modals partial (跟 JS 共用同一個 cache-bust 版本碼)
          Round-5 B14：失敗時不再只 console.warn — 顯示明確錯誤 banner，因為沒有 modals 後續所有「新增/編輯」按鈕都會死掉。 -->
     <script>
@@ -439,28 +547,34 @@
             });
     </script>
 
-    <!-- ⭐️ 快取破解碼：確保瀏覽器抓到最新版 JS 檔案！每次部署更新版本號 -->
-    <script>window.__APP_VER__ = '20260603a';</script>
-    <script src="js/config.js?v=20260603a"></script>
-    <script src="js/api.js?v=20260603a"></script>
-    <script src="js/auth.js?v=20260603a"></script>
+    <!-- ⭐️ IIS 子目錄部署自適應：必須最先載入，window.APP_BASE 之後所有 JS / fetch 都會用到。
+         appbase.js 由 Program.cs 動態產生，內容 = `window.APP_BASE = "<PathBase>/";`
+         注意：src 用相對路徑 (沒有 leading /)，瀏覽器會解析成 `當前頁面/appbase.js`，
+         IIS 子目錄部署時就自動帶到正確位置。 -->
+    <script src="appbase.js"></script>
+
+    <!-- __APP_VER__ 已在 modals.html fetch 之前定義；以下 <script src> 共用同一版本碼 -->
+    <script src="js/config.js?v=20260604d"></script>
+    <script src="js/api.js?v=20260604d"></script>
+    <script src="js/auth.js?v=20260604d"></script>
     <!-- ui 模組 (從 ui.js 拆分) -->
-    <script src="js/ui/layout.js?v=20260603a"></script>
-    <script src="js/ui/navigation.js?v=20260603a"></script>
-    <script src="js/ui/dialogs.js?v=20260603a"></script>
+    <script src="js/ui/layout.js?v=20260604d"></script>
+    <script src="js/ui/navigation.js?v=20260604d"></script>
+    <script src="js/ui/dialogs.js?v=20260604d"></script>
     <!-- render 模組 (從 render.js 拆分) -->
-    <script src="js/render/sidebar.js?v=20260603a"></script>
-    <script src="js/render/sidebar-item.js?v=20260603a"></script>
-    <script src="js/render/tables.js?v=20260603a"></script>
-    <script src="js/render/account-ui.js?v=20260603a"></script>
+    <script src="js/render/sidebar.js?v=20260604d"></script>
+    <script src="js/render/sidebar-item.js?v=20260604d"></script>
+    <script src="js/render/tables.js?v=20260604d"></script>
+    <script src="js/render/account-ui.js?v=20260604d"></script>
     <!-- admin 模組 (從 admin.js 拆分) -->
-    <script src="js/admin/modal-utils.js?v=20260603a"></script>
-    <script src="js/admin/fab-manage.js?v=20260603a"></script>
-    <script src="js/admin/role-manage.js?v=20260603a"></script>
-    <script src="js/admin/account-manage.js?v=20260603a"></script>
-    <script src="js/admin/menu-manage.js?v=20260603a"></script>
-    <script src="js/admin/misc-manage.js?v=20260603a"></script>
-    <script src="js/main.js?v=20260603a"></script>
+    <script src="js/admin/modal-utils.js?v=20260604d"></script>
+    <script src="js/admin/fab-manage.js?v=20260604d"></script>
+    <script src="js/admin/role-manage.js?v=20260604d"></script>
+    <script src="js/admin/account-manage.js?v=20260604d"></script>
+    <script src="js/admin/menu-manage.js?v=20260604d"></script>
+    <script src="js/admin/activity-log.js?v=20260604d"></script>
+    <script src="js/admin/misc-manage.js?v=20260604d"></script>
+    <script src="js/main.js?v=20260604d"></script>
 
 </body>
 </html>

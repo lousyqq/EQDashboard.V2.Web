@@ -657,22 +657,44 @@ function compressImageFile(file, callback) {
 async function importConfig() {
     const fileInput = document.getElementById('configFile'); const file = fileInput.files[0];
     if (!file) return customAlert("請先選擇 Excel 檔案！");
-    const reader = new FileReader();
+    
+    // 立即顯示載入中遮罩，防止 UI 卡死
+    let loadingOverlay = document.getElementById('importLoadingOverlay');
+    if (!loadingOverlay) {
+        loadingOverlay = document.createElement('div');
+        loadingOverlay.id = 'importLoadingOverlay';
+        loadingOverlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; display:flex; flex-direction:column; justify-content:center; align-items:center; color:white; font-family:sans-serif;';
+        loadingOverlay.innerHTML = '<div class="spinner-border text-info mb-3" style="width: 3rem; height: 3rem;"></div><h2>正在讀取 Excel...</h2><p class="text-secondary">檔案較大時可能需要幾秒鐘，請稍候</p>';
+        document.body.appendChild(loadingOverlay);
+    }
 
-    reader.onload = async function (e) {
-        try {
-            const data = new Uint8Array(e.target.result);
-            const workbook = XLSX.read(data, { type: 'array' });
+    // 利用 setTimeout 讓瀏覽器有時間把 Loading 畫面畫出來，再進行高 CPU 耗時的 XLSX 讀取
+    setTimeout(() => {
+        const reader = new FileReader();
+        reader.onload = async function (e) {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
 
-            await processAndSaveWorkbook(workbook, true);
+                // 讀取完畢後，切換文字為「準備同步...」，接著 processAndSaveWorkbook 內部會呼叫 syncDataToDB 並自帶它的 loading 畫面
+                if(loadingOverlay) loadingOverlay.querySelector('h2').innerText = '準備同步...';
+                
+                await processAndSaveWorkbook(workbook, true);
 
-            fileInput.value = '';
-        } catch (err) {
-            console.error(err);
-            customAlert("匯入失敗，格式錯誤或網路異常。");
-        }
-    };
-    reader.readAsArrayBuffer(file);
+                fileInput.value = '';
+                if(loadingOverlay) loadingOverlay.remove();
+                
+                // 匯入完畢後，提示並重新整理以載入最新資料
+                customAlert("匯入成功！系統即將重新載入。");
+                setTimeout(() => { location.reload(); }, 1500);
+            } catch (err) {
+                console.error(err);
+                if(loadingOverlay) loadingOverlay.remove();
+                customAlert("匯入失敗，格式錯誤或網路異常。");
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    }, 50);
 }
 
 async function processAndSaveWorkbook(workbook, isManualImport = false) {
@@ -684,7 +706,12 @@ async function processAndSaveWorkbook(workbook, isManualImport = false) {
     const rawMenus = getSheetData("Menus"); const rawFabs = getSheetData("Fabs"); const rawRoles = getSheetData("Roles");
     const rawAccs = getSheetData("Accounts"); const rawApps = getSheetData("Apps"); const rawReqs = getSheetData("Requests");
 
-    if (rawAccs.length > 0 && rawAccs[0].hasOwnProperty("EmpId")) {
+    // 判斷是否為 V2 格式：檢查任意一個 V2 專有欄位 (例如 Menus 的 MenuId 或 Accounts 的 EmpId)
+    const isV2Format = (rawAccs.length > 0 && rawAccs[0].hasOwnProperty("EmpId")) || 
+                       (rawMenus.length > 0 && rawMenus[0].hasOwnProperty("MenuId")) ||
+                       (rawRoles.length > 0 && rawRoles[0].hasOwnProperty("RoleId"));
+
+    if (isV2Format) {
         const mapFabRole = getSheetData("Map_Fab_Role"); const mapAccRole = getSheetData("Map_Account_Role");
         const mapAccMenu = getSheetData("Map_Account_ManageMenu"); const mapRoleMenu = getSheetData("Map_Role_Menu");
         const mapMenuStruct = getSheetData("Map_Menu_Structure"); const mapAccDefPage = getSheetData("Map_Account_DefaultPage");

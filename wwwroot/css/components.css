@@ -1,4 +1,4 @@
-﻿/* === components.css - 表格、卡片、Badge、Modal、登入、工具列等 === */
+/* === components.css - 表格、卡片、Badge、Modal、登入、工具列等 === */
 /* ================= 其他模組樣式 ================= */
 .page-section {
     display: none;
@@ -780,3 +780,11 @@ body.iframe-mode #page-iframe iframe {
     min-height: 0;
 }
 
+/* 修正操作紀錄表格標題列重疊問題 (讓實際的 th 擁有 sticky 與實底背景) */
+#page-activity-log .table-responsive thead th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: #f8fafc;
+    box-shadow: inset 0 -1px 0 #cbd5e1; /* 繪製底部邊框避免捲動時邊框消失 */
+}

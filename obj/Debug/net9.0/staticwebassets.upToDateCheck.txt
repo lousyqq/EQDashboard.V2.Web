@@ -5,6 +5,7 @@ wwwroot\css\variables.css
 wwwroot\favicon.ico
 wwwroot\index.html
 wwwroot\js\admin\account-manage.js
+wwwroot\js\admin\activity-log.js
 wwwroot\js\admin\fab-manage.js
 wwwroot\js\admin\menu-manage.js
 wwwroot\js\admin\misc-manage.js
@@ -29,6 +30,7 @@ C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\wwwroot\css\variables.css
 C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\wwwroot\favicon.ico
 C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\wwwroot\index.html
 C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\wwwroot\js\admin\account-manage.js
+C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\wwwroot\js\admin\activity-log.js
 C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\wwwroot\js\admin\fab-manage.js
 C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\wwwroot\js\admin\menu-manage.js
 C:\EQDashboard\EQDashboard\EQDashboard.V2.Web\wwwroot\js\admin\misc-manage.js

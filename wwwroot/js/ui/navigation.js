@@ -43,6 +43,7 @@ function changeLanguage(lang) {
         if (pageId === 'page-account-manage' && typeof renderAccountTable === 'function') renderAccountTable();
         if (pageId === 'page-apply' && typeof renderApplyTable === 'function') renderApplyTable();
         if (pageId === 'page-audit-manage' && typeof renderAuditTable === 'function') renderAuditTable();
+        if (pageId === 'page-activity-log' && typeof loadActivityLogs === 'function') loadActivityLogs();
     }
 }
 window.changeLanguage = changeLanguage;
@@ -459,6 +460,7 @@ function navTo(pageId, element, subTitle = '') {
     if (pageId === 'page-account-manage' && typeof renderAccountTable === 'function') renderAccountTable();
     if (pageId === 'page-apply' && typeof renderApplyTable === 'function') renderApplyTable();
     if (pageId === 'page-audit-manage' && typeof renderAuditTable === 'function') renderAuditTable();
+    if (pageId === 'page-activity-log' && typeof loadActivityLogs === 'function') loadActivityLogs();
     if (pageId !== 'page-app-grid') currentAppGridMenuId = null;
 }
 

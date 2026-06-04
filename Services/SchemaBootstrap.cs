@@ -29,6 +29,7 @@ public class SchemaBootstrap : ISchemaBootstrap
             await EnsureOverrideTableAsync(conn, "Map_Account_DenyMenu");
             await EnsureMenuAclTableAsync(conn, "Map_Menu_AllowAccount");
             await EnsureMenuAclTableAsync(conn, "Map_Menu_DenyAccount");
+            await EnsureUserActivityLogsAsync(conn);
             await SeedTestAccountsAsync(conn);
 
             _logger.LogInformation("✅ SchemaBootstrap 完成");
@@ -112,6 +113,47 @@ public class SchemaBootstrap : ISchemaBootstrap
         {
             await cmd.ExecuteNonQueryAsync();
             _logger.LogInformation("✅ SchemaBootstrap 建立資料表 {Table}", tableName);
+        }
+    }
+
+    /// <summary>確保 UserActivityLogs 表 + 3 個查詢索引存在</summary>
+    private async Task EnsureUserActivityLogsAsync(SqlConnection conn)
+    {
+        using (var checkCmd = new SqlCommand(
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'UserActivityLogs'", conn))
+        {
+            var exists = (int)(await checkCmd.ExecuteScalarAsync())! > 0;
+            if (!exists)
+            {
+                var createSql = @"
+                    CREATE TABLE UserActivityLogs (
+                        LogId        BIGINT IDENTITY(1,1) PRIMARY KEY,
+                        Timestamp    DATETIME2 NOT NULL,
+                        EmpId        NVARCHAR(50)  NULL,
+                        EmpName      NVARCHAR(100) NULL,
+                        LoginSource  NVARCHAR(20)  NULL,
+                        IpAddress    NVARCHAR(45)  NULL,
+                        UserAgent    NVARCHAR(500) NULL,
+                        HttpMethod   NVARCHAR(10)  NULL,
+                        Path         NVARCHAR(500) NULL,
+                        QueryString  NVARCHAR(500) NULL,
+                        StatusCode   INT           NULL,
+                        DurationMs   INT           NULL,
+                        Category     NVARCHAR(50)  NULL,
+                        Action       NVARCHAR(100) NULL,
+                        TargetType   NVARCHAR(50)  NULL,
+                        TargetId     NVARCHAR(100) NULL,
+                        Detail       NVARCHAR(MAX) NULL,
+                        IsSuccess    BIT           NULL,
+                        ErrorMessage NVARCHAR(500) NULL
+                    );
+                    CREATE INDEX IX_UserActivityLogs_EmpId_Timestamp ON UserActivityLogs (EmpId, Timestamp DESC);
+                    CREATE INDEX IX_UserActivityLogs_Timestamp       ON UserActivityLogs (Timestamp DESC);
+                    CREATE INDEX IX_UserActivityLogs_Category_Time   ON UserActivityLogs (Category, Timestamp DESC);";
+                using var createCmd = new SqlCommand(createSql, conn);
+                await createCmd.ExecuteNonQueryAsync();
+                _logger.LogInformation("✅ SchemaBootstrap 建立資料表 UserActivityLogs + 3 索引");
+            }
         }
     }
 

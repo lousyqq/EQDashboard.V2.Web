@@ -209,6 +209,7 @@ function renderSidebarMenus() {
 
         const roles = getRoles();
         let initialMenuIds = [];
+        
         activeRoleIds.forEach(roleId => {
             const role = roles.find(r => window.cleanId(r.id || r.RoleId || r.roleId) === window.cleanId(roleId));
             const allowed = role ? (role.allowedMenuIds || role.AllowedMenuIds || []) : [];
@@ -414,6 +415,7 @@ function renderSidebarMenus() {
                 { id: 'page-account-manage', icon: 'fas fa-user-shield', i18nKey: 'menu_account_manage', fallback: '帳號管理', display: role === 'admin' || (currentUser && currentUser.canEditOthers) },
                 { id: 'page-audit-manage', icon: 'fas fa-clipboard-check', i18nKey: 'menu_audit_manage', fallback: '申請審核管理', display: role === 'admin' },
                 { id: 'page-apply', icon: 'fas fa-paper-plane', i18nKey: 'menu_apply', fallback: '需求申請', display: role !== 'admin' },
+                { id: 'page-activity-log', icon: 'fas fa-history', i18nKey: 'menu_activity_log', fallback: '操作紀錄', display: role === 'admin' },
                 { id: 'page-config-manage', icon: 'fas fa-database', i18nKey: 'db_sync', fallback: '資料庫與同步', display: role === 'admin' }
             ];
             sysMenus.forEach(sm => {
