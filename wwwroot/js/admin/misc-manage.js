@@ -1,27 +1,40 @@
 // === admin/misc-manage.js - AppGrid + 需求申請 + 審核 + Excel 匯出 + 圖示工具 ===
 
-// === 拖曳全域輔助 (表格重新排序使用) ===
-function handleDragStart(e, id, parentId) {
-    if (e.target.closest('button') || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') { e.preventDefault(); return; }
-    dragSrcEl = e.target.closest('tr'); if (!dragSrcEl) return;
-    dragSrcId = id; dragSrcParentId = parentId;
-    e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', id);
-    setTimeout(() => { if (dragSrcEl) dragSrcEl.classList.add('dragging'); }, 0);
-}
-function handleDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; const tr = e.target.closest('tr'); if (tr && tr !== dragSrcEl && tr.classList.contains('draggable-row')) tr.classList.add('drag-over'); return false; }
-function handleDragLeave(e) { const tr = e.target.closest('tr'); if (tr) tr.classList.remove('drag-over'); }
-function handleDrop(e, targetId, targetParentId, mode) {
-    e.stopPropagation(); const tr = e.target.closest('tr'); if (tr) tr.classList.remove('drag-over');
-    if (dragSrcEl) dragSrcEl.classList.remove('dragging');
-    if (dragSrcId === targetId) return false;
+import { getAccounts, getAppItems, getCustomMenus, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings } from '../config.js?v=20260607k';
 
-    if (mode === 'system') reorderSystemMenu(dragSrcId, targetId, targetParentId);
-    else if (mode === 'webpage') reorderWebpageMenu(dragSrcId, targetId);
-    else if (mode === 'personal') reorderPersonalMenu(dragSrcId, targetId, targetParentId);
+
+import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260607k';
+import { batchSaveMenusAPI, deleteAppAPI, fetchInitialDataFromDB, saveAppAPI, syncDataToDB } from '../api.js?v=20260607k';
+import { initDashboardUI } from '../main.js?v=20260607k';
+import { renderSidebarMenus } from '../render/sidebar.js?v=20260607k';
+import { renderAppGrid, renderApplyTable, renderAuditTable, renderMenuConfigTable, renderPersonalMenuManage, renderWebpageTable } from '../render/tables.js?v=20260607k';
+import { customAlert, customConfirm, updateSyncButtonUI } from '../ui/dialogs.js?v=20260607k';
+import { navTo } from '../ui/navigation.js?v=20260607k';
+import { appState } from '../store.js?v=20260607k';
+
+
+// === 拖曳全域輔助 (表格重新排序使用) ===
+export function handleDragStart(e, id, parentId) {
+    if (e.target.closest('button') || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') { e.preventDefault(); return; }
+    appState.dragSrcEl = e.target.closest('tr'); if (!appState.dragSrcEl) return;
+    appState.dragSrcId = id; appState.dragSrcParentId = parentId;
+    e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', id);
+    setTimeout(() => { if (appState.dragSrcEl) appState.dragSrcEl.classList.add('dragging'); }, 0);
+}
+export function handleDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; const tr = e.target.closest('tr'); if (tr && tr !== appState.dragSrcEl && tr.classList.contains('draggable-row')) tr.classList.add('drag-over'); return false; }
+export function handleDragLeave(e) { const tr = e.target.closest('tr'); if (tr) tr.classList.remove('drag-over'); }
+export function handleDrop(e, targetId, targetParentId, mode) {
+    e.stopPropagation(); const tr = e.target.closest('tr'); if (tr) tr.classList.remove('drag-over');
+    if (appState.dragSrcEl) appState.dragSrcEl.classList.remove('dragging');
+    if (appState.dragSrcId === targetId) return false;
+
+    if (mode === 'system') reorderSystemMenu(appState.dragSrcId, targetId, targetParentId);
+    else if (mode === 'webpage') reorderWebpageMenu(appState.dragSrcId, targetId);
+    else if (mode === 'personal') reorderPersonalMenu(appState.dragSrcId, targetId, targetParentId);
     return false;
 }
 
-function reorderSystemMenu(srcId, targetId, parentId) {
+export async function reorderSystemMenu(srcId, targetId, parentId) {
     const pId = (!parentId || parentId === 'null') ? null : parentId;
     let menus = getCustomMenus();
 
@@ -44,6 +57,7 @@ function reorderSystemMenu(srcId, targetId, parentId) {
     if (srcIdx > -1 && targetIdx > -1) {
         const [movedItem] = siblings.splice(srcIdx, 1);
         siblings.splice(targetIdx, 0, movedItem);
+        const affected = [];
         siblings.forEach((s, idx) => {
             const realMenu = menus.find(x => window.cleanId(x.id) === window.cleanId(s.id));
             if (realMenu) {
@@ -52,14 +66,25 @@ function reorderSystemMenu(srcId, targetId, parentId) {
                     if (!realMenu.parentOrders) realMenu.parentOrders = {};
                     realMenu.parentOrders[pId] = idx * 10;
                 }
+                affected.push(realMenu);
             }
         });
 
-        // 異動立即靜默同步到 DB（一般操作不需手動觸發）
-        if (typeof syncDataToDB === 'function') syncDataToDB();
-
+        // ⭐️ H1 修復：系統版面是「全域共用」設定，拖曳順序只送「異動的看板」走 batch API。
+        //    禁止再呼叫 syncDataToDB() 全量覆寫 —— 那會用 admin 過時的 localStorage 快照
+        //    把整張 PersonalSettings 表洗掉，導致其他人同時間調整的個人版面遺失。
+        //    BatchUpdateMenus 會從 dto 重建 SortOrder 與（admin）ACL，故黑白名單完整保留。
+        // 樂觀渲染：先呈現新順序，失敗再重抓 DB 回滾。
         if (typeof renderMenuConfigTable === 'function') renderMenuConfigTable();
         if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
+
+        const result = await batchSaveMenusAPI(affected);
+        if (!result || !result.success) {
+            if (typeof customAlert === 'function') customAlert('儲存看板順序失敗，已還原為伺服器最新狀態');
+            await fetchInitialDataFromDB();
+            if (typeof renderMenuConfigTable === 'function') renderMenuConfigTable();
+            if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
+        }
     }
 }
 
@@ -95,7 +120,7 @@ window.updatePersonalSaveButton = function () {
         if (discardBtn) discardBtn.classList.remove('d-none');
         // 簡單計算「待儲存改動數」= pending 中跟 localStorage 不同的 order 欄位數
         try {
-            const saved = getPersonalSettings(currentUser?.id || '');
+            const saved = getPersonalSettings(appState.currentUser?.id || '');
             const pending = window._personalPendingPSets || {};
             let diff = 0;
             const keys = new Set([...Object.keys(saved), ...Object.keys(pending)]);
@@ -112,11 +137,11 @@ window.updatePersonalSaveButton = function () {
     }
 };
 
-function reorderPersonalMenu(srcId, targetId, parentId) {
+export function reorderPersonalMenu(srcId, targetId, parentId) {
     const pId = (!parentId || parentId === 'null' || parentId === '') ? null : parentId;
 
     // 從 effective (pending 或 localStorage) 起手，深拷一份避免污染
-    const basePSets = window.getEffectivePersonalSettings(currentUser.id);
+    const basePSets = window.getEffectivePersonalSettings(appState.currentUser.id);
     let pSets = JSON.parse(JSON.stringify(basePSets));
     let menus = getCustomMenus();
 
@@ -165,10 +190,10 @@ window.commitPersonalPendingOrder = async function () {
     if (!window._personalPendingDirty || !window._personalPendingPSets) return;
     const pSets = window._personalPendingPSets;
 
-    try {
-        await savePersonalSettings(currentUser.id, pSets);
-    } catch (e) {
-        console.error('儲存個人版面順序失敗', e);
+    // ⭐️ H2 修復：savePersonalSettings 現在回傳成功/失敗（不再 throw）。
+    //    DB 寫入失敗時保留 pending、提示使用者，避免假報成功又清掉未存的拖曳。
+    const ok = await savePersonalSettings(appState.currentUser.id, pSets);
+    if (!ok) {
         if (typeof customAlert === 'function') customAlert('儲存失敗，請稍後再試');
         return;
     }
@@ -201,56 +226,50 @@ window.discardPersonalPendingOrder = function () {
     }
 };
 
-async function reorderWebpageMenu(srcId, targetId) {
+export async function reorderWebpageMenu(srcId, targetId) {
     let menus = getCustomMenus();
     const srcIdx = menus.findIndex(m => window.cleanId(m.id) === window.cleanId(srcId));
     const targetIdx = menus.findIndex(m => window.cleanId(m.id) === window.cleanId(targetId));
     if (srcIdx > -1 && targetIdx > -1) {
+        // 拖曳前先快照各看板的舊 order，事後只送真正異動的看板
+        const oldOrderMap = new Map(menus.map(m => [m.id, m.order]));
+
         const [movedItem] = menus.splice(srcIdx, 1);
         menus.splice(targetIdx, 0, movedItem);
         menus.forEach((m, idx) => m.order = idx * 10);
 
-        // 異動立即靜默同步到 DB（一般操作不需手動觸發）
-        if (typeof syncDataToDB === 'function') syncDataToDB();
+        const affected = menus.filter(m => oldOrderMap.get(m.id) !== m.order);
 
+        // ⭐️ H1 修復：同系統版面，只送異動看板走 batch API，不再 syncDataToDB() 全量覆寫
+        //    （避免用過時 localStorage 洗掉所有人的 PersonalSettings）。
+        // 樂觀渲染：先呈現新順序，失敗再重抓 DB 回滾。
         if (typeof renderWebpageTable === 'function') renderWebpageTable();
         if (typeof renderMenuConfigTable === 'function') renderMenuConfigTable();
         if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
+
+        if (affected.length > 0) {
+            const result = await batchSaveMenusAPI(affected);
+            if (!result || !result.success) {
+                if (typeof customAlert === 'function') customAlert('儲存看板順序失敗，已還原為伺服器最新狀態');
+                await fetchInitialDataFromDB();
+                if (typeof renderWebpageTable === 'function') renderWebpageTable();
+                if (typeof renderMenuConfigTable === 'function') renderMenuConfigTable();
+                if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
+            }
+        }
     }
-}
-
-function rmDragStart(e, id) { rmDragSrcId = id; rmDragSrcEl = e.target.closest('.role-menu-item'); e.dataTransfer.effectAllowed = 'move'; setTimeout(() => { if (rmDragSrcEl) rmDragSrcEl.classList.add('dragging'); }, 0); }
-function rmDragOver(e) { e.preventDefault(); const item = e.target.closest('.role-menu-item'); if (item && item !== rmDragSrcEl) item.style.borderLeft = '4px solid #dc3545'; }
-function rmDragLeave(e) { const item = e.target.closest('.role-menu-item'); if (item) item.style.borderLeft = ''; }
-function rmDrop(e, targetId) {
-    e.preventDefault(); e.stopPropagation();
-    document.querySelectorAll('.role-menu-item').forEach(el => { el.classList.remove('dragging'); el.style.borderLeft = ''; });
-    if (!rmDragSrcId || rmDragSrcId === targetId) return;
-
-    const container = document.getElementById('roleMenuCheckboxes');
-    const items = Array.from(container.children);
-    const srcEl = items.find(el => window.cleanId(el.querySelector('.role-menu-cb').value) === window.cleanId(rmDragSrcId));
-    const targetEl = items.find(el => window.cleanId(el.querySelector('.role-menu-cb').value) === window.cleanId(targetId));
-
-    if (srcEl && targetEl) {
-        const srcIdx = items.indexOf(srcEl);
-        const tgtIdx = items.indexOf(targetEl);
-        if (srcIdx < tgtIdx) targetEl.after(srcEl);
-        else targetEl.before(srcEl);
-    }
-    rmDragSrcId = null;
 }
 
 // === App Grid ===
-function openAppGridPage(menuId, title, element) {
-    currentAppGridMenuId = menuId;
+export function openAppGridPage(menuId, title, element) {
+    appState.currentAppGridMenuId = menuId;
     document.getElementById('app-grid-title').innerText = title || '應用集合';
     if (typeof navTo === 'function') navTo('page-app-grid', element, title);
     const apps = getAppItems().filter(a => window.cleanId(a.menuId) === window.cleanId(menuId));
     if (typeof renderAppGrid === 'function') renderAppGrid('app-grid-container', apps);
 }
 
-function openAppGridModal(id = null) {
+export function openAppGridModal(id = null) {
     try {
         document.getElementById('appForm').reset();
         document.getElementById('appIdInput').value = id || '';
@@ -273,7 +292,7 @@ function openAppGridModal(id = null) {
     } catch (e) { console.error("[openAppGridModal] 錯誤:", e); }
 }
 
-async function saveAppItem(e) {
+export async function saveAppItem(e) {
     // ⭐️ 核心防重整
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     else if (window.event && typeof window.event.preventDefault === 'function') window.event.preventDefault();
@@ -298,52 +317,48 @@ async function saveAppItem(e) {
             }
         } else {
             isNew = true;
-            appData = { id: 'app_' + Date.now(), menuId: currentAppGridMenuId, name: name, url: url, target: target, iconBase64: finalIcon };
+            appData = { id: 'app_' + Date.now(), menuId: appState.currentAppGridMenuId, name: name, url: url, target: target, iconBase64: finalIcon };
             apps.push(appData);
         }
 
-        if (typeof saveAppAPI === 'function' && appData) {
+        // App 一律走 RESTful saveAppAPI（靜態 import，必為 function）；不再有 syncDataToDB 全量覆寫後備。
+        if (appData) {
             let result = await saveAppAPI(isNew, appData);
             if (!result.success) {
                 if (typeof customAlert === 'function') customAlert("儲存失敗: " + result.message);
                 else alert("儲存失敗: " + result.message);
                 return false;
             }
-        } else if (typeof syncDataToDB === 'function') {
-            syncDataToDB();
         }
 
         hideModalSafely('appGridModal');
-        if (currentAppGridMenuId && typeof renderAppGrid === 'function') renderAppGrid('app-grid-container', getAppItems().filter(a => window.cleanId(a.menuId) === window.cleanId(currentAppGridMenuId)));
+        if (appState.currentAppGridMenuId && typeof renderAppGrid === 'function') renderAppGrid('app-grid-container', getAppItems().filter(a => window.cleanId(a.menuId) === window.cleanId(appState.currentAppGridMenuId)));
 
     } catch (error) { console.error("[saveAppItem] 錯誤:", error); }
     return false;
 
 }
 
-function deleteAppItem(id) {
+export function deleteAppItem(id) {
     try {
         customConfirm('確定要刪除此 APP 嗎？', async () => {
             let apps = getAppItems().filter(a => window.cleanId(a.id) !== window.cleanId(id));
             window.appState.apps = apps;
 
-            if (typeof deleteAppAPI === 'function') {
-                let result = await deleteAppAPI(id);
-                if (!result.success) {
-                    if (typeof customAlert === 'function') customAlert("刪除失敗: " + result.message);
-                    else alert("刪除失敗: " + result.message);
-                    return false;
-                }
-            } else if (typeof syncDataToDB === 'function') {
-                syncDataToDB();
+            // App 刪除一律走 RESTful deleteAppAPI（靜態 import，必為 function）；不再有 syncDataToDB 後備。
+            let result = await deleteAppAPI(id);
+            if (!result.success) {
+                if (typeof customAlert === 'function') customAlert("刪除失敗: " + result.message);
+                else alert("刪除失敗: " + result.message);
+                return false;
             }
 
-            if (currentAppGridMenuId && typeof renderAppGrid === 'function') renderAppGrid('app-grid-container', apps.filter(a => window.cleanId(a.menuId) === window.cleanId(currentAppGridMenuId)));
+            if (appState.currentAppGridMenuId && typeof renderAppGrid === 'function') renderAppGrid('app-grid-container', apps.filter(a => window.cleanId(a.menuId) === window.cleanId(appState.currentAppGridMenuId)));
         });
     } catch (e) { console.error("[deleteAppItem] 錯誤:", e); }
 }
 
-function handleAppIconUpload(e) {
+export function handleAppIconUpload(e) {
     const file = e.target.files[0];
     if (file) {
         compressImageFile(file, function (base64Str) {
@@ -360,7 +375,7 @@ function handleAppIconUpload(e) {
 }
 
 // === Apply & Audit 申請與審核 ===
-function openApplyModal(id = null) {
+export function openApplyModal(id = null) {
     try {
         const reasonInput = document.getElementById('applyReason');
         const idInput = document.getElementById('applyReqId');
@@ -384,7 +399,7 @@ function openApplyModal(id = null) {
     } catch (e) { console.error("[openApplyModal] 錯誤:", e); }
 }
 
-async function submitApplyItem(e) {
+export async function submitApplyItem(e) {
     // ⭐️ 核心防重整
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     else if (window.event && typeof window.event.preventDefault === 'function') window.event.preventDefault();
@@ -438,7 +453,7 @@ window.deleteApplyItem = function (id) {
     });
 };
 
-function withdrawApply(id) {
+export function withdrawApply(id) {
     try {
         document.getElementById('withdrawReqId').value = id;
         document.getElementById('withdrawReason').value = '';
@@ -446,7 +461,7 @@ function withdrawApply(id) {
     } catch (e) { console.error("[withdrawApply] 錯誤:", e); }
 }
 
-async function submitWithdrawItem(e) {
+export async function submitWithdrawItem(e) {
     // ⭐️ 核心防重整
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     else if (window.event && typeof window.event.preventDefault === 'function') window.event.preventDefault();
@@ -469,7 +484,7 @@ async function submitWithdrawItem(e) {
     return false;
 }
 
-function openAuditModal(id) {
+export function openAuditModal(id) {
     try {
         const r = getRequests().find(x => window.cleanId(x.id) === window.cleanId(id));
         if (!r) { console.error("找不到對應的申請資料 (ID: " + id + ")"); return; }
@@ -494,7 +509,7 @@ function openAuditModal(id) {
     } catch (e) { console.error("[openAuditModal] 錯誤:", e); }
 }
 
-async function saveAuditItem(e) {
+export async function saveAuditItem(e) {
     // ⭐️ 核心防重整
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     else if (window.event && typeof window.event.preventDefault === 'function') window.event.preventDefault();
@@ -521,7 +536,7 @@ async function saveAuditItem(e) {
 }
 
 // === Excel 匯出備份（對齊 TEST_20260429.html:2186-2259）===
-function createWorkbookData() {
+export function createWorkbookData() {
     if (typeof XLSX === 'undefined') { customAlert('SheetJS 套件未載入'); return null; }
     const wb = XLSX.utils.book_new();
 
@@ -584,18 +599,42 @@ function createWorkbookData() {
     let mapAccDefPage = []; accs.forEach(a => { if (a.defaultPages) { for (let fab in a.defaultPages) { mapAccDefPage.push({ EmpId: a.empId, FabId: fab, MenuId: a.defaultPages[fab] }); } } });
     appendSafeData(mapAccDefPage.length ? mapAccDefPage : [{ EmpId: '', FabId: '', MenuId: '' }], "Map_Account_DefaultPage");
 
-    let pSettings = []; accs.forEach(a => {
-        let pSet = getPersonalSettings(a.empId);
-        if (pSet) for (let mId in pSet) {
-            pSettings.push({ EmpId: a.empId, MenuId: mId, IsHidden: pSet[mId].hidden === true, OpenTarget: pSet[mId].target || '', Icon: pSet[mId].icon || '', SortOrder: pSet[mId].order !== undefined ? pSet[mId].order : '' });
-        }
-    });
-    appendSafeData(pSettings.length ? pSettings : [{ EmpId: '', MenuId: '', IsHidden: '', OpenTarget: '', Icon: '', SortOrder: '' }], "PersonalSettings");
+    // ⚠️ 不再匯出 PersonalSettings sheet：自訂版面已是 per-user RESTful-only（/api/PersonalSettings），
+    //    不在 Excel 全量覆寫的 round-trip 內 —— 匯入端 processAndSaveWorkbook 也從不讀此 sheet。
+    //    O3 後 localStorage 只快取登入者自己一份，硬匯出只會得到「殘缺＋無法還原」的 admin 個人版面，
+    //    純屬誤導，故移除。個人版面備份/還原請走 DB（PersonalSettings 表）。
 
     return wb;
 }
 
-function exportConfig() {
+// admin 從 SSMS 直接改 DB 後，按這顆讓後端立刻清掉 InitialData 60 秒快取
+//   實際刷新 = 清快取 + 強制 fetchInitialDataFromDB() 重新拉，appState 立刻換成 DB 最新值
+export async function refreshServerCache() {
+    if (!appState.currentUser || String(appState.currentUser.roleLevel || '').toLowerCase() !== 'admin') {
+        if (typeof customAlert === 'function') customAlert('僅管理員可執行此操作');
+        return;
+    }
+    try {
+        const resp = await fetch('/Settings/RefreshCache', { method: 'POST' });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+        if (!data.success) throw new Error(data.message || '後端拒絕');
+
+        // 立刻重抓最新資料 + 重渲染（不需要使用者手動 F5）
+        if (typeof window.fetchInitialDataFromDB === 'function') {
+            await window.fetchInitialDataFromDB();
+        }
+        if (typeof initDashboardUI === 'function') initDashboardUI();
+        if (typeof customAlert === 'function') {
+            customAlert('已清空快取並重新載入。<br><span class="small text-muted">⚠️ 若改了 RoleLevel，使用者需登出再登入才會生效。</span>', true);
+        }
+    } catch (e) {
+        if (typeof customAlert === 'function') customAlert('清快取失敗：' + (e.message || e));
+    }
+}
+window.refreshServerCache = refreshServerCache;
+
+export function exportConfig() {
     try {
         const wb = createWorkbookData();
         if (!wb) return;
@@ -609,20 +648,21 @@ window.exportConfig = exportConfig;
 window.createWorkbookData = createWorkbookData;
 
 // === Icon Helpers ===
-function handleIconSelectChange(prefix) {
+export function handleIconSelectChange(prefix) {
     const sel = document.getElementById(prefix + 'Icon');
     const fileInput = document.getElementById(prefix + 'IconFile');
     if (sel.value === 'custom') { fileInput.style.display = 'block'; } else { fileInput.style.display = 'none'; }
 }
 
-function getSelectedIconVal(prefix) {
+export function getSelectedIconVal(prefix) {
     let val = document.getElementById(prefix + 'Icon').value;
     if (val === 'custom') { return document.getElementById(prefix + 'CustomIconBase64').value || ''; }
     return val;
 }
 
-function setIconValToModal(prefix, iconVal) {
-    if (iconVal && (iconVal.startsWith('data:image') || iconVal.startsWith('icon/'))) {
+export function setIconValToModal(prefix, iconVal) {
+    // 自訂圖（custom）= data: URI（剛上傳）或任何含 '/' 的路徑（/images/icons/... 實體檔、舊 icon/...）；FA class 永不含 '/'
+    if (iconVal && (iconVal.startsWith('data:') || iconVal.includes('/'))) {
         document.getElementById(prefix + 'Icon').value = 'custom';
         document.getElementById(prefix + 'IconFile').style.display = 'block';
         document.getElementById(prefix + 'CustomIconBase64').value = iconVal;
@@ -633,7 +673,7 @@ function setIconValToModal(prefix, iconVal) {
     }
 }
 
-function compressImageFile(file, callback) {
+export function compressImageFile(file, callback) {
     const reader = new FileReader();
     reader.onload = function (e) {
         const img = new Image();
@@ -654,10 +694,19 @@ function compressImageFile(file, callback) {
 }
 
 // === Excel 手動匯入與解析 ===
-async function importConfig() {
+export async function importConfig() {
     const fileInput = document.getElementById('configFile'); const file = fileInput.files[0];
     if (!file) return customAlert("請先選擇 Excel 檔案！");
-    
+
+    // ⚠️ O-extra：Excel 匯入會以檔案內容「全量覆寫」DB（DELETE→INSERT 大部分資料表），
+    //    為不可逆的破壞性操作，匯入前必須二次確認，避免誤點。
+    customConfirm('匯入 Excel 會以檔案內容「全量覆寫」資料庫設定（看板、廠區、角色、帳號等），此動作無法復原。確定要繼續嗎？', () => {
+        runImportConfig(fileInput, file);
+    });
+}
+
+// 實際執行匯入流程（已通過二次確認後才呼叫）
+function runImportConfig(fileInput, file) {
     // 立即顯示載入中遮罩，防止 UI 卡死
     let loadingOverlay = document.getElementById('importLoadingOverlay');
     if (!loadingOverlay) {
@@ -684,9 +733,20 @@ async function importConfig() {
                 fileInput.value = '';
                 if(loadingOverlay) loadingOverlay.remove();
                 
-                // 匯入完畢後，提示並重新整理以載入最新資料
-                customAlert("匯入成功！系統即將重新載入。");
-                setTimeout(() => { location.reload(); }, 1500);
+                // 匯入完畢後，提示並在背景重新載入最新資料，避免畫面閃爍
+                customAlert("匯入成功！系統即將無縫載入新資料。");
+                setTimeout(async () => {
+                    try {
+                        if (typeof window.fetchInitialDataFromDB === 'function') {
+                            await window.fetchInitialDataFromDB();
+                            if (typeof window.initDashboardUI === 'function') window.initDashboardUI(true);
+                        } else {
+                            location.reload();
+                        }
+                    } catch (e) {
+                        location.reload();
+                    }
+                }, 1000);
             } catch (err) {
                 console.error(err);
                 if(loadingOverlay) loadingOverlay.remove();
@@ -697,10 +757,12 @@ async function importConfig() {
     }, 50);
 }
 
-async function processAndSaveWorkbook(workbook, isManualImport = false) {
+export async function processAndSaveWorkbook(workbook, isManualImport = false) {
     const getSheetData = (sheetName) => {
         if (!workbook.Sheets[sheetName]) return [];
-        return XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
+        // 移除 defval: '' 以避免 SheetJS 強制輸出數百萬筆幽靈空列，並進一步過濾全空列
+        const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+        return rows.filter(row => Object.values(row).some(v => v !== null && v !== undefined && String(v).trim() !== ''));
     };
 
     const rawMenus = getSheetData("Menus"); const rawFabs = getSheetData("Fabs"); const rawRoles = getSheetData("Roles");
@@ -802,15 +864,46 @@ async function processAndSaveWorkbook(workbook, isManualImport = false) {
     }
 
     if (isManualImport) {
-        hasUnsavedChanges = false;
+        appState.hasUnsavedChanges = false;
         if (typeof updateSyncButtonUI === 'function') updateSyncButtonUI();
 
         if (typeof syncDataToDB === 'function') {
             await syncDataToDB(true); // Excel 匯入時要顯示 loading 與完成訊息
-            if (typeof initDashboardUI === 'function') initDashboardUI();
+            if (typeof initDashboardUI === 'function') initDashboardUI(true);
         }
     } else {
-        hasUnsavedChanges = false;
+        appState.hasUnsavedChanges = false;
         if (typeof updateSyncButtonUI === 'function') updateSyncButtonUI();
     }
 }
+
+// Expose for HTML inline handlers
+window.handleDragStart = handleDragStart;
+window.handleDragOver = handleDragOver;
+window.handleDragLeave = handleDragLeave;
+window.handleDrop = handleDrop;
+window.reorderSystemMenu = reorderSystemMenu;
+window.reorderPersonalMenu = reorderPersonalMenu;
+window.reorderWebpageMenu = reorderWebpageMenu;
+// removed dup
+window.openAppGridPage = openAppGridPage;
+window.openAppGridModal = openAppGridModal;
+window.saveAppItem = saveAppItem;
+window.deleteAppItem = deleteAppItem;
+window.handleAppIconUpload = handleAppIconUpload;
+window.openApplyModal = openApplyModal;
+window.submitApplyItem = submitApplyItem;
+window.withdrawApply = withdrawApply;
+window.submitWithdrawItem = submitWithdrawItem;
+window.openAuditModal = openAuditModal;
+window.saveAuditItem = saveAuditItem;
+window.createWorkbookData = createWorkbookData;
+window.refreshServerCache = refreshServerCache;
+window.exportConfig = exportConfig;
+window.handleIconSelectChange = handleIconSelectChange;
+window.getSelectedIconVal = getSelectedIconVal;
+window.setIconValToModal = setIconValToModal;
+window.compressImageFile = compressImageFile;
+window.importConfig = importConfig;
+window.processAndSaveWorkbook = processAndSaveWorkbook;
+

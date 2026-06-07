@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using EQDashboard.V2.Web.Data;
+using EQDashboard.V2.Web.Helpers;
 using EQDashboard.V2.Web.Models;
 using EQDashboard.V2.Web.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
@@ -10,11 +11,13 @@ public class ActivityLogger : IActivityLogger
 {
     private readonly AppDbContext _context;
     private readonly ILogger<ActivityLogger> _logger;
+    private readonly IActivityLogQueue? _queue;
 
-    public ActivityLogger(AppDbContext context, ILogger<ActivityLogger> logger)
+    public ActivityLogger(AppDbContext context, ILogger<ActivityLogger> logger, IActivityLogQueue? queue = null)
     {
         _context = context;
         _logger = logger;
+        _queue = queue;
     }
 
     public async Task LogAsync(UserActivityLog log)
@@ -30,8 +33,15 @@ public class ActivityLogger : IActivityLogger
 
             if (log.Timestamp == default) log.Timestamp = DateTime.UtcNow;
 
-            _context.UserActivityLogs.Add(log);
-            await _context.SaveChangesAsync();
+            if (_queue != null)
+            {
+                await _queue.QueueLogAsync(log);
+            }
+            else
+            {
+                _context.UserActivityLogs.Add(log);
+                await _context.SaveChangesAsync();
+            }
         }
         catch (Exception ex)
         {
@@ -47,7 +57,7 @@ public class ActivityLogger : IActivityLogger
             EmpId = empId,
             EmpName = empName,
             LoginSource = loginSource,
-            IpAddress = GetClientIp(ctx),
+            IpAddress = ClientIpHelper.GetClientIp(ctx),
             UserAgent = ctx.Request.Headers.UserAgent.ToString(),
             HttpMethod = ctx.Request.Method,
             Path = ctx.Request.Path.Value,
@@ -66,7 +76,7 @@ public class ActivityLogger : IActivityLogger
         {
             EmpId = empId,
             EmpName = empName,
-            IpAddress = GetClientIp(ctx),
+            IpAddress = ClientIpHelper.GetClientIp(ctx),
             UserAgent = ctx.Request.Headers.UserAgent.ToString(),
             HttpMethod = ctx.Request.Method,
             Path = ctx.Request.Path.Value,
@@ -83,7 +93,7 @@ public class ActivityLogger : IActivityLogger
             EmpId = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier),
             EmpName = ctx.User.FindFirstValue(ClaimTypes.Name),
             LoginSource = ctx.User.FindFirst("LoginSource")?.Value,
-            IpAddress = GetClientIp(ctx),
+            IpAddress = ClientIpHelper.GetClientIp(ctx),
             UserAgent = ctx.Request.Headers.UserAgent.ToString(),
             HttpMethod = ctx.Request.Method,
             Path = ctx.Request.Path.Value,
@@ -104,7 +114,7 @@ public class ActivityLogger : IActivityLogger
             EmpId = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier),
             EmpName = ctx.User.FindFirstValue(ClaimTypes.Name),
             LoginSource = ctx.User.FindFirst("LoginSource")?.Value,
-            IpAddress = GetClientIp(ctx),
+            IpAddress = ClientIpHelper.GetClientIp(ctx),
             UserAgent = ctx.Request.Headers.UserAgent.ToString(),
             HttpMethod = ctx.Request.Method,
             Path = ctx.Request.Path.Value,
@@ -170,21 +180,6 @@ public class ActivityLogger : IActivityLogger
         if (days < 1) days = 1;
         var cutoff = DateTime.UtcNow.AddDays(-days);
         return await _context.UserActivityLogs.Where(l => l.Timestamp < cutoff).ExecuteDeleteAsync();
-    }
-
-    /// <summary>
-    /// 取真實 client IP。in-proc IIS 下 RemoteIpAddress 通常就是真實 IP；
-    /// 若前面有反向代理 (ARR/Nginx)，會帶 X-Forwarded-For，這裡優先用第一個非空值。
-    /// </summary>
-    private static string? GetClientIp(HttpContext ctx)
-    {
-        var xff = ctx.Request.Headers["X-Forwarded-For"].ToString();
-        if (!string.IsNullOrWhiteSpace(xff))
-        {
-            var first = xff.Split(',')[0].Trim();
-            if (!string.IsNullOrEmpty(first)) return first;
-        }
-        return ctx.Connection.RemoteIpAddress?.ToString();
     }
 
     private static string? Truncate(string? s, int max)

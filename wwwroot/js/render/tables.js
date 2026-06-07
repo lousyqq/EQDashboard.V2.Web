@@ -1,13 +1,18 @@
 // === render/tables.js - 管理表格渲染 (Fab, Role, Account, Webpage, MenuConfig, Apply, Audit, AppGrid) ===
-window.escapeHTML = function(str) {
-    if (!str && str !== 0) return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-};
+
+import { getAccounts, getCustomMenus, getDataTableLang, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings, t } from '../config.js?v=20260607k';
+
+
+import { deleteAccount, editAccount } from '../admin/account-manage.js?v=20260607k';
+import { deleteFab, editFab } from '../admin/fab-manage.js?v=20260607k';
+import { deleteMenuNodeItem, deleteWebpageItem, editPersonalMenu, openAddMenuNodeModal, openAddWebpageModal } from '../admin/menu-manage.js?v=20260607k';
+import { handleDragLeave, handleDragOver, handleDragStart, handleDrop, openAuditModal, withdrawApply } from '../admin/misc-manage.js?v=20260607k';
+import { deleteRole, editRole } from '../admin/role-manage.js?v=20260607k';
+import { initDataTable, renderSidebarMenus, safeDestroyDataTable } from './sidebar.js?v=20260607k';
+import { generateIconHtml } from '../ui/dialogs.js?v=20260607k';
+import { getFullMenuPathStr } from '../ui/navigation.js?v=20260607k';
+import { appState } from '../store.js?v=20260607k';
+
 
 // ⚠️ Stored XSS 防護：判斷 URL 是否安全到可以放進 href 或 window.open。
 //   escapeHTML 只擋 HTML entity、不擋 URL scheme — `javascript:alert(...)` 通過 escapeHTML 後仍會在點擊時執行。
@@ -25,7 +30,7 @@ window.safeExternalUrl = function(url) {
     }
     return '#';
 };
-function renderPersonalMenuManage() {
+export function renderPersonalMenuManage() {
     try {
         if (typeof $ !== 'undefined' && $.fn && $.fn.DataTable && $.fn.DataTable.isDataTable('#dtPersonalMenu')) {
             $('#dtPersonalMenu').DataTable().destroy();
@@ -34,19 +39,17 @@ function renderPersonalMenuManage() {
         const tbody = document.getElementById('personalMenuTableBody');
         if (!tbody) return;
         tbody.innerHTML = '';
-        if (!currentUser) return;
+        if (!appState.currentUser) return;
 
         const fabs = getFabs();
-        const currentFabObj = fabs.find(f => window.cleanId(f.fabName || f.FabName) === window.cleanId(currentFab));
+        const currentFabObj = fabs.find(f => window.cleanId(f.fabName || f.FabName) === window.cleanId(appState.currentFab));
         if (!currentFabObj) return;
 
         const roles = getRoles();
         const menusData = getCustomMenus();
         const fabRoleIds = currentFabObj.assignedRoles || currentFabObj.AssignedRoles || [];
-        const userRoleIds = currentUser.assignedRoles || currentUser.AssignedRoles || [];
-        const activeRoleIds = (currentUser.roleLevel === 'admin')
-            ? fabRoleIds
-            : fabRoleIds.filter(id => userRoleIds.some(uId => window.cleanId(uId) === window.cleanId(id)));
+        const userRoleIds = appState.currentUser.assignedRoles || appState.currentUser.AssignedRoles || [];
+        const activeRoleIds = fabRoleIds.filter(id => userRoleIds.some(uId => window.cleanId(uId) === window.cleanId(id)));
 
         let initialMenuIds = [];
         activeRoleIds.forEach(roleId => {
@@ -58,12 +61,39 @@ function renderPersonalMenuManage() {
 
         let allowedIds = window.getAllowedIdsWithHierarchy(menusData, initialMenuIds);
         let menus = JSON.parse(JSON.stringify(menusData)).filter(m => allowedIds.has(m.id) && m.enabled !== false);
-        // 用 effective 版本：有 pending 拖曳變更時走 pending、沒有才退回 localStorage
+        
+        // 取得有效設定 (包含 pending) 或從 localStorage 取回
         let pSets = (typeof window.getEffectivePersonalSettings === 'function')
-            ? window.getEffectivePersonalSettings(currentUser.id)
-            : getPersonalSettings(currentUser.id);
+            ? window.getEffectivePersonalSettings(appState.currentUser.id)
+            : getPersonalSettings(appState.currentUser.id);
+            
+        // 為了讓「還原預設版面」的順序能和「系統版面」的上方導覽列順序一模一樣，需要算出系統版面的預設排序
+        const dedupedInitIds = [...new Set(initialMenuIds.map(id => window.cleanId(id)))];
+        
         menus.forEach(m => {
-            m.order = (pSets[m.id] && pSets[m.id].order != null) ? pSets[m.id].order : (m.order || 999);
+            if (pSets[m.id] && pSets[m.id].order != null) {
+                m.order = pSets[m.id].order;
+            } else {
+                // 若無個人排序，則 fallback 到系統版面的邏輯
+                let hasValidParent = menus.some(pNode => pNode.id !== m.id && (window.isParentMatch(m.parentId, pNode) || (m.parentIds || []).some(pid => window.isParentMatch(pid, pNode))));
+                if (!hasValidParent) {
+                    // Root menu (上方導覽列)：依照角色權限陣列中的出現順序 (dedupedInitIds)
+                    const idx = dedupedInitIds.indexOf(window.cleanId(m.id));
+                    m.order = idx === -1 ? 9999 : idx;
+                } else {
+                    // 子選單：依照其掛載父節點時所給予的 parentOrders
+                    let defaultChildOrder = m.order || 999;
+                    if (m.parentId && m.parentOrders && m.parentOrders[m.parentId] != null) {
+                        defaultChildOrder = m.parentOrders[m.parentId];
+                    } else if (m.parentIds && m.parentIds.length > 0 && m.parentOrders) {
+                        const firstValidParent = m.parentIds.find(pid => menus.some(pNode => window.cleanId(pNode.id) === window.cleanId(pid)));
+                        if (firstValidParent && m.parentOrders[firstValidParent] != null) {
+                            defaultChildOrder = m.parentOrders[firstValidParent];
+                        }
+                    }
+                    m.order = defaultChildOrder;
+                }
+            }
         });
         menus.sort((a, b) => a.order - b.order);
 
@@ -77,7 +107,7 @@ function renderPersonalMenuManage() {
             const pad = level === 0 ? 'ps-3' : (level === 1 ? 'ps-5' : 'ps-5 ms-3');
             const children = menus.filter(m => m.parentId === menu.id || (m.parentIds && m.parentIds.includes(menu.id)));
             const hasChildren = children.length > 0;
-            const isExpanded = expandedPerMenuIds.has(menu.id);
+            const isExpanded = appState.expandedPerMenuIds.has(menu.id);
 
             const expandBtn = (level === 0 && hasChildren)
                 ? `<span ${noDrag}><button type="button" onclick="togglePerMenuRow('${menu.id}')" class="chevron-btn text-secondary me-2 border-0 bg-transparent"><i class="fas fa-chevron-${isExpanded ? 'down' : 'right'}"></i></button></span>`
@@ -101,8 +131,8 @@ function renderPersonalMenuManage() {
             const levelMap = { 0: '主選單', 1: '子選單', 2: '次子選單' };
 
             let dName = menu.displayName || menu.name || '未命名選單';
-            if (typeof i18n !== 'undefined' && i18n[currentLang] && i18n[currentLang]['dyn_' + menu.id] && !menu.isEdited) {
-                dName = i18n[currentLang]['dyn_' + menu.id];
+            if (typeof i18n !== 'undefined' && i18n[appState.currentLang] && i18n[appState.currentLang]['dyn_' + menu.id] && !menu.isEdited) {
+                dName = i18n[appState.currentLang]['dyn_' + menu.id];
             }
             dName = window.escapeHTML(dName);
 
@@ -165,10 +195,10 @@ function renderPersonalMenuManage() {
                     pageLength: 10, lengthMenu: [10, 25, 50, 100],
                     ordering: false, autoWidth: false, stateSave: false
                 });
-                dtInstances['dtPersonalMenu'] = dt;
+                appState.dtInstances['dtPersonalMenu'] = dt;
 
                 // 3) 為已展開的主選單附加 child rows
-                expandedPerMenuIds.forEach(id => {
+                appState.expandedPerMenuIds.forEach(id => {
                     const tr = tbody.querySelector(`tr[data-menu-id="${id}"][data-level="0"]`);
                     if (!tr) return;
                     const row = dt.row(tr);
@@ -185,8 +215,8 @@ function renderPersonalMenuManage() {
 // 顯示/隱藏：寫 LocalStorage + 自動同步至 DB
 // ⚠️ 若此時有 pending 拖曳變更未儲存，這次的 hidden 切換也會合進 pending，
 //    避免使用者按下「儲存變更」時 pending 蓋回 localStorage、把剛切的 hidden 洗掉。
-window.togglePersonalProp = function (menuId, prop, value) {
-    let pSets = getPersonalSettings(currentUser.id);
+window.togglePersonalProp = async function (menuId, prop, value) {
+    let pSets = getPersonalSettings(appState.currentUser.id);
     if (!pSets[menuId]) pSets[menuId] = {};
     pSets[menuId][prop] = value;
 
@@ -196,29 +226,44 @@ window.togglePersonalProp = function (menuId, prop, value) {
         window._personalPendingPSets[menuId][prop] = value;
     }
 
-    savePersonalSettings(currentUser.id, pSets);
+    // ⭐️ H2 修復：偵測 DB 寫入失敗，避免假報成功；失敗則重抓 DB 還原。
+    const ok = await savePersonalSettings(appState.currentUser.id, pSets);
+    if (!ok) {
+        if (typeof window.customAlert === 'function') window.customAlert('儲存個人設定失敗，已還原為伺服器最新狀態');
+        if (typeof window.fetchInitialDataFromDB === 'function') await window.fetchInitialDataFromDB();
+        if (typeof renderPersonalMenuManage === 'function') renderPersonalMenuManage();
+        if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
+        return;
+    }
     if (typeof renderPersonalMenuManage === 'function') renderPersonalMenuManage();
     if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
 };
 
 // 個人模式下變更開啟方式（直接在表格的下拉變動即可）
-window.setPersonalTarget = function (menuId, target) {
-    let pSets = getPersonalSettings(currentUser.id);
+window.setPersonalTarget = async function (menuId, target) {
+    let pSets = getPersonalSettings(appState.currentUser.id);
     if (!pSets[menuId]) pSets[menuId] = {};
     pSets[menuId].target = target;
-    savePersonalSettings(currentUser.id, pSets);
+    // ⭐️ H2 修復：偵測 DB 寫入失敗，避免假報成功；失敗則重抓 DB 還原。
+    const ok = await savePersonalSettings(appState.currentUser.id, pSets);
+    if (!ok) {
+        if (typeof window.customAlert === 'function') window.customAlert('儲存個人設定失敗，已還原為伺服器最新狀態');
+        if (typeof window.fetchInitialDataFromDB === 'function') await window.fetchInitialDataFromDB();
+        if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
+        return;
+    }
     if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
 };
 
 // 列展開/收合（對齊舊版 togglePerMenuRow）
 window.togglePerMenuRow = function (menuId) {
-    if (expandedPerMenuIds.has(menuId)) expandedPerMenuIds.delete(menuId);
-    else expandedPerMenuIds.add(menuId);
-    isPerAllExpanded = false;
+    if (appState.expandedPerMenuIds.has(menuId)) appState.expandedPerMenuIds.delete(menuId);
+    else appState.expandedPerMenuIds.add(menuId);
+    appState.isPerAllExpanded = false;
     if (typeof renderPersonalMenuManage === 'function') renderPersonalMenuManage();
 };
 
-function renderFabTable() {
+export function renderFabTable() {
     safeDestroyDataTable('dtFab'); const tbody = document.getElementById('fabTableBody'); if (!tbody) return; tbody.innerHTML = '';
     const fabs = getFabs(); const roles = getRoles();
     let htmlBuffer = [];
@@ -240,7 +285,7 @@ function renderFabTable() {
     initDataTable('dtFab');
 }
 
-function renderRoleTable() {
+export function renderRoleTable() {
     safeDestroyDataTable('dtRole'); const tbody = document.getElementById('roleTableBody'); if (!tbody) return; tbody.innerHTML = '';
     const roles = getRoles(); const menus = getCustomMenus();
     let htmlBuffer = [];
@@ -259,7 +304,7 @@ function renderRoleTable() {
     initDataTable('dtRole');
 }
 
-function renderAccountTable() {
+export function renderAccountTable() {
     safeDestroyDataTable('dtAccount'); const tbody = document.getElementById('accTableBody'); if (!tbody) return; tbody.innerHTML = '';
     const accs = getAccounts(); const roles = getRoles(); const menus = getCustomMenus();
     let htmlBuffer = [];
@@ -289,7 +334,7 @@ function renderAccountTable() {
     initDataTable('dtAccount');
 }
 
-function renderWebpageTable() {
+export function renderWebpageTable() {
     safeDestroyDataTable('dtWebpage'); const tbody = document.getElementById('webpageTableBody'); if (!tbody) return; tbody.innerHTML = '';
     // 對齊 TEST_20260429.html:3800 — 只列出「池中項目 (isPoolItem === true)」，依 order 排序
     const menus = getCustomMenus()
@@ -361,7 +406,7 @@ function renderWebpageTable() {
     initDataTable('dtWebpage', true);
 }
 
-function renderMenuConfigTable() {
+export function renderMenuConfigTable() {
     safeDestroyDataTable('dtMenuConfig'); const tbody = document.getElementById('menuConfigTableBody'); if (!tbody) return; tbody.innerHTML = '';
     const menus = getCustomMenus();
     let roots = menus.filter(m => {
@@ -431,6 +476,7 @@ function renderMenuConfigTable() {
         //  選單配置管理不再透過拖曳改變全域順序（避免管理頁的暫時排序影響其他人）
         let sysNameHtml = `
             <div class="d-flex align-items-center">
+                <i class="fas fa-grip-vertical text-muted me-3" style="cursor: grab;" title="拖曳排序"></i>
                 <div>
                     <div class="fw-bold text-dark fs-6">${window.escapeHTML(m.displayName)}</div>
                     <div class="text-muted small">${window.escapeHTML(m.name)}</div>
@@ -438,7 +484,7 @@ function renderMenuConfigTable() {
             </div>`;
 
         htmlBuffer.push(`
-            <tr>
+            <tr class="draggable-row" draggable="true" ondragstart="handleDragStart(event, '${m.id}', null)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, '${m.id}', null, 'system')">
                 <td class="text-start ps-3 align-middle">${sysNameHtml}</td>
                 <td class="align-middle">${typeBadge}</td>
                 <td class="align-middle">${statusSwitch}</td>
@@ -451,10 +497,10 @@ function renderMenuConfigTable() {
     initDataTable('dtMenuConfig', true);
 }
 
-function renderApplyTable() {
+export function renderApplyTable() {
     safeDestroyDataTable('dtApply'); const tbody = document.getElementById('applyTableBody');
-    if (!tbody || !currentUser) return; tbody.innerHTML = '';
-    const reqs = getRequests().filter(r => (r.empId || r.EmpId) === currentUser.id).sort((a, b) => (b.timestamp || b.Timestamp) - (a.timestamp || a.Timestamp));
+    if (!tbody || !appState.currentUser) return; tbody.innerHTML = '';
+    const reqs = getRequests().filter(r => (r.empId || r.EmpId) === appState.currentUser.id).sort((a, b) => (b.timestamp || b.Timestamp) - (a.timestamp || a.Timestamp));
     const statusMap = { 'pending': '<span class="badge bg-secondary">待審核</span>', 'processing': '<span class="badge bg-primary">處理中</span>', 'resolved': '<span class="badge bg-success">已完成</span>', 'rejected': '<span class="badge bg-danger">已駁回</span>', 'withdrawn': '<span class="badge bg-dark">已撤回</span>' };
 
     let htmlBuffer = [];
@@ -485,7 +531,7 @@ function renderApplyTable() {
     initDataTable('dtApply', true);
 }
 
-function renderAuditTable() {
+export function renderAuditTable() {
     safeDestroyDataTable('dtAudit'); const tbody = document.getElementById('auditTableBody'); if (!tbody) return; tbody.innerHTML = '';
     const reqs = getRequests().sort((a, b) => (b.timestamp || b.Timestamp) - (a.timestamp || a.Timestamp));
     const statusMap = { 'pending': '<span class="badge bg-secondary">待審核</span>', 'processing': '<span class="badge bg-primary">處理中</span>', 'resolved': '<span class="badge bg-success">已完成</span>', 'rejected': '<span class="badge bg-danger">已駁回</span>', 'withdrawn': '<span class="badge bg-dark">已撤回</span>' };
@@ -513,7 +559,7 @@ function renderAuditTable() {
     initDataTable('dtAudit', true);
 }
 
-function renderAppGrid(containerId, appList) {
+export function renderAppGrid(containerId, appList) {
     const container = document.getElementById(containerId); if (!container) return; let html = '';
     appList.forEach(app => {
         const aName = window.escapeHTML(app.name || app.AppName);
@@ -552,3 +598,15 @@ window.renderFabRoleCheckboxes = function (selectedIds) {
     });
     container.innerHTML = htmlBuffer.join('');
 };
+
+// Expose for HTML inline handlers
+window.renderPersonalMenuManage = renderPersonalMenuManage;
+window.renderFabTable = renderFabTable;
+window.renderRoleTable = renderRoleTable;
+window.renderAccountTable = renderAccountTable;
+window.renderWebpageTable = renderWebpageTable;
+window.renderMenuConfigTable = renderMenuConfigTable;
+window.renderApplyTable = renderApplyTable;
+window.renderAuditTable = renderAuditTable;
+window.renderAppGrid = renderAppGrid;
+

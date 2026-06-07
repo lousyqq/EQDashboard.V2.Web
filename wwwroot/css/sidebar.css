@@ -33,6 +33,100 @@
     white-space: nowrap;
 }
 
+/* ⭐ 看板搜尋框（task a）：跨「目前可見看板」即時過濾 */
+.sidebar-search-box {
+    position: relative;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.sidebar-search-icon {
+    position: absolute;
+    left: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.75rem;
+    color: #94a3b8;
+    pointer-events: none;
+}
+
+.sidebar-search-input {
+    width: 100%;
+    padding: 6px 28px 6px 28px;
+    font-size: 0.78rem;
+    color: #0b1120;
+    background: #f8fafc;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+    .sidebar-search-input:focus {
+        border-color: var(--navbar-accent);
+        box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.18);
+        background: #fff;
+    }
+
+    .sidebar-search-input::placeholder {
+        color: #b6c0cc;
+    }
+
+.sidebar-search-clear {
+    position: absolute;
+    right: 18px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: #cbd5e1;
+    color: #fff;
+    border-radius: 50%;
+    font-size: 0.6rem;
+    cursor: pointer;
+    line-height: 1;
+}
+
+    .sidebar-search-clear:hover {
+        background: #94a3b8;
+    }
+
+/* 搜尋結果（扁平清單）容器 */
+#sidebar-search-results .sidebar-search-item {
+    align-items: flex-start;
+}
+
+.sidebar-search-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+}
+
+.sidebar-search-name {
+    line-height: 1.2;
+}
+
+.sidebar-search-crumb {
+    font-size: 0.62rem;
+    color: #94a3b8;
+    margin-top: 2px;
+    max-width: 100%;
+}
+
+.sidebar-search-empty {
+    padding: 16px;
+    text-align: center;
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+
 #sidebar {
     width: var(--sidebar-width);
     background: white;

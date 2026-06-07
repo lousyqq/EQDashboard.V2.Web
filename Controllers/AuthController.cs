@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using EQDashboard.V2.Web.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using EQDashboard.V2.Web.Models.Settings;
 
 namespace EQDashboard.V2.Web.Controllers;
 
@@ -16,20 +18,20 @@ namespace EQDashboard.V2.Web.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
-    private readonly IConfiguration _config;
+    private readonly AuthSettings _authSettings;
     private readonly ILogger<AuthController> _logger;
     private readonly EQDashboard.V2.Web.Data.AppDbContext _context;
     private readonly IActivityLogger _activityLogger;
 
     public AuthController(
         IAuthService authService,
-        IConfiguration config,
+        IOptionsSnapshot<AuthSettings> authOptions,
         ILogger<AuthController> logger,
         EQDashboard.V2.Web.Data.AppDbContext context,
         IActivityLogger activityLogger)
     {
         _authService = authService;
-        _config = config;
+        _authSettings = authOptions.Value;
         _logger = logger;
         _context = context;
         _activityLogger = activityLogger;
@@ -42,7 +44,7 @@ public class AuthController : ControllerBase
     [AllowAnonymous]
     public IActionResult GetConfig()
     {
-        var allowManual = _config.GetValue<bool>("Auth:AllowManualLogin", true);
+        var allowManual = _authSettings.AllowManualLogin;
         return Ok(new
         {
             allowManualLogin = allowManual,
@@ -65,7 +67,7 @@ public class AuthController : ControllerBase
     [Authorize(AuthenticationSchemes = NegotiateDefaults.AuthenticationScheme)]
     public async Task<IActionResult> WhoAmI()
     {
-        var stripPrefix = _config["Auth:WindowsDomainStripPrefix"] ?? "UMC";
+        var stripPrefix = _authSettings.WindowsDomainStripPrefix ?? "UMC";
         var rawName = User?.Identity?.Name ?? "";
 
         // 跟你測過的範例一致：先剝 DOMAIN\、再剝 @domain.com (Kerberos UPN 形態的保險)
@@ -176,7 +178,7 @@ public class AuthController : ControllerBase
             manageableMenus = a.MapAccountManageMenus?.Select(m => m.MenuId).ToList() ?? new List<string>(),
             extraMenus = a.MapAccountExtraMenus?.Select(m => m.MenuId).ToList() ?? new List<string>(),
             denyMenus = a.MapAccountDenyMenus?.Select(m => m.MenuId).ToList() ?? new List<string>(),
-            defaultPages = a.MapAccountDefaultPages?.ToDictionary(m => m.FabId, m => m.MenuId) ?? new Dictionary<string, string>()
+            defaultPages = a.MapAccountDefaultPages?.ToDictionary(m => m.FabId, m => m.MenuId ?? "") ?? new Dictionary<string, string>()
         });
     }
 
@@ -190,7 +192,7 @@ public class AuthController : ControllerBase
     {
         // 部署到正式環境後可把 appsettings.Auth.AllowManualLogin 設為 false，整個手動登入入口會被擋住、
         // 強制所有人走 Windows 自動偵測；前端 tab 也會藏起來。
-        if (!_config.GetValue<bool>("Auth:AllowManualLogin", true))
+        if (!_authSettings.AllowManualLogin)
         {
             await _activityLogger.LogLoginAsync(HttpContext, req.EmpId ?? "(empty)", null, "manual", false,
                 errorMessage: "本環境已停用手動登入");
@@ -217,7 +219,7 @@ public class AuthController : ControllerBase
         //   3. AD LDAP bind
         var (testMatched, testFallback) = _authService.VerifyTestAccount(empId, password);
 
-        var enableEmergency = _config.GetValue<bool>("Auth:EnableEmergencyAdmin");
+        var enableEmergency = _authSettings.EnableEmergencyAdmin;
         var isEmergencyAdmin = !testMatched
             && enableEmergency
             && string.Equals(empId, "admin", StringComparison.OrdinalIgnoreCase);

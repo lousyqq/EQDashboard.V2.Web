@@ -16,11 +16,13 @@ public class RequestsController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly ISettingsService _settingsService;
+    private readonly IActivityLogger _activityLogger;
 
-    public RequestsController(AppDbContext context, ISettingsService settingsService)
+    public RequestsController(AppDbContext context, ISettingsService settingsService, IActivityLogger activityLogger)
     {
         _context = context;
         _settingsService = settingsService;
+        _activityLogger = activityLogger;
     }
 
     [HttpGet]
@@ -113,8 +115,13 @@ public class RequestsController : ControllerBase
         // 🛡️ IDOR 防護：只能刪除自己的申請（原版邏輯是撤回後可以刪除）
         if (req.EmpId != currentUserId) return Forbid();
 
+        var backupJson = System.Text.Json.JsonSerializer.Serialize(req, new System.Text.Json.JsonSerializerOptions { ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles });
+
         _context.Requests.Remove(req);
         await _context.SaveChangesAsync();
+        
+        await _activityLogger.LogAuditAsync(HttpContext, "Requests", "Delete", id, "Soft Delete Backup", backupJson);
+        
         _settingsService.InvalidateInitialDataCache();
 
         return Ok(new { success = true, message = "紀錄已刪除" });

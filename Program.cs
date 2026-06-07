@@ -1,15 +1,26 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using System.Threading.RateLimiting;
 using EQDashboard.V2.Web.Data;
 using EQDashboard.V2.Web.Middleware;
 using EQDashboard.V2.Web.Services;
 using EQDashboard.V2.Web.Services.Interfaces;
+using Microsoft.OpenApi.Models;
+using Swashbuckle.AspNetCore.SwaggerGen;
+using Serilog;
+using EQDashboard.V2.Web.Models.Settings;
+using System.Net;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// === 設定 Serilog 實體檔案日誌 ===
+builder.Host.UseSerilog((context, services, configuration) => configuration
+    .ReadFrom.Configuration(context.Configuration)
+    .Enrich.FromLogContext()
+    .WriteTo.Console()
+    .WriteTo.File("logs/log-.txt", rollingInterval: RollingInterval.Day));
 
 // === 部署模式判定 (HTTP / HTTPS) ===
 //   Hosting:RequireHttps  → true 時強制 HTTPS（UseHttpsRedirection + Cookie Secure=Always）
@@ -20,8 +31,46 @@ var builder = WebApplication.CreateBuilder(args);
 var requireHttps = builder.Configuration.GetValue<bool?>("Hosting:RequireHttps")
     ?? !builder.Environment.IsDevelopment();
 
+// 註冊 Anti-Forgery 服務 (防範 CSRF)
+builder.Services.AddAntiforgery(options =>
+{
+    options.HeaderName = "X-CSRF-TOKEN";
+    // 預設 CookieName 是 .AspNetCore.Antiforgery.xxx
+});
+
 // 加入控制器支援 (供 SettingsController API 使用)
 builder.Services.AddControllersWithViews();
+
+// === 回應壓縮 (Response Compression) ===
+//   背景：/Settings/GetInitialData 一次回傳整包 appState（重複的 PascalCase 欄位鍵 + Menus/Apps 的
+//        Base64 圖示），是純文字 JSON、壓縮率極高（常見 80~90% 縮減）。工廠看板很多時，這份 payload
+//        是「資料多→變慢/卡」最直接的傳輸瓶頸。非 admin 的「列級過濾」已在 SettingsController 完成，
+//        壓縮則同時讓 admin / 非 admin 的傳輸量大幅下降，且**零前端改動、無破壞風險**。
+//   BREACH 風險評估：本站 CSRF 採「X-Requested-With 標頭檢查」(不在回應 body 內放反射式 token)，
+//        GetInitialData 為已認證、無反射使用者輸入的 JSON → BREACH 風險低，故 EnableForHttps=true。
+//   CPU：Sariel 記憶體吃緊 (6GB)，壓縮等級取 Fastest 以免吃 CPU；Brotli/Gzip Fastest 對 JSON 仍很有效。
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<Microsoft.AspNetCore.ResponseCompression.BrotliCompressionProvider>();
+    options.Providers.Add<Microsoft.AspNetCore.ResponseCompression.GzipCompressionProvider>();
+    // 預設 MimeTypes 已含 application/json，但顯式補上 JSON 與 SVG 字型等以策完整。
+    options.MimeTypes = Microsoft.AspNetCore.ResponseCompression.ResponseCompressionDefaults.MimeTypes
+        .Concat(new[] { "application/json", "application/javascript", "text/json", "image/svg+xml" });
+});
+builder.Services.Configure<Microsoft.AspNetCore.ResponseCompression.BrotliCompressionProviderOptions>(o =>
+    o.Level = System.IO.Compression.CompressionLevel.Fastest);
+builder.Services.Configure<Microsoft.AspNetCore.ResponseCompression.GzipCompressionProviderOptions>(o =>
+    o.Level = System.IO.Compression.CompressionLevel.Fastest);
+
+// 註冊 Swagger API 文件
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "EQDashboard V2 API", Version = "v1" });
+    // 自動在 Swagger UI 為 POST/PUT/DELETE 加入 CSRF 標頭
+    c.OperationFilter<CsrfHeaderFilter>();
+});
 
 // 註冊快取服務
 builder.Services.AddMemoryCache();
@@ -42,16 +91,27 @@ builder.Services.AddDataProtection()
 
 // 註冊 AppDbContext
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("EQDashboard")));
+    options.UseSqlServer(builder.Configuration.GetConnectionString("EQDashboard"), 
+        sqlOptions => sqlOptions.EnableRetryOnFailure(
+            maxRetryCount: 5,
+            maxRetryDelay: TimeSpan.FromSeconds(30),
+            errorNumbersToAdd: null)));
 
 // 註冊 Service 層（DI 依賴注入）
+builder.Services.Configure<AuthSettings>(builder.Configuration.GetSection("Auth"));
+// 健康檢查：SqlServer 檢查標記 "ready"，只給 readiness 端點用（liveness 不碰 DB）
+builder.Services.AddHealthChecks()
+    .AddSqlServer(builder.Configuration.GetConnectionString("EQDashboard") ?? "", tags: new[] { "ready" });
+
 builder.Services.AddScoped<ISettingsService, SettingsService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ISchemaBootstrap, SchemaBootstrap>();
 builder.Services.AddScoped<IAccountService, AccountService>();
 builder.Services.AddScoped<IMenuAuthService, MenuAuthService>();
+builder.Services.AddScoped<IIconStorageService, IconStorageService>();
 builder.Services.AddScoped<IActivityLogger, ActivityLogger>();
-
+builder.Services.AddSingleton<IActivityLogQueue, ActivityLogQueue>();
+builder.Services.AddHostedService<ActivityLogProcessor>();
 // === 身份驗證：Cookies (主) + Negotiate (Windows 自動偵測) ===
 // 預設 scheme 仍是 Cookies — 一般 API/頁面靠它識別；
 // Negotiate 只在 /api/Auth/WhoAmI 時被瀏覽器以 401 → WWW-Authenticate: Negotiate 觸發。
@@ -82,8 +142,12 @@ builder.Services
             context.Response.StatusCode = 403;
             return Task.CompletedTask;
         };
-    })
-    .AddNegotiate();
+    });
+
+if (builder.Configuration["Auth:DisableNegotiate"] != "true")
+{
+    builder.Services.AddAuthentication().AddNegotiate();
+}
 
 builder.Services.AddAuthorization(options =>
 {
@@ -131,6 +195,19 @@ using (var scope = app.Services.CreateScope())
 {
     var bootstrap = scope.ServiceProvider.GetRequiredService<ISchemaBootstrap>();
     await bootstrap.RunAsync();
+
+    // 一次性把 DB 中既有以 base64 儲存的 Menu/App icon 轉成實體檔（idempotent；轉完即 no-op）。
+    // 失敗不擋啟動 —— 只記 log，舊 base64 icon 仍可被前端渲染。
+    try
+    {
+        var iconStorage = scope.ServiceProvider.GetRequiredService<IIconStorageService>();
+        await iconStorage.MigrateBase64IconsAsync();
+    }
+    catch (Exception ex)
+    {
+        var startupLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        startupLogger.LogError(ex, "⚠️ base64 icon 一次性遷移失敗（不影響啟動，請手動檢查）");
+    }
 }
 
 // === Production guard：啟動時驗證高風險設定 (Round-3 設定面 hardening) ===
@@ -212,21 +289,17 @@ if (requireHttps)
     app.UseHttpsRedirection();
 }
 
-// ⭐️ 安全標頭中介軟體：防止點擊劫持、MIME 嗅探等攻擊與 CSRF 防護
+// ⭐️ 回應壓縮：放在靜態檔/路由之前，才能壓到 wwwroot 靜態檔與所有 controller 回應
+//    （尤其 /Settings/GetInitialData 這份大 JSON）。須在 UseStaticFiles 之前註冊。
+app.UseResponseCompression();
+
+// ⭐️ 安全標頭中介軟體：防止點擊劫持、MIME 嗅探等攻擊。
+//   ⚠️ CSRF 驗證已「下移」到 UseAuthentication / UseAuthorization 之後（見下方）。
+//      原因：ASP.NET antiforgery token 綁定「登入者 claims 身分」，必須等 UseAuthentication
+//      把 context.User 填好，才比對得起來。原本放在這裡（驗證階段 context.User 仍是匿名）
+//      → 已登入者送來的「身分綁定 token」永遠對不上匿名 context → 一律 Invalid Token。
 app.Use(async (context, next) =>
 {
-    var method = context.Request.Method;
-    if (method == "POST" || method == "PUT" || method == "DELETE")
-    {
-        if (!context.Request.Headers.ContainsKey("X-Requested-With") || 
-            context.Request.Headers["X-Requested-With"] != "XMLHttpRequest")
-        {
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsync("CSRF validation failed.");
-            return;
-        }
-    }
-
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
     context.Response.Headers["X-Frame-Options"] = "DENY";
     context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
@@ -236,12 +309,82 @@ app.Use(async (context, next) =>
 // ⭐️ 關鍵 1：設定預設檔案 (伺服器啟動時會自動去 wwwroot 尋找 index.html)
 app.UseDefaultFiles();
 
-// ⭐️ 關鍵 2：啟用靜態檔案 (允許瀏覽器讀取 wwwroot 裡面的 html, css, js)
-app.UseStaticFiles();
+// ⭐️ 關鍵 2：啟用靜態檔案 (依資產型別設定 Cache-Control)
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+    {
+        var name = ctx.File.Name;
+        // .js / .css 採 no-cache：瀏覽器每次帶 If-None-Match / If-Modified-Since 重新驗證，
+        // 未變更回 304（幾乎零成本）、一變更立即拿到新檔。
+        // 根治「改完子模組仍需 Ctrl+F5」—— main.js 的 ES import 不帶版號，
+        // 長快取會讓子模組最多卡 7 天才更新到使用者端。
+        if (name.EndsWith(".js", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith(".css", StringComparison.OrdinalIgnoreCase))
+        {
+            ctx.Context.Response.Headers.Append("Cache-Control", "no-cache");
+        }
+        else
+        {
+            // 圖片 / 字型 / favicon 等不常變動資產：保留 7 天長快取
+            ctx.Context.Response.Headers.Append("Cache-Control", "public,max-age=604800");
+        }
+    }
+});
+
+// ⭐️ 關鍵 3：啟用 Swagger API 文件介面（僅限 Development，避免 IIS HTTP production 對外曝露 API 規格）
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI(c => 
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "EQDashboard V2 API v1");
+        
+        // 設定 Request 攔截器，強制 Swagger UI 送出時帶上 Windows 認證憑證 (NTLM) 與 Cookie
+        c.UseRequestInterceptor("(req) => { req.credentials = 'include'; return req; }");
+    });
+}
 
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
+
+// ⭐️ CSRF 防護（必須在 UseAuthentication / UseAuthorization 之後執行）：
+//   antiforgery token 綁定登入者 claims 身分，需等 context.User 完成驗證後才能正確比對，
+//   否則匿名 context 對上「已登入身分的 token」永遠失敗（Invalid Token）。
+//   兩道防線：(1) X-Requested-With 自訂標頭（跨站請求無法偽造此標頭）；(2) antiforgery token。
+//   /api/Auth/Login 例外（登入當下前端尚未取得 token）。
+app.Use(async (context, next) =>
+{
+    var method = context.Request.Method;
+    if ((method == "POST" || method == "PUT" || method == "DELETE") &&
+        !context.Request.Path.StartsWithSegments("/api/Auth/Login", StringComparison.OrdinalIgnoreCase))
+    {
+        if (!context.Request.Headers.ContainsKey("X-Requested-With") ||
+            context.Request.Headers["X-Requested-With"] != "XMLHttpRequest")
+        {
+            context.Response.StatusCode = 400;
+            context.Response.ContentType = "application/json; charset=utf-8";
+            await context.Response.WriteAsync("{\"success\":false,\"message\":\"CSRF validation failed: Missing X-Requested-With.\"}");
+            return;
+        }
+
+        try
+        {
+            var antiforgery = context.RequestServices.GetRequiredService<Microsoft.AspNetCore.Antiforgery.IAntiforgery>();
+            await antiforgery.ValidateRequestAsync(context);
+        }
+        catch (Microsoft.AspNetCore.Antiforgery.AntiforgeryValidationException)
+        {
+            context.Response.StatusCode = 400;
+            context.Response.ContentType = "application/json; charset=utf-8";
+            await context.Response.WriteAsync("{\"success\":false,\"message\":\"CSRF validation failed: Invalid Token.\"}");
+            return;
+        }
+    }
+    await next();
+});
+
 app.UseRateLimiter();  // 必須在 UseRouting 之後、MapControllerRoute 之前
 
 // 操作紀錄 middleware — 放在 Authentication 之後才能拿到 User claim
@@ -268,6 +411,42 @@ app.MapGet("/appbase.js", (HttpContext ctx) =>
     return Results.Content(js, "application/javascript; charset=utf-8");
 });
 
+// === 健康檢查端點 ===
+// /health（liveness）：純存活探測，Predicate=_=>false 代表「不跑任何檢查」，
+//   只要進程能回應就回 200。對外公開無妨（不碰 DB、不洩漏內部狀態），
+//   給 IIS/load balancer/監控做「進程是否活著」用。
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    Predicate = _ => false
+});
+
+// === 提供 CSRF Token 給前端 ===
+app.MapGet("/api/Auth/CsrfToken", (Microsoft.AspNetCore.Antiforgery.IAntiforgery antiforgery, HttpContext context) =>
+{
+    var tokens = antiforgery.GetAndStoreTokens(context);
+    return Results.Ok(new { token = tokens.RequestToken });
+});
+
+// /health/ready（readiness）：跑 "ready" 標記的檢查（含 SqlServer 連線）。
+//   會實際打 DB，屬內部維運資訊 → 僅允許 loopback / 私有網段存取，
+//   其餘來源一律 404（不回 403，避免暴露端點存在）。
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready")
+}).Add(builder =>
+{
+    var next = builder.RequestDelegate!;
+    builder.RequestDelegate = async context =>
+    {
+        if (!IsTrustedHealthClient(context.Connection.RemoteIpAddress))
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+        await next(context);
+    };
+});
+
 // 註冊 API 路由 (讓前端 fetch 能對應到 Controller/Action)
 app.MapControllerRoute(
     name: "default",
@@ -275,3 +454,54 @@ app.MapControllerRoute(
 
 app.Run();
 
+// === /health/ready 來源 IP 白名單判定 ===
+// 只放行 loopback（127.0.0.1 / ::1）與私有網段（10/8、172.16/12、192.168/16），
+// 其餘（含網際網路）視為不可信，讓 readiness 端點對外等同不存在。
+static bool IsTrustedHealthClient(IPAddress? ip)
+{
+    if (ip is null) return false;
+
+    // IPv4-mapped IPv6（如 ::ffff:10.0.0.5）先還原成 IPv4 再判斷
+    if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
+
+    if (IPAddress.IsLoopback(ip)) return true;
+
+    var b = ip.GetAddressBytes();
+    if (b.Length == 4)
+    {
+        if (b[0] == 10) return true;                          // 10.0.0.0/8
+        if (b[0] == 172 && b[1] >= 16 && b[1] <= 31) return true; // 172.16.0.0/12
+        if (b[0] == 192 && b[1] == 168) return true;          // 192.168.0.0/16
+    }
+    return false;
+}
+
+// === Swagger CSRF 標頭自動產生器 ===
+// （備註：原本檔尾的 `public partial class Program {}` 是給 EQDashboard.V2.Tests 的
+//   WebApplicationFactory<Program> 抓進入點用；測試專案移除後已一併刪除。）
+// 這會讓 Swagger UI 的 POST/PUT/DELETE API 自動出現一個必填的 X-Requested-With 欄位
+public class CsrfHeaderFilter : IOperationFilter
+{
+    public void Apply(OpenApiOperation operation, OperationFilterContext context)
+    {
+        var method = context.ApiDescription.HttpMethod?.ToUpper();
+        if (method == "POST" || method == "PUT" || method == "DELETE")
+        {
+            if (operation.Parameters == null)
+                operation.Parameters = new List<OpenApiParameter>();
+
+            operation.Parameters.Add(new OpenApiParameter
+            {
+                Name = "X-Requested-With",
+                In = ParameterLocation.Header,
+                Description = "CSRF 防護標頭 (必須為 XMLHttpRequest)",
+                Required = true,
+                Schema = new OpenApiSchema
+                {
+                    Type = "string",
+                    Default = new Microsoft.OpenApi.Any.OpenApiString("XMLHttpRequest")
+                }
+            });
+        }
+    }
+}

@@ -1,6 +1,7 @@
 using EQDashboard.V2.Web.Data;
 using EQDashboard.V2.Web.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace EQDashboard.V2.Web.Services;
 
@@ -18,57 +19,104 @@ namespace EQDashboard.V2.Web.Services;
 public class MenuAuthService : IMenuAuthService
 {
     private readonly AppDbContext _context;
+    private readonly IMemoryCache _cache;
+    private readonly ISettingsService _settingsService;
 
-    public MenuAuthService(AppDbContext context)
+    // === 跨請求快取：可見看板集合（E2 優化）===
+    // GetVisibleMenuIdsAsync 在每個「非 admin」的 GetInitialData / GetMenus / PersonalSettings 請求都會跑，
+    //   要打 ~8 條 DB 查詢 + 全表展開子樹。把結果以 (ETag, empId) 為 key 快取在 Singleton IMemoryCache。
+    //   ⚠️ 安全性關鍵：key 內含 _settingsService.GetCurrentETag()，而**所有**權限相關寫入路徑
+    //      (Menus / Roles / Fabs / AccountService / 全量 SaveData / PersonalSettings) 都會呼叫
+    //      Invalidate*DataCache() → 換新 ETag → 舊 key 自然作廢、下次重算。故權限變更立即生效，
+    //      不會發生「改了權限卻沿用舊可見集合」的越權/漏看。60 秒 TTL 僅作為記憶體回收的保險絲。
+    private static readonly TimeSpan VisibleSetTtl = TimeSpan.FromSeconds(60);
+
+    // === 每請求快取（MenuAuthService 為 Scoped，一個 HTTP 請求一個實例）===
+    // O1 優化：BatchUpdateMenus 會對同一 empId 連續呼叫 CanEditOrDeleteMenuAsync / CanManageStructureAsync N 次；
+    //   無快取時每次都整張 Map_Menu_Structure ToListAsync() + 查 account/manageSet，O(N) round-trip。
+    //   ⚠️ 安全性：所有權限檢查都發生在「結構異動之前」(見 MenusController 的 Create/Update/Batch 流程，
+    //      先全部檢查、後才動 DB)，故請求內快取不會讀到「同一請求中途被自己改掉」的過期結構。
+    private Dictionary<string, List<string>>? _childToParents;                                    // child → 父節點清單
+    private readonly Dictionary<string, bool> _canEditOthersCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, List<string>> _manageSetCache = new(StringComparer.OrdinalIgnoreCase);
+
+    public MenuAuthService(AppDbContext context, IMemoryCache cache, ISettingsService settingsService)
     {
         _context = context;
+        _cache = cache;
+        _settingsService = settingsService;
     }
 
-    private async Task<(bool isMyOwn, bool isDelegatedNode, bool isUnder, bool isAncestor, bool canEditOthers)> GetNodePermissionsAsync(string empId, string menuId)
+    /// <summary>整張 Map_Menu_Structure 的 child→parents 反向索引（每請求載入一次）</summary>
+    private async Task<Dictionary<string, List<string>>> GetChildToParentsAsync()
     {
-        var account = await _context.Accounts.AsNoTracking().FirstOrDefaultAsync(a => a.EmpId == empId);
-        bool canEditOthers = account?.CanEditOthers == true;
+        if (_childToParents == null)
+        {
+            var edges = await _context.MapMenuStructures.AsNoTracking()
+                .Select(s => new { s.ParentMenuId, s.ChildMenuId }).ToListAsync();
+            _childToParents = edges
+                .GroupBy(e => e.ChildMenuId, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Select(e => e.ParentMenuId).ToList(), StringComparer.OrdinalIgnoreCase);
+        }
+        return _childToParents;
+    }
+
+    private async Task<bool> GetCanEditOthersAsync(string empId)
+    {
+        if (!_canEditOthersCache.TryGetValue(empId, out var v))
+        {
+            var account = await _context.Accounts.AsNoTracking().FirstOrDefaultAsync(a => a.EmpId == empId);
+            v = account?.CanEditOthers == true;
+            _canEditOthersCache[empId] = v;
+        }
+        return v;
+    }
+
+    private async Task<List<string>> GetManageSetAsync(string empId)
+    {
+        if (!_manageSetCache.TryGetValue(empId, out var set))
+        {
+            set = await _context.MapAccountManageMenus.AsNoTracking()
+                .Where(m => m.EmpId == empId).Select(m => m.MenuId).ToListAsync();
+            _manageSetCache[empId] = set;
+        }
+        return set;
+    }
+
+    private async Task<(bool isMyOwn, bool isDelegatedNode, bool isUnder, bool canEditOthers)> GetNodePermissionsAsync(string empId, string menuId)
+    {
+        bool canEditOthers = await GetCanEditOthersAsync(empId);
 
         var menu = await _context.Menus.AsNoTracking().FirstOrDefaultAsync(m => m.MenuId == menuId);
         bool isMyOwn = menu != null && string.Equals(menu.CreatedBy, empId, StringComparison.OrdinalIgnoreCase);
 
-        var manageSet = await _context.MapAccountManageMenus.AsNoTracking().Where(m => m.EmpId == empId).Select(m => m.MenuId).ToListAsync();
-        if (manageSet.Count == 0) return (isMyOwn, false, false, false, canEditOthers);
+        var manageSet = await GetManageSetAsync(empId);
+        if (manageSet.Count == 0) return (isMyOwn, false, false, canEditOthers);
 
-        bool isDelegatedNode = manageSet.Contains(menuId, StringComparer.OrdinalIgnoreCase);
-        
-        var structures = await _context.MapMenuStructures.AsNoTracking().ToListAsync();
-        
+        var manageLookup = new HashSet<string>(manageSet, StringComparer.OrdinalIgnoreCase);
+        bool isDelegatedNode = manageLookup.Contains(menuId);
+
         bool isUnder = false;
         if (!isDelegatedNode)
         {
+            // 從 menuId 往上爬 parent chain，撞到任一個被委派的節點 = 在委派子樹內
+            var childToParents = await GetChildToParentsAsync();
             var q = new Queue<string>();
             var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             q.Enqueue(menuId);
-            while(q.Count > 0) {
+            while (q.Count > 0)
+            {
                 var curr = q.Dequeue();
-                if (manageSet.Contains(curr, StringComparer.OrdinalIgnoreCase)) { isUnder = true; break; }
+                if (manageLookup.Contains(curr)) { isUnder = true; break; }
                 if (!visited.Add(curr)) continue;
-                var parents = structures.Where(s => string.Equals(s.ChildMenuId, curr, StringComparison.OrdinalIgnoreCase)).Select(s => s.ParentMenuId);
-                foreach(var p in parents) q.Enqueue(p);
+                if (childToParents.TryGetValue(curr, out var parents))
+                    foreach (var p in parents) q.Enqueue(p);
             }
         }
 
-        bool isAncestor = false;
-        if (!isDelegatedNode && !isUnder)
-        {
-            var q = new Queue<string>(manageSet);
-            var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            while(q.Count > 0) {
-                var curr = q.Dequeue();
-                if (string.Equals(curr, menuId, StringComparison.OrdinalIgnoreCase)) { isAncestor = true; break; }
-                if (!visited.Add(curr)) continue;
-                var parents = structures.Where(s => string.Equals(s.ChildMenuId, curr, StringComparison.OrdinalIgnoreCase)).Select(s => s.ParentMenuId);
-                foreach(var p in parents) q.Enqueue(p);
-            }
-        }
-
-        return (isMyOwn, isDelegatedNode, isUnder, isAncestor, canEditOthers);
+        // 註：原本另有一段「isAncestor」BFS（從 manageSet 往上找 menuId），
+        //     但 CanManageStructureAsync / CanEditOrDeleteMenuAsync 從未使用該值 = 死碼，已移除 (O3)。
+        return (isMyOwn, isDelegatedNode, isUnder, canEditOthers);
     }
 
     public async Task<bool> CanManageStructureAsync(string empId, string menuId, bool isAdmin)
@@ -115,6 +163,14 @@ public class MenuAuthService : IMenuAuthService
         if (isAdmin) return null;                              // admin 不限
         if (string.IsNullOrWhiteSpace(empId)) return new HashSet<string>();  // 匿名 / 無效 → 空集合
 
+        // E2：先查跨請求快取。key 綁 ETag → 任一權限寫入換 ETag 即作廢，故不會讀到過期權限。
+        var cacheKey = $"visibleMenus:{_settingsService.GetCurrentETag()}:{empId.ToLowerInvariant()}";
+        if (_cache.TryGetValue(cacheKey, out HashSet<string>? cachedSet) && cachedSet != null)
+        {
+            // 回傳防禦性副本：快取物件由多個並行請求共享，呼叫端若就地改動會污染快取。
+            return new HashSet<string>(cachedSet, StringComparer.OrdinalIgnoreCase);
+        }
+
         // ① 抓 user 的 roles → 對應 allowedMenuIds
         var roleIds = await _context.MapAccountRoles.AsNoTracking()
             .Where(m => m.EmpId == empId).Select(m => m.RoleId).ToListAsync();
@@ -132,13 +188,16 @@ public class MenuAuthService : IMenuAuthService
         // ③ Menu 層級 ACL — 取「會影響 user」的兩種規則
         var menuDeny = await _context.MapMenuDenyAccounts.AsNoTracking()
             .Where(m => m.EmpId == empId).Select(m => m.MenuId).ToListAsync();
-        // 白名單：先抓所有有白名單的 menu，再判斷 user 是否在裡面
-        var allowsRaw = await _context.MapMenuAllowAccounts.AsNoTracking()
-            .Select(m => new { m.MenuId, m.EmpId }).ToListAsync();
-        var menusWithWhitelist = allowsRaw.Select(a => a.MenuId).Distinct().ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var menuForceAllow = allowsRaw
-            .Where(a => string.Equals(a.EmpId, empId, StringComparison.OrdinalIgnoreCase))
-            .Select(a => a.MenuId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // 白名單：原本整張 Map_Menu_AllowAccount 撈進記憶體再分組 = 全表掃描 (E6)。
+        //   拆成兩條「DB 端就過濾好」的窄查詢，回傳列數大幅減少：
+        //   (1) 哪些 menu 有白名單 → DISTINCT MenuId（走 PK 前導欄 MenuId 的 stream aggregate）
+        //   (2) 我自己被白名單放行的 menu → WHERE EmpId（靠 IX_Map_Menu_AllowAccount_EmpId 走 index seek）
+        var menusWithWhitelist = (await _context.MapMenuAllowAccounts.AsNoTracking()
+            .Select(m => m.MenuId).Distinct().ToListAsync())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var menuForceAllow = (await _context.MapMenuAllowAccounts.AsNoTracking()
+            .Where(m => m.EmpId == empId).Select(m => m.MenuId).ToListAsync())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         // 白名單存在但 user 不在 → 視同 deny
         var aclDeny = new HashSet<string>(menuDeny, StringComparer.OrdinalIgnoreCase);
         foreach (var mid in menusWithWhitelist)
@@ -178,6 +237,8 @@ public class MenuAuthService : IMenuAuthService
             }
         }
 
-        return allowed;
+        // E2：存入快取（原件），對外一律回傳副本，避免呼叫端就地改動污染共享快取物件。
+        _cache.Set(cacheKey, allowed, VisibleSetTtl);
+        return new HashSet<string>(allowed, StringComparer.OrdinalIgnoreCase);
     }
 }

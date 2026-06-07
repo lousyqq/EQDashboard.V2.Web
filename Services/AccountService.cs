@@ -59,7 +59,7 @@ public class AccountService : IAccountService
             manageableMenus = a.MapAccountManageMenus?.Select(m => m.MenuId).ToList() ?? new List<string>(),
             extraMenus = a.MapAccountExtraMenus?.Select(m => m.MenuId).ToList() ?? new List<string>(),
             denyMenus = a.MapAccountDenyMenus?.Select(m => m.MenuId).ToList() ?? new List<string>(),
-            defaultPages = a.MapAccountDefaultPages?.ToDictionary(m => m.FabId, m => m.MenuId) ?? new Dictionary<string, string>()
+            defaultPages = a.MapAccountDefaultPages?.ToDictionary(m => m.FabId, m => m.MenuId ?? "") ?? new Dictionary<string, string>()
         };
     }
 
@@ -132,7 +132,7 @@ public class AccountService : IAccountService
         return (true, string.Empty);
     }
 
-    public async Task<(bool success, string errorMessage)> DeleteAccountAsync(string empId, string? currentEmpId = null)
+    public async Task<(bool success, string errorMessage, string? backupJson)> DeleteAccountAsync(string empId, string? currentEmpId = null)
     {
         var account = await _context.Accounts
             .Include(a => a.MapAccountRoles)
@@ -141,15 +141,15 @@ public class AccountService : IAccountService
             .Include(a => a.MapAccountExtraMenus)
             .Include(a => a.MapAccountDenyMenus)
             .FirstOrDefaultAsync(a => a.EmpId == empId);
-
-        if (account == null) return (false, "找不到指定的帳號");
+            
+        if (account == null) return (false, "找不到該帳號", null);
 
         if (string.Equals(empId, "admin", StringComparison.OrdinalIgnoreCase))
-            return (false, "系統預設管理員 (admin) 不可被刪除");
+            return (false, "系統預設管理員 (admin) 不可被刪除", null);
 
         // 🛡️ 擋自刪：避免 admin 把自己刪了之後 cookie 還在但 DB 已查無，後續所有 [Authorize] 查 DB 都會踩 NotFound
         if (!string.IsNullOrEmpty(currentEmpId) && string.Equals(empId, currentEmpId, StringComparison.OrdinalIgnoreCase))
-            return (false, "不可刪除目前登入中的帳號");
+            return (false, "不可刪除目前登入中的帳號", null);
 
         // 🛡️ 擋最後一個 admin：刪掉後若整個系統剩 0 個 RoleLevel='admin' 帳號 → 永久失去管理員、需改 DB 救援
         if (string.Equals(account.RoleLevel, "admin", StringComparison.OrdinalIgnoreCase))
@@ -158,7 +158,7 @@ public class AccountService : IAccountService
                 .Where(a => a.EmpId != empId && a.RoleLevel != null && a.RoleLevel.ToLower() == "admin")
                 .CountAsync();
             if (remainingAdmins == 0)
-                return (false, "不可刪除系統中唯一的管理員帳號");
+                return (false, "不可刪除系統中唯一的管理員帳號", null);
         }
 
         if (account.MapAccountRoles != null && account.MapAccountRoles.Count > 0)
@@ -175,10 +175,12 @@ public class AccountService : IAccountService
         var pSettings = await _context.PersonalSettings.Where(p => p.EmpId == empId).ToListAsync();
         if (pSettings.Count > 0) _context.PersonalSettings.RemoveRange(pSettings);
 
+        var backupJson = System.Text.Json.JsonSerializer.Serialize(account, new System.Text.Json.JsonSerializerOptions { ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles });
+
         _context.Accounts.Remove(account);
         await _context.SaveChangesAsync();
         _settingsService.InvalidateInitialDataCache();
-        return (true, string.Empty);
+        return (true, string.Empty, backupJson);
     }
 
     private void UpdateAccountMappings(AccountFullDto dto)

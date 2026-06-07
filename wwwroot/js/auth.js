@@ -6,18 +6,40 @@
 //   window.retryWhoAmI()     - 「重試偵測」按鈕
 //   window.logout()          - 右上頭像下拉的登出
 
+import { getAccounts } from './config.js?v=20260607k';
+import { fetchInitialDataFromDB } from './api.js?v=20260607k';
+import { initDashboardUI, restoreLoginFromStorage } from './main.js?v=20260607k';
+import { customAlert } from './ui/dialogs.js?v=20260607k';
+import { appState } from './store.js?v=20260607k';
+
+
 // 「使用者主動登出 → 別再自動登入」旗標
+//   ⚠️ 改用 sessionStorage（不是 localStorage）— 只在「同一個 tab 內 logout 後的下一次重整」生效。
+//   關閉 tab / 開新 tab → flag 自動清掉 → 視為新 session、再次自動偵測登入。
+//   這對齊使用者需求：「直接輸入網址 → 自動偵測為主；除非剛剛 logout 才停留在登入頁讓我切換」。
 const FORCE_MANUAL_KEY = 'umc_force_manual_login';
 
 // 暫存 whoami 結果（給 doWindowsLogin 用，避免再打一次 API）
 let _whoamiResult = null;
 
+// 防 auto-login 同時被觸發多次（fetchWhoAmI 可能從 tryAutoLogin / tab 切換 / 重試按鈕 三處呼叫）
+let _autoLoginInProgress = false;
+
 // =============================================================
 // 0) 取得後端 Auth 設定 (allowManualLogin 等)；UI 依此決定要不要藏掉手動 tab
 // =============================================================
 window._authConfig = { allowManualLogin: true };  // 預設值，fetch 失敗時退回 true
+window._csrfToken = null;
 
-async function fetchAuthConfig() {
+export async function fetchAuthConfig() {
+    try {
+        const csrfResp = await fetch('/api/Auth/CsrfToken', { credentials: 'include' });
+        if (csrfResp.ok) {
+            const csrfData = await csrfResp.json();
+            window._csrfToken = csrfData.token;
+        }
+    } catch (e) { console.warn('CsrfToken 取得失敗:', e); }
+
     try {
         const resp = await fetch('/api/Auth/Config', { credentials: 'include' });
         if (resp.ok) {
@@ -29,7 +51,7 @@ async function fetchAuthConfig() {
     return window._authConfig;
 }
 
-function applyAuthConfigToUI(config) {
+export function applyAuthConfigToUI(config) {
     const manualTabBtn = document.getElementById('tab-manual');
     const manualTabLi = manualTabBtn ? manualTabBtn.closest('li') : null;
     const winTabBtn = document.getElementById('tab-windows');
@@ -47,30 +69,32 @@ function applyAuthConfigToUI(config) {
 // =============================================================
 // 1) 主進入點：先抓 config → 嘗試 whoami → 能自動就自動，不能就顯示登入框
 // =============================================================
-async function tryAutoLogin() {
+export async function tryAutoLogin() {
     const config = await fetchAuthConfig();
-    const forceManual = localStorage.getItem(FORCE_MANUAL_KEY) === '1';
+    // FORCE_MANUAL_KEY 改用 sessionStorage（不是 localStorage）— 上方變數註解有說明
+    //   同時清掉 localStorage 上舊版可能殘留的旗標，避免使用者升級後第一次仍卡 manual
+    try { localStorage.removeItem(FORCE_MANUAL_KEY); } catch (e) { }
+    const forceManual = sessionStorage.getItem(FORCE_MANUAL_KEY) === '1';
 
     if (forceManual && config.allowManualLogin) {
+        // logout 後同 tab 內的第一次重整 → 停留在 manual tab 讓使用者切換帳號
         showLoginOverlay('manual');
-        localStorage.removeItem(FORCE_MANUAL_KEY); // ← 加這行：不要永遠卡住
+        sessionStorage.removeItem(FORCE_MANUAL_KEY); // 清掉，下次重整就走自動偵測
         return false;
     }
 
+    // 自動偵測；fetchWhoAmI 內部成功時會自動觸發 completeLoginAfterAuth（不需要外層再呼叫）
+    //   ⚠️ 只有「初次進入點」(tryAutoLogin) 才允許自動登入 → 對齊「直接輸入網址=自動偵測為主」。
+    //      其餘呼叫 (tab 切換 / 重試 / overlay 內部) 一律 allowAutoLogin=false：只顯示偵測結果 + 啟用
+    //      「以此身份進入」按鈕，讓使用者在登入框內主動選擇，不會「點一下自動偵測 tab 就被登入」。
+    await fetchWhoAmI(true);
 
-    const result = await fetchWhoAmI();
+    // 若 fetchWhoAmI 內已成功 auto-login，appState.currentUser 已被設置
+    if (appState.currentUser) return true;
 
-    if (result && result.success && result.authenticated && result.empId) {
-        localStorage.removeItem(FORCE_MANUAL_KEY);
-        const ok = await completeLoginAfterAuth(result.empId, 'windows', result.account || null);
-        if (ok) return true;
-    }
-
-
-    // 自動偵測失敗或拿到工號但無權限 → 顯示登入框
-    // 若 allowManualLogin=false → 強制留在 Windows tab，使用者只能按重試或請聯絡管理員
-    showLoginOverlay('windows'); // 失敗也先讓使用者看到自動偵測結果/提示
-
+    // 自動偵測失敗 / 拿到工號但無權限 → 顯示登入框
+    //   allowManualLogin=false 時，使用者只能按重試或請聯絡管理員
+    showLoginOverlay('windows');
     return false;
 }
 window.tryAutoLogin = tryAutoLogin;
@@ -78,7 +102,7 @@ window.tryAutoLogin = tryAutoLogin;
 // =============================================================
 // 2) whoami 呼叫 + 把結果填到 Windows tab 的狀態區塊
 // =============================================================
-async function fetchWhoAmI() {
+export async function fetchWhoAmI(allowAutoLogin = false) {
     const statusEl = document.getElementById('whoami-status');
     const btn = document.getElementById('btn-windows-continue');
     const config = window._authConfig || { allowManualLogin: true };
@@ -101,7 +125,7 @@ async function fetchWhoAmI() {
             _whoamiResult = data;
             if (statusEl) {
                 statusEl.className = 'alert alert-light border text-center py-3 mb-3';
-                statusEl.innerHTML = '<i class="fas fa-info-circle me-1 text-muted"></i> ' + escapeHtml(data.message) + fallbackHint;
+                statusEl.innerHTML = '<i class="fas fa-info-circle me-1 text-muted"></i> ' + window.escapeHTML(data.message) + fallbackHint;
             }
             return data;
         }
@@ -111,7 +135,7 @@ async function fetchWhoAmI() {
             _whoamiResult = data;
             if (statusEl) {
                 statusEl.className = 'alert alert-light border text-center py-3 mb-3';
-                statusEl.innerHTML = '<i class="fas fa-times-circle me-1 text-danger"></i> ' + escapeHtml(data.message) + fallbackHint;
+                statusEl.innerHTML = '<i class="fas fa-times-circle me-1 text-danger"></i> ' + window.escapeHTML(data.message) + fallbackHint;
             }
             return data;
         }
@@ -122,14 +146,32 @@ async function fetchWhoAmI() {
         if (statusEl) {
             if (data.success && data.authenticated && data.empId) {
                 statusEl.className = 'alert alert-success border text-center py-3 mb-3';
-                statusEl.innerHTML = `<i class="fas fa-user-check me-1"></i> 偵測到 Windows 帳號：<b>${escapeHtml(data.empId)}</b>`;
+                statusEl.innerHTML = `<i class="fas fa-user-check me-1"></i> 偵測到 Windows 帳號：<b>${window.escapeHTML(data.empId)}</b>`;
                 if (btn) btn.disabled = false;
-                // ⚠️ 不在此呼叫 completeLoginAfterAuth — 改由唯一呼叫者 tryAutoLogin() 在外層做。
-                //   原本兩處都呼叫造成 LoginCount +2、UpdateLoginStats 被打兩次 (Round-5 修)。
+
+                // ✅ 偵測成功 → 自動登入（僅限「初次進入點」tryAutoLogin 帶 allowAutoLogin=true）
+                //   tab 切換 / 重試 / overlay 內部呼叫一律 allowAutoLogin=false → 只顯示偵測結果 +
+                //   啟用「以此身份進入」按鈕，避免「點一下自動偵測 tab 就被自動登入」造成切換不順。
+                //   防護：
+                //     - allowAutoLogin 只有初次進入點為 true
+                //     - _autoLoginInProgress 防雙重觸發 (Round-5 B2 的 LoginCount +2 問題)
+                //     - !appState.currentUser 防已登入時又被觸發
+                //     - sessionStorage FORCE_MANUAL_KEY 為 1 時 = 使用者剛 logout，不自動登入
+                if (allowAutoLogin 
+                    && !_autoLoginInProgress
+                    && !appState.currentUser
+                    && sessionStorage.getItem(FORCE_MANUAL_KEY) !== '1') {
+                    _autoLoginInProgress = true;
+                    try {
+                        await completeLoginAfterAuth(data.empId, 'windows', data.account || null);
+                    } finally {
+                        _autoLoginInProgress = false;
+                    }
+                }
             } else {
                 statusEl.className = 'alert alert-light border text-center py-3 mb-3';
                 const msg = data.message || '未偵測到 Windows 登入帳號';
-                statusEl.innerHTML = '<i class="fas fa-info-circle me-1 text-muted"></i> ' + escapeHtml(msg) + fallbackHint;
+                statusEl.innerHTML = '<i class="fas fa-info-circle me-1 text-muted"></i> ' + window.escapeHTML(msg) + fallbackHint;
                 if (btn) btn.disabled = true;
             }
         }
@@ -144,13 +186,13 @@ async function fetchWhoAmI() {
 
         if (statusEl) {
             statusEl.className = 'alert alert-light border text-center py-3 mb-3';
-            statusEl.innerHTML = '<i class="fas fa-times-circle me-1 text-danger"></i> ' + escapeHtml(msg) + fallbackHint;
+            statusEl.innerHTML = '<i class="fas fa-times-circle me-1 text-danger"></i> ' + window.escapeHTML(msg) + fallbackHint;
         }
         return { success: false, authenticated: false };
     }
 }
 
-function retryWhoAmI() {
+export function retryWhoAmI() {
     fetchWhoAmI();
 }
 window.retryWhoAmI = retryWhoAmI;
@@ -158,7 +200,7 @@ window.retryWhoAmI = retryWhoAmI;
 // =============================================================
 // 3) 「以此身份進入」按鈕 (Windows 自動偵測通過後)
 // =============================================================
-async function doWindowsLogin() {
+export async function doWindowsLogin() {
     if (!_whoamiResult || !_whoamiResult.success || !_whoamiResult.empId) {
         customAlert('尚未偵測到可用的 Windows 帳號');
         return;
@@ -166,7 +208,7 @@ async function doWindowsLogin() {
     // Windows 模式：直接以 empId 走 completeLoginAfterAuth，不打 /api/Auth/Login（避免又被擋密碼）
     // 後端的 cookie 我們仍然用 Login 一次來發 — 但用「特殊 source」識別。
     // 簡化：直接打 Login 帶 empId 與一個固定密碼 'WINDOWS_AUTH'？不太好。
-    // 改採：另開一個 SignIn 端點。為了不增加複雜度，這裡直接複用前端 currentUser，
+    // 改採：另開一個 SignIn 端點。為了不增加複雜度，這裡直接複用前端 appState.currentUser，
     //   cookie 不發 — 任何後端 API 都不檢查 cookie（目前後端的 controller 都是 [AllowAnonymous]）。
     const ok = await completeLoginAfterAuth(_whoamiResult.empId, 'windows');
     if (!ok) customAlert('登入失敗');
@@ -176,7 +218,7 @@ window.doWindowsLogin = doWindowsLogin;
 // =============================================================
 // 4) 手動 tab 的登入 (走 /api/Auth/Login → LDAP 驗證)
 // =============================================================
-async function doLogin() {
+export async function doLogin() {
     const empIdInput = document.getElementById('empId');
     const pwdInput = document.getElementById('empPwd');
     const errEl = document.getElementById('manual-login-error');
@@ -196,7 +238,10 @@ async function doLogin() {
         const loginResp = await fetch('/api/Auth/Login', {
             method: 'POST',
             credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
             body: JSON.stringify({ empId, password })
         });
 
@@ -229,7 +274,7 @@ async function doLogin() {
 }
 window.doLogin = doLogin;
 
-function showManualError(msg) {
+export function showManualError(msg) {
     const el = document.getElementById('manual-login-error');
     if (!el) return;
     if (!msg) { el.classList.add('d-none'); el.textContent = ''; return; }
@@ -241,7 +286,14 @@ function showManualError(msg) {
 // 5) 完成後續登入流程：對 appState 撈 Account、更新 LoginCount、寫 localStorage、進主畫面
 //    fallbackAccount: 後端 Login API 回傳的 account 物件 (TestAccount 用)
 // =============================================================
-async function completeLoginAfterAuth(empId, source, fallbackAccount) {
+export async function completeLoginAfterAuth(empId, source, fallbackAccount) {
+    // 登入後使用者身分已改變（WhoAmI / Login 已 SignInAsync 設好 cookie），而 antiforgery token
+    //   綁定登入者身分 → 頁面初次載入時取得的「匿名 token」此刻已失效。先主動刷新，後續寫入
+    //   （UpdateLoginStats、看板/帳號 CRUD…）才不會被擋 "CSRF validation failed: Invalid Token"。
+    if (typeof window.refreshCsrfToken === 'function') {
+        try { await window.refreshCsrfToken(); } catch (e) { /* 失敗有 api.js 自我修復重試兜底 */ }
+    }
+
     if (window.appState.accounts.length === 0 && typeof fetchInitialDataFromDB === 'function') {
         const ok = await fetchInitialDataFromDB();
         if (!ok) {
@@ -290,16 +342,23 @@ async function completeLoginAfterAuth(empId, source, fallbackAccount) {
 
     const accEmpId = acc.empId || acc.EmpId || '';
     const now = new Date();
-    const oldLoginCount = parseInt(acc.loginCount || acc.LoginCount || 0) || 0;
-    let displayLoginCount = oldLoginCount + 1;
+    // 「最後一次已知的 DB 值」— 後端失敗時用這個顯示，**不要本地 +1 假裝**
+    //   原本邏輯：oldLoginCount+1 樂觀顯示 → DB 沒實際 +1 卻畫面 +1 = 視覺正確、實際錯
+    //   現在改：等 DB 真正回來才顯示新值。後端失敗 → 維持原 DB 值 + 用本地 now 當登入時間
+    const lastKnownDbCount = parseInt(acc.loginCount || acc.LoginCount || 0) || 0;
+    const lastKnownDbTime = acc.lastLoginTime || acc.LastLoginTime || null;
+    let displayLoginCount = lastKnownDbCount;
     let displayLoginTime = formatLoginTime(now);
     let backendSucceeded = false;
 
-    // 更新 DB 的 LoginCount / LastLoginTime
+    // 更新 DB 的 LoginCount / LastLoginTime — DB 是「唯一事實來源」
     try {
         const resp = await fetch('/Settings/UpdateLoginStats', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
             body: JSON.stringify({ empId: accEmpId })
         });
         if (resp.ok) {
@@ -312,28 +371,34 @@ async function completeLoginAfterAuth(empId, source, fallbackAccount) {
                     displayLoginTime = formatLoginTimeFromDb(result.lastLoginTime);
                 }
                 backendSucceeded = true;
+            } else {
+                // 後端有回應但失敗 (e.g. admin TestAccount 不在 Accounts 表)
+                // 顯示最後一次已知的 DB 值，不假裝 +1
+                console.warn('UpdateLoginStats 後端拒絕：', result && result.message);
+                if (lastKnownDbTime) displayLoginTime = formatLoginTimeFromDb(lastKnownDbTime);
             }
+        } else {
+            console.warn('UpdateLoginStats HTTP 失敗：', resp.status);
+            if (lastKnownDbTime) displayLoginTime = formatLoginTimeFromDb(lastKnownDbTime);
         }
     } catch (e) {
         console.warn('UpdateLoginStats 連線失敗：', e);
+        if (lastKnownDbTime) displayLoginTime = formatLoginTimeFromDb(lastKnownDbTime);
     }
 
-    // 同步 appState
-    if (window.appState && window.appState.accounts) {
+    // 同步 appState (僅在 DB 真的成功更新時才同步、不寫假值)
+    if (backendSucceeded && window.appState && window.appState.accounts) {
         const a = window.appState.accounts.find(x => String(x.empId).toLowerCase() === accEmpId.toLowerCase());
         if (a) {
             a.loginCount = displayLoginCount;
-            if (backendSucceeded) a.lastLoginTime = a.lastLoginTime || new Date().toISOString();
+            a.lastLoginTime = new Date().toISOString();
         }
     }
 
-    if (!backendSucceeded) {
-        try {
-            localStorage.setItem('umc_user_stats_' + accEmpId, JSON.stringify({ count: displayLoginCount, lastLogin: displayLoginTime }));
-        } catch (e) { }
-    }
+    // ⚠️ 不再寫 localStorage `umc_user_stats_*` — 該欄位全專案沒人讀、純死碼，
+    //   留著會讓人誤以為「登入次數有快取」其實沒有。DB 是唯一事實來源。
 
-    currentUser = {
+    appState.currentUser = {
         id: accEmpId,
         empId: accEmpId,
         name: acc.name || acc.Name || '',
@@ -347,8 +412,8 @@ async function completeLoginAfterAuth(empId, source, fallbackAccount) {
         defaultPages: acc.defaultPages || acc.DefaultPages || {},
         loginSource: source || 'manual'  // 'windows' / 'manual' / 'emergency'
     };
-    // ⚠️ id 必須一起存 — restoreLoginFromStorage 與 sidebar.js getMenuPermissions 都會用 currentUser.id 判定權限
-    const slimUser = { id: currentUser.id, empId: currentUser.empId, name: currentUser.name, department: currentUser.department, roleLevel: currentUser.roleLevel, loginSource: currentUser.loginSource };
+    // ⚠️ id 必須一起存 — restoreLoginFromStorage 與 sidebar.js getMenuPermissions 都會用 appState.currentUser.id 判定權限
+    const slimUser = { id: appState.currentUser.id, empId: appState.currentUser.empId, name: appState.currentUser.name, department: appState.currentUser.department, roleLevel: appState.currentUser.roleLevel, loginSource: appState.currentUser.loginSource };
     localStorage.setItem('umc_current_user', JSON.stringify(slimUser));
 
     hideLoginOverlay();
@@ -359,7 +424,7 @@ async function completeLoginAfterAuth(empId, source, fallbackAccount) {
 // =============================================================
 // 6) Overlay 顯示 / 隱藏
 // =============================================================
-function showLoginOverlay(defaultTab) {
+export function showLoginOverlay(defaultTab) {
     const ov = document.getElementById('login-overlay');
     if (!ov) return;
     ov.style.setProperty('display', 'flex', 'important');
@@ -391,7 +456,7 @@ function showLoginOverlay(defaultTab) {
     }
 }
 
-function hideLoginOverlay() {
+export function hideLoginOverlay() {
     const ov = document.getElementById('login-overlay');
     if (ov) ov.style.setProperty('display', 'none', 'important');
 }
@@ -399,15 +464,21 @@ function hideLoginOverlay() {
 // =============================================================
 // 7) 登出 — 設旗標 → 後端清 cookie → 顯示登入框（停在手動 tab）
 // =============================================================
-async function logout() {
+export async function logout() {
     try {
-        await fetch('/api/Auth/Logout', { method: 'POST', credentials: 'include' });
+        await fetch('/api/Auth/Logout', { 
+            method: 'POST', 
+            credentials: 'include',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
     } catch (e) {
         console.error('登出 API 呼叫失敗', e);
     }
 
-    // 設旗標：下次進入時不要又被 Windows Auth 自動拉進來
-    try { localStorage.setItem(FORCE_MANUAL_KEY, '1'); } catch (e) { }
+    // 設旗標：「同一 tab 內」下次進入時不要又被 Windows Auth 自動拉進來
+    //   sessionStorage = 關掉 tab 就清掉 → 新開 tab / 新分頁 = 視為新 session 自動登入
+    try { sessionStorage.setItem(FORCE_MANUAL_KEY, '1'); } catch (e) { }
+    try { localStorage.removeItem(FORCE_MANUAL_KEY); } catch (e) { } // 順手清舊版殘留
 
     localStorage.removeItem('umc_current_user');
 
@@ -423,8 +494,10 @@ async function logout() {
         keysToRemove.forEach(k => localStorage.removeItem(k));
     } catch (e) { /* localStorage 無法讀寫時靜默忽略 */ }
 
-    currentUser = null;
+    appState.currentUser = null;
     _whoamiResult = null;
+    appState.currentActiveTopMenuId = null;
+    appState.currentActiveSidebarMenuId = null;
 
     showLoginOverlay('manual');
 }
@@ -433,14 +506,12 @@ window.logout = logout;
 // =============================================================
 // 工具
 // =============================================================
-function formatLoginTime(d) {
-    const pad = (n) => n < 10 ? '0' + n : n;
-    const h12 = d.getHours() % 12 || 12;
-    const ampm = d.getHours() >= 12 ? ' PM' : ' AM';
-    return pad(h12) + ':' + pad(d.getMinutes()) + ampm;
+export function formatLoginTime(d) {
+    const pad = (n) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-function formatLoginTimeFromDb(dbStr) {
+export function formatLoginTimeFromDb(dbStr) {
     try {
         const d = new Date(dbStr.replace(' ', 'T'));
         if (!isNaN(d.getTime())) return formatLoginTime(d);
@@ -448,21 +519,47 @@ function formatLoginTimeFromDb(dbStr) {
     return dbStr;
 }
 
-async function safeJson(resp) {
+export async function safeJson(resp) {
     try { return await resp.json(); } catch (e) { return null; }
-}
-
-function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     const winTabBtn = document.getElementById('tab-windows');
-    if (!winTabBtn) return;
+    const manualTabBtn = document.getElementById('tab-manual');
 
-    winTabBtn.addEventListener('shown.bs.tab', () => {
-        // 每次切到 Windows tab 都重新偵測一次
-        _whoamiResult = null;
-        fetchWhoAmI();
-    });
+    if (winTabBtn) {
+        winTabBtn.addEventListener('shown.bs.tab', () => {
+            // 每次切到 Windows tab 都重新偵測一次
+            _whoamiResult = null;
+            fetchWhoAmI();
+            // 切走手動 tab → 清掉手動登入的殘留錯誤訊息，避免下次切回來還看到舊紅字
+            showManualError('');
+        });
+    }
+
+    if (manualTabBtn) {
+        manualTabBtn.addEventListener('shown.bs.tab', () => {
+            // 切回手動 tab → 一律先清掉上一輪殘留的錯誤訊息，畫面乾淨
+            showManualError('');
+        });
+    }
 });
+
+// Expose for HTML inline handlers
+window.fetchAuthConfig = fetchAuthConfig;
+window.applyAuthConfigToUI = applyAuthConfigToUI;
+window.tryAutoLogin = tryAutoLogin;
+window.fetchWhoAmI = fetchWhoAmI;
+window.retryWhoAmI = retryWhoAmI;
+window.doWindowsLogin = doWindowsLogin;
+window.doLogin = doLogin;
+window.showManualError = showManualError;
+window.completeLoginAfterAuth = completeLoginAfterAuth;
+window.showLoginOverlay = showLoginOverlay;
+window.hideLoginOverlay = hideLoginOverlay;
+window.logout = logout;
+window.formatLoginTime = formatLoginTime;
+window.formatLoginTimeFromDb = formatLoginTimeFromDb;
+window.safeJson = safeJson;
+
+

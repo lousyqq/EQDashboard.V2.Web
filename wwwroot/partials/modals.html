@@ -204,7 +204,7 @@
                                 <input type="text" id="wpDisplayName" class="form-control form-control-sm" required>
                             </div>
 
-                            <div class="col-md-12">
+                            <div class="col-md-12" style="display:none;">
                                 <label class="form-label fw-bold text-muted small mb-1" data-i18n="icon">圖示 (Icon)</label>
                                 <div class="d-flex gap-2">
                                     <select id="wpIcon" class="form-select form-select-sm w-auto" onchange="handleIconSelectChange('wp')">
@@ -300,15 +300,15 @@
                         </div>
 
                         <div class="row g-3 mb-3">
-                            <div class="col-md-5">
+                            <div class="col-md-6">
                                 <label class="form-label fw-bold small text-danger mb-1">系統名稱 *</label>
                                 <input type="text" id="nodeName" class="form-control" required placeholder="例如: ZE 強化防禦">
                             </div>
-                            <div class="col-md-5">
+                            <div class="col-md-6">
                                 <label class="form-label fw-bold small text-danger mb-1">前台顯示名稱 *</label>
                                 <input type="text" id="nodeDisplayName" class="form-control" required placeholder="例如: ZE 強化防禦群組">
                             </div>
-                            <div class="col-md-2">
+                            <div class="col-md-2" style="display:none;">
                                 <label class="form-label fw-bold small text-muted mb-1" data-i18n="icon">圖示 (Icon)</label>
                                 <select id="nodeIcon" class="form-select" onchange="handleIconSelectChange('node')">
                                     <option value="">無圖示</option>

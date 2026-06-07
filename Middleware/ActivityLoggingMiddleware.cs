@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Security.Claims;
+using EQDashboard.V2.Web.Helpers;
 using EQDashboard.V2.Web.Models;
 using EQDashboard.V2.Web.Services.Interfaces;
 
@@ -26,6 +27,8 @@ public class ActivityLoggingMiddleware
     {
         "/api/Auth/Config"  // 太雜訊
     };
+
+
 
     public ActivityLoggingMiddleware(RequestDelegate next, ILogger<ActivityLoggingMiddleware> logger)
     {
@@ -66,19 +69,21 @@ public class ActivityLoggingMiddleware
             {
                 var (category, action) = Categorize(ctx.Request.Method, path);
 
-                // 自動紀錄不重複登入/登出（那些有更精細的明確紀錄）
-                // 用 if + 略過寫入 替代 return（C# 不允許 return 跳出 finally）
-                if (category != "Login" && category != "Logout")
-                {
-                    var statusCode = ctx.Response.StatusCode;
-                    bool success = caught == null && statusCode is >= 200 and < 400;
+                var statusCode = ctx.Response.StatusCode;
+                bool success = caught == null && statusCode is >= 200 and < 400;
 
+                // 自動紀錄不重複登入/登出（那些有更精細的明確紀錄），
+                // 依照企業標準：忽略所有「成功」的 GET 請求，大幅減少 DB 膨脹與寫放大。
+                // 失敗的 GET (401/403/5xx) 仍會記錄。
+                if (category != "Login" && category != "Logout"
+                    && !(success && ctx.Request.Method == HttpMethods.Get))
+                {
                     await activityLogger.LogAsync(new UserActivityLog
                     {
                         EmpId = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier),
                         EmpName = ctx.User.FindFirstValue(ClaimTypes.Name),
                         LoginSource = ctx.User.FindFirst("LoginSource")?.Value,
-                        IpAddress = GetClientIp(ctx),
+                        IpAddress = ClientIpHelper.GetClientIp(ctx),
                         UserAgent = ctx.Request.Headers.UserAgent.ToString(),
                         HttpMethod = ctx.Request.Method,
                         Path = path,
@@ -127,14 +132,4 @@ public class ActivityLoggingMiddleware
         return (category, action);
     }
 
-    private static string? GetClientIp(HttpContext ctx)
-    {
-        var xff = ctx.Request.Headers["X-Forwarded-For"].ToString();
-        if (!string.IsNullOrWhiteSpace(xff))
-        {
-            var first = xff.Split(',')[0].Trim();
-            if (!string.IsNullOrEmpty(first)) return first;
-        }
-        return ctx.Connection.RemoteIpAddress?.ToString();
-    }
 }

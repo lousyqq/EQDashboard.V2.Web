@@ -1,12 +1,25 @@
 // === ui/navigation.js - 語系切換、選單導航、路由、iframe ===
-function changeLanguage(lang) {
-    currentLang = lang;
+import { getCustomMenus, getFabs, getRoles, t } from '../config.js?v=20260607k';
+import { loadActivityLogs } from '../admin/activity-log.js?v=20260607k';
+import { openAppGridPage } from '../admin/misc-manage.js?v=20260607k';
+import { renderSidebarMenus } from '../render/sidebar.js?v=20260607k';
+import { renderAccountTable, renderApplyTable, renderAuditTable, renderFabTable, renderMenuConfigTable, renderPersonalMenuManage, renderRoleTable, renderWebpageTable } from '../render/tables.js?v=20260607k';
+import { appState } from '../store.js?v=20260607k';
+
+
+export function changeLanguage(lang) {
+    appState.currentLang = lang;
 
     // 1. 全面掃描 data-i18n 屬性，替換靜態 HTML 文字
     if (typeof i18n !== 'undefined') {
         document.querySelectorAll('[data-i18n]').forEach(el => {
             const key = el.getAttribute('data-i18n');
             if (i18n[lang] && i18n[lang][key] !== undefined && i18n[lang][key] !== null) el.innerHTML = i18n[lang][key];
+        });
+        // 1b. data-i18n-placeholder：input/textarea 的 placeholder 也要跟著翻譯（如側邊欄看板搜尋框）
+        document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+            const key = el.getAttribute('data-i18n-placeholder');
+            if (i18n[lang] && i18n[lang][key] !== undefined && i18n[lang][key] !== null) el.setAttribute('placeholder', i18n[lang][key]);
         });
     }
 
@@ -29,7 +42,7 @@ function changeLanguage(lang) {
     if (typeof renderHomeDashboard === 'function') renderHomeDashboard();
 
     // 6. 重繪側邊欄（含系統設定子選單翻譯）
-    if (currentUser && typeof renderSidebarMenus === 'function') renderSidebarMenus();
+    if (appState.currentUser && typeof renderSidebarMenus === 'function') renderSidebarMenus();
 
     // 7. ✅ 核心修復：重新渲染當前正在顯示的頁面，讓動態產生的按鈕與表格文字也一併翻譯
     const activePage = document.querySelector('.page-section.active');
@@ -49,7 +62,7 @@ function changeLanguage(lang) {
 window.changeLanguage = changeLanguage;
 
 
-function renderLangSwitcher() {
+export function renderLangSwitcher() {
     const container = document.getElementById('lang-dropdown-menu');
     if (!container) return;
 
@@ -62,10 +75,10 @@ function renderLangSwitcher() {
     container.innerHTML = langs.map(l => `
         <li>
             <a class="dropdown-item py-1 fw-bold cursor-pointer d-flex justify-content-between align-items-center
-                ${currentLang === l.code ? 'active bg-light text-primary' : ''}"
+                ${appState.currentLang === l.code ? 'active bg-light text-primary' : ''}"
                onclick="changeLanguage('${l.code}')">
                 ${l.label}
-                ${currentLang === l.code ? '<i class="fa-solid fa-check"></i>' : ''}
+                ${appState.currentLang === l.code ? '<i class="fa-solid fa-check"></i>' : ''}
             </a>
         </li>
     `).join('');
@@ -73,19 +86,19 @@ function renderLangSwitcher() {
 window.renderLangSwitcher = renderLangSwitcher;
 
 // 取得上方導覽列名稱
-function getTopMenuName() {
-    if (window.currentActiveTopMenuId === 'system_settings') return t('nav_sys_settings', '系統設定');
-    if (!window.currentActiveTopMenuId) return '';
+export function getTopMenuName() {
+    if (appState.currentActiveTopMenuId === 'system_settings') return t('nav_sys_settings', '系統設定');
+    if (!appState.currentActiveTopMenuId) return '';
     const menus = getCustomMenus();
-    const cTargetId = window.cleanId(window.currentActiveTopMenuId);
+    const cTargetId = window.cleanId(appState.currentActiveTopMenuId);
     const topMenu = menus.find(m => window.cleanId(m.id || m.MenuId || m.menuId) === cTargetId);
     if (topMenu) {
         let mId = topMenu.id || topMenu.MenuId || topMenu.menuId;
         let dName = topMenu.displayName || topMenu.DisplayName || topMenu.sysName || topMenu.SysName;
         let isEdited = topMenu.isEdited || topMenu.IsEdited;
 
-        if (typeof i18n !== 'undefined' && i18n[currentLang] && i18n[currentLang]['dyn_' + mId] && !isEdited) {
-            dName = i18n[currentLang]['dyn_' + mId];
+        if (typeof i18n !== 'undefined' && i18n[appState.currentLang] && i18n[appState.currentLang]['dyn_' + mId] && !isEdited) {
+            dName = i18n[appState.currentLang]['dyn_' + mId];
         }
         return dName;
     }
@@ -93,7 +106,7 @@ function getTopMenuName() {
 }
 
 // 取得麵包屑路徑
-function getMenuPath(element) {
+export function getMenuPath(element) {
     let path = []; let current = element;
     while (current) {
         let container = current.closest('.collapse');
@@ -111,7 +124,7 @@ function getMenuPath(element) {
 }
 
 // 取得完整路徑字串
-function getFullMenuPathStr(menuId, allMenus) {
+export function getFullMenuPathStr(menuId, allMenus) {
     let path = [];
     let cTargetId = window.cleanId(menuId);
     let curr = allMenus.find(m => window.cleanId(m.id || m.MenuId || m.menuId) === cTargetId);
@@ -121,8 +134,8 @@ function getFullMenuPathStr(menuId, allMenus) {
         let dName = curr.displayName || curr.DisplayName || curr.sysName || curr.SysName;
         let isEdited = curr.isEdited || curr.IsEdited;
 
-        if (typeof i18n !== 'undefined' && i18n[currentLang] && i18n[currentLang]['dyn_' + mId] && !isEdited) {
-            dName = i18n[currentLang]['dyn_' + mId];
+        if (typeof i18n !== 'undefined' && i18n[appState.currentLang] && i18n[appState.currentLang]['dyn_' + mId] && !isEdited) {
+            dName = i18n[appState.currentLang]['dyn_' + mId];
         }
         path.unshift(dName);
 
@@ -161,8 +174,8 @@ window.isMenuDescendant = function (folderId, targetId, allMenus) {
 };
 
 // ⭐️ 智慧點擊主選單連動：直接依照繪製好的側邊欄判斷是否為網頁
-function selectTopMenu(menuId) {
-    window.currentActiveTopMenuId = menuId;
+export function selectTopMenu(menuId) {
+    appState.currentActiveTopMenuId = menuId;
     if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
 
     if (menuId === 'system_settings') {
@@ -192,8 +205,8 @@ function selectTopMenu(menuId) {
                 let mTargetPage = activeRoot.targetPage || activeRoot.TargetPage;
                 let isEdited = activeRoot.isEdited || activeRoot.IsEdited;
 
-                if (typeof i18n !== 'undefined' && i18n[currentLang] && i18n[currentLang]['dyn_' + mId] && !isEdited) {
-                    dName = i18n[currentLang]['dyn_' + mId];
+                if (typeof i18n !== 'undefined' && i18n[appState.currentLang] && i18n[appState.currentLang]['dyn_' + mId] && !isEdited) {
+                    dName = i18n[appState.currentLang]['dyn_' + mId];
                 }
 
                 if (mMode === 'app_grid') openAppGridPage(mId, dName, null);
@@ -233,7 +246,7 @@ function selectTopMenu(menuId) {
 }
 
 // ⭐️ 核心修復：點擊啟動特定看板 (加入對 DB 欄位大寫的全面支援)
-function activateMenu(menuId) {
+export function activateMenu(menuId) {
     try {
         if (!menuId) {
             // ⭐️ 徹底封殺 page-home 迴圈，不顯示多餘的總覽
@@ -263,8 +276,8 @@ function activateMenu(menuId) {
             }
         }
 
-        window.currentActiveTopMenuId = rootId;
-        window.currentActiveSidebarMenuId = menuId;
+        appState.currentActiveTopMenuId = rootId;
+        appState.currentActiveSidebarMenuId = menuId;
 
         if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
 
@@ -276,8 +289,8 @@ function activateMenu(menuId) {
         let mTargetPage = targetMenu.targetPage || targetMenu.TargetPage;
         let isEdited = targetMenu.isEdited || targetMenu.IsEdited;
 
-        if (typeof i18n !== 'undefined' && i18n[currentLang] && i18n[currentLang]['dyn_' + mId] && !isEdited) {
-            dName = i18n[currentLang]['dyn_' + mId];
+        if (typeof i18n !== 'undefined' && i18n[appState.currentLang] && i18n[appState.currentLang]['dyn_' + mId] && !isEdited) {
+            dName = i18n[appState.currentLang]['dyn_' + mId];
         }
 
         const elList = document.querySelectorAll('.menu-item');
@@ -323,30 +336,28 @@ function activateMenu(menuId) {
 }
 
 // ⭐️ 對齊 TEST_20260429.html:3496 的預設首頁跳轉（含廠區過濾、folder 自動取第一個子節點）
-function goDefaultHome() {
+export function goDefaultHome() {
     try {
-        if (!currentUser) return;
+        if (!appState.currentUser) return;
 
         let defPage = null;
 
         // 1. 優先使用該帳號在目前廠區設定的專屬首頁
-        if (currentUser.defaultPages && currentUser.defaultPages[currentFab]) {
-            defPage = currentUser.defaultPages[currentFab];
-        } else if (currentUser.defaultPage) {
-            defPage = currentUser.defaultPage; // 向下相容舊資料
+        if (appState.currentUser.defaultPages && appState.currentUser.defaultPages[appState.currentFab]) {
+            defPage = appState.currentUser.defaultPages[appState.currentFab];
+        } else if (appState.currentUser.defaultPage) {
+            defPage = appState.currentUser.defaultPage; // 向下相容舊資料
         }
 
         const menus = getCustomMenus() || [];
 
         // 2. 未設定 → 依目前廠區 fab.assignedRoles 與帳號 assignedRoles 的交集，找出該帳號可看的第一個 root
         if (!defPage) {
-            const currentFabObj = getFabs().find(f => window.cleanId(f.fabName || f.FabName) === window.cleanId(currentFab));
+            const currentFabObj = getFabs().find(f => window.cleanId(f.fabName || f.FabName) === window.cleanId(appState.currentFab));
             if (currentFabObj) {
                 const fabRoleIds = currentFabObj.assignedRoles || currentFabObj.AssignedRoles || [];
-                const userRoleIds = currentUser.assignedRoles || currentUser.AssignedRoles || [];
-                const activeRoleIds = (currentUser.roleLevel === 'admin')
-                    ? fabRoleIds
-                    : fabRoleIds.filter(id => userRoleIds.some(uId => window.cleanId(uId) === window.cleanId(id)));
+                const userRoleIds = appState.currentUser.assignedRoles || appState.currentUser.AssignedRoles || [];
+                const activeRoleIds = fabRoleIds.filter(id => userRoleIds.some(uId => window.cleanId(uId) === window.cleanId(id)));
 
                 const roles = getRoles();
                 let initialMenuIds = [];
@@ -398,7 +409,7 @@ function goDefaultHome() {
         }
 
         // 3. 終極防呆：仍找不到或合法權限已被拔除 → 從安全過濾後的清單尋找
-        let validList = window._currentValidMenus || [];
+        let validList = appState._currentValidMenus || [];
         if (!defPage || !validList.find(m => window.cleanId(m.id) === window.cleanId(defPage))) {
             let firstVisible = validList.find(m => (m.menuMode || '').toLowerCase() !== 'folder');
             if (firstVisible) defPage = firstVisible.id;
@@ -406,13 +417,15 @@ function goDefaultHome() {
         }
 
         if (defPage) activateMenu(defPage);
+        else navTo('page-unauthorized'); // ⭐️ 導向獨立的無權限頁面，避免影響首頁預設視圖
+
     } catch (error) {
         console.error("🚨 導向預設首頁時發生錯誤:", error);
     }
 }
 
 // 導航到指定區域塊
-function navTo(pageId, element, subTitle = '') {
+export function navTo(pageId, element, subTitle = '') {
     document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active'));
     if (element) element.classList.add('active');
     document.querySelectorAll('.page-section').forEach(el => el.classList.remove('active'));
@@ -461,10 +474,10 @@ function navTo(pageId, element, subTitle = '') {
     if (pageId === 'page-apply' && typeof renderApplyTable === 'function') renderApplyTable();
     if (pageId === 'page-audit-manage' && typeof renderAuditTable === 'function') renderAuditTable();
     if (pageId === 'page-activity-log' && typeof loadActivityLogs === 'function') loadActivityLogs();
-    if (pageId !== 'page-app-grid') currentAppGridMenuId = null;
+    if (pageId !== 'page-app-grid') appState.currentAppGridMenuId = null;
 }
 
-function openDynamicIframe(url, title, element, isFullscreen = false) {
+export function openDynamicIframe(url, title, element, isFullscreen = false) {
     if (!url) return;
     navTo('page-iframe', element, title);
     const iframe = document.getElementById('main-iframe');
@@ -472,7 +485,7 @@ function openDynamicIframe(url, title, element, isFullscreen = false) {
 
     let finalUrl = url;
     if (!finalUrl.includes('fab=')) {
-        finalUrl = finalUrl.includes('?') ? `${finalUrl}&fab=${currentFab}` : `${finalUrl}?fab=${currentFab}`;
+        finalUrl = finalUrl.includes('?') ? `${finalUrl}&fab=${appState.currentFab}` : `${finalUrl}?fab=${appState.currentFab}`;
     }
     if (!/^https?:\/\//i.test(finalUrl) && !finalUrl.startsWith('/') && !finalUrl.startsWith('page-')) {
         finalUrl = 'http://' + finalUrl;
@@ -497,3 +510,16 @@ function openDynamicIframe(url, title, element, isFullscreen = false) {
 }
 
 // 產生 Icon 的 HTML (共用)
+
+// Expose for HTML inline handlers
+window.changeLanguage = changeLanguage;
+window.renderLangSwitcher = renderLangSwitcher;
+window.getTopMenuName = getTopMenuName;
+window.getMenuPath = getMenuPath;
+window.getFullMenuPathStr = getFullMenuPathStr;
+window.selectTopMenu = selectTopMenu;
+window.activateMenu = activateMenu;
+window.goDefaultHome = goDefaultHome;
+window.navTo = navTo;
+window.openDynamicIframe = openDynamicIframe;
+

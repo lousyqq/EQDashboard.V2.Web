@@ -1,5 +1,17 @@
 // === admin/menu-manage.js - 個人選單 + 看板管理 + 選單結構樹 ===
 
+import { getCustomMenus, getPersonalSettings, savePersonalSettings, t } from '../config.js?v=20260607k';
+
+
+import { getSelectedIconVal, setIconValToModal } from './misc-manage.js?v=20260607k';
+import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260607k';
+import { batchDeleteMenusAPI, batchSaveMenusAPI, deleteMenuAPI, fetchInitialDataFromDB, saveMenuAPI } from '../api.js?v=20260607k';
+import { renderSidebarMenus } from '../render/sidebar.js?v=20260607k';
+import { renderMenuConfigTable, renderPersonalMenuManage, renderWebpageTable } from '../render/tables.js?v=20260607k';
+import { customAlert, customConfirm } from '../ui/dialogs.js?v=20260607k';
+import { appState } from '../store.js?v=20260607k';
+
+
 // 共用工具：把 ACL textarea 內容切行、trim、過濾空字串、去重
 window.__parseAclTextarea = function (txt) {
     if (!txt) return [];
@@ -10,14 +22,14 @@ window.__parseAclTextarea = function (txt) {
 };
 
 // === Personal Menus 個人選單（對齊 TEST_20260429.html:3744-3771）===
-function togglePerMenuExpand(id) {
-    if (expandedPerMenuIds.has(id)) expandedPerMenuIds.delete(id);
-    else expandedPerMenuIds.add(id);
-    isPerAllExpanded = false;
+export function togglePerMenuExpand(id) {
+    if (appState.expandedPerMenuIds.has(id)) appState.expandedPerMenuIds.delete(id);
+    else appState.expandedPerMenuIds.add(id);
+    appState.isPerAllExpanded = false;
     if (typeof renderPersonalMenuManage === 'function') renderPersonalMenuManage();
 }
 
-function togglePerAllMenus() {
+export function togglePerAllMenus() {
     const menusData = getCustomMenus().filter(m =>
         String(m.isPoolItem || m.IsPoolItem).toLowerCase() !== 'true'
     );
@@ -26,26 +38,26 @@ function togglePerAllMenus() {
     );
 
     const btn = document.getElementById('btn-per-toggle-all');
-    if (isPerAllExpanded) {
-        expandedPerMenuIds.clear();
-        isPerAllExpanded = false;
+    if (appState.isPerAllExpanded) {
+        appState.expandedPerMenuIds.clear();
+        appState.isPerAllExpanded = false;
         if (btn) btn.innerHTML = '<i class="fas fa-expand-arrows-alt me-1"></i> 全部展開';
     } else {
-        menusWithChildren.forEach(m => expandedPerMenuIds.add(m.id));
-        isPerAllExpanded = true;
+        menusWithChildren.forEach(m => appState.expandedPerMenuIds.add(m.id));
+        appState.isPerAllExpanded = true;
         if (btn) btn.innerHTML = '<i class="fas fa-compress-arrows-alt me-1"></i> 全部收合';
     }
     if (typeof renderPersonalMenuManage === 'function') renderPersonalMenuManage();
 }
 
-function restoreDefaultPersonalMenu() {
+export function restoreDefaultPersonalMenu() {
     customConfirm('確定要還原成預設系統版面嗎？您所有的個人自訂排序與隱藏設定將會被清除（包含未儲存的拖曳變更）。', async () => {
         // 清掉本地 + pending；DB 端透過 savePersonalSettings([]) 改成空 list 即可同步
-        localStorage.removeItem('umc_personal_menus_' + currentUser.id);
+        localStorage.removeItem('umc_personal_menus_' + appState.currentUser.id);
         window._personalPendingPSets = null;
         window._personalPendingDirty = false;
 
-        try { await savePersonalSettings(currentUser.id, {}); } catch (e) { console.error('還原預設版面同步 DB 失敗', e); }
+        try { await savePersonalSettings(appState.currentUser.id, {}); } catch (e) { console.error('還原預設版面同步 DB 失敗', e); }
 
         if (typeof window.updatePersonalSaveButton === 'function') window.updatePersonalSaveButton();
         if (typeof renderPersonalMenuManage === 'function') renderPersonalMenuManage();
@@ -54,12 +66,12 @@ function restoreDefaultPersonalMenu() {
     });
 }
 
-function editPersonalMenu(id) {
+export function editPersonalMenu(id) {
     try {
         const menu = getCustomMenus().find(m => window.cleanId(m.id) === window.cleanId(id));
         if (!menu) { console.error("找不到對應的選單資料 (ID: " + id + ")"); return; }
 
-        const pSets = getPersonalSettings(currentUser.id);
+        const pSets = getPersonalSettings(appState.currentUser.id);
         const pSet = pSets[id] || {};
 
         document.getElementById('editPersonalMenuId').value = menu.id;
@@ -77,13 +89,13 @@ function editPersonalMenu(id) {
     } catch (e) { console.error("[editPersonalMenu] 錯誤:", e); }
 }
 
-async function savePersonalMenu(e) {
+export async function savePersonalMenu(e) {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     else if (window.event && typeof window.event.preventDefault === 'function') window.event.preventDefault();
 
     try {
         const id = document.getElementById('editPersonalMenuId').value;
-        let pSets = getPersonalSettings(currentUser.id);
+        let pSets = getPersonalSettings(appState.currentUser.id);
         if (!pSets[id]) pSets[id] = {};
 
         pSets[id].hidden = !document.getElementById('personalMenuVisible').checked;
@@ -94,7 +106,7 @@ async function savePersonalMenu(e) {
 
         // 同上：必須 await + 不需要再 fetchInitialDataFromDB (localStorage 為個人設定的單一事實來源)
         // 否則會有 race 把剛改的 hidden/icon/target 順手洗掉
-        await savePersonalSettings(currentUser.id, pSets);
+        await savePersonalSettings(appState.currentUser.id, pSets);
 
         hideModalSafely('personalMenuModal');
         if (typeof renderPersonalMenuManage === 'function') renderPersonalMenuManage();
@@ -104,7 +116,7 @@ async function savePersonalMenu(e) {
 }
 
 // === Webpages 看板管理 ===
-function toggleWebpageMode() {
+export function toggleWebpageMode() {
     const isAppGrid = document.getElementById('wpModeAppGrid').checked;
     const urlGrp = document.getElementById('wpUrlGroup');
     const targetGrp = document.getElementById('wpTargetGroup');
@@ -117,7 +129,7 @@ function toggleWebpageMode() {
     }
 }
 
-function openAddWebpageModal(id = null) {
+export function openAddWebpageModal(id = null) {
     try {
         document.getElementById('wpForm').reset();
         document.getElementById('editWpId').value = id || '';
@@ -152,7 +164,7 @@ function openAddWebpageModal(id = null) {
     } catch (e) { console.error("[openAddWebpageModal] 錯誤:", e); }
 }
 
-async function saveWebpageItem(e) {
+export async function saveWebpageItem(e) {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     else if (window.event && typeof window.event.preventDefault === 'function') window.event.preventDefault();
 
@@ -168,7 +180,7 @@ async function saveWebpageItem(e) {
             mObj = {
                 id: 'm_' + Date.now(),
                 isPoolItem: true,
-                createdBy: currentUser.id,
+                createdBy: appState.currentUser.id,
                 parentId: null,
                 parentIds: [],
                 parentOrders: {}
@@ -226,7 +238,7 @@ async function saveWebpageItem(e) {
     return false;
 }
 
-async function deleteWebpageItem(id) {
+export async function deleteWebpageItem(id) {
     try {
         customConfirm('確定要刪除此看板嗎？', async () => {
             let menus = getCustomMenus().filter(m => window.cleanId(m.id) !== window.cleanId(id));
@@ -248,19 +260,19 @@ async function deleteWebpageItem(id) {
 }
 
 // === Menus 結構管理 (巢狀樹狀編輯器) ===
-function toggleNodeMode() {
+export function toggleNodeMode() {
     const isFolder = document.getElementById('nodeModeFolder').checked;
     document.getElementById('nodeUrlGroup').style.display = isFolder ? 'none' : 'block';
     document.getElementById('nodeTargetGroup').style.display = isFolder ? 'none' : 'block';
     document.getElementById('treeBuilderSection').style.display = isFolder ? 'block' : 'none';
 }
 
-function getLinkOptionsHtml(selectedId) {
+export function getLinkOptionsHtml(selectedId) {
     let menus = getCustomMenus().filter(m => m.menuMode !== 'folder');
     let html = '<option value="">請選擇看板...</option>';
     menus.forEach(m => {
         let sel = window.cleanId(m.id) === window.cleanId(selectedId) ? 'selected' : '';
-        html += `<option value="${m.id}" ${sel}>${m.displayName} (${m.name})</option>`;
+        html += `<option value="${window.escapeHTML(m.id)}" ${sel}>${window.escapeHTML(m.displayName)} (${window.escapeHTML(m.name)})</option>`;
     });
     return html;
 }
@@ -313,16 +325,11 @@ window.tbAddFolder = function (container, folderName = '', folderId = '', opts) 
     const removeBtnHtml = removable
         ? '<button type="button" class="btn btn-sm btn-outline-danger border-0 ms-2" onclick="this.closest(\'.tb-item\').remove()"><i class="fas fa-trash-alt me-1"></i>移除群組</button>'
         : '';
-    const addChildBtnHtml = canAddChild 
-        ? `<div class="ps-4 ms-2 mt-1">
-            <button type="button" class="btn btn-sm btn-link text-decoration-none fw-bold p-0" onclick="window.tbAddLink(this.closest('.tb-folder').querySelector('.tb-children'))"><i class="fas fa-plus me-1"></i>加入看板</button>
-           </div>`
-        : '';
     div.innerHTML = `
         <div class="d-flex align-items-center mb-2">
             ${handleHtml}
             <i class="fas fa-folder text-warning me-2 fs-5"></i>
-            <input type="text" class="form-control form-control-sm flex-grow-1 border-warning fw-bold text-dark tb-folder-name" value="${folderName}" placeholder="群組名稱" ${nameEditable ? '' : 'readonly'}>
+            <input type="text" class="form-control form-control-sm flex-grow-1 border-warning fw-bold text-dark tb-folder-name" value="${window.escapeHTML(folderName)}" placeholder="群組名稱" ${nameEditable ? '' : 'readonly'}>
             ${removeBtnHtml}
         </div>
         <div class="tb-children ps-4 ms-2 border-start border-warning border-2 pb-1 pt-1" style="min-height: 30px;"></div>
@@ -332,7 +339,7 @@ window.tbAddFolder = function (container, folderName = '', folderId = '', opts) 
     return div;
 };
 
-function buildTreeUI(container, parentId) {
+export function buildTreeUI(container, parentId) {
     let menus = getCustomMenus();
     let children = menus.filter(m => m.id !== parentId && (window.isParentMatch(m.parentId, { id: parentId }) || (m.parentIds || []).some(pid => window.isParentMatch(pid, { id: parentId }))));
     children.sort((a, b) => (a.parentOrders?.[parentId] ?? a.order ?? 0) - (b.parentOrders?.[parentId] ?? b.order ?? 0));
@@ -358,7 +365,7 @@ function buildTreeUI(container, parentId) {
     });
 }
 
-function initTreeDragAndDrop() {
+export function initTreeDragAndDrop() {
     const section = document.getElementById('treeBuilderSection');
     if (!section || section._dndInit) return;
     section._dndInit = true;
@@ -392,7 +399,7 @@ function initTreeDragAndDrop() {
     });
 }
 
-function parseTreeDOM(container, parentId) {
+export function parseTreeDOM(container, parentId) {
     let items = container.children;
     let order = 0;
     let results = [];
@@ -430,7 +437,7 @@ function parseTreeDOM(container, parentId) {
     return results;
 }
 
-function openAddMenuNodeModal(id = null) {
+export function openAddMenuNodeModal(id = null) {
     try {
         document.getElementById('nodeForm').reset();
         document.getElementById('editNodeId').value = id || '';
@@ -480,7 +487,7 @@ function openAddMenuNodeModal(id = null) {
     } catch (e) { console.error("[openAddMenuNodeModal] 錯誤:", e); }
 }
 
-async function saveMenuNodeItem(e) {
+export async function saveMenuNodeItem(e) {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     else if (window.event && typeof window.event.preventDefault === 'function') window.event.preventDefault();
 
@@ -489,7 +496,7 @@ async function saveMenuNodeItem(e) {
         const isFolder = document.getElementById('nodeModeFolder').checked;
         let menus = getCustomMenus();
 
-        let mObj = id ? menus.find(x => window.cleanId(x.id) === window.cleanId(id)) : { id: 'm_' + Date.now(), isPoolItem: false, createdBy: currentUser.id, parentId: null, parentIds: [] };
+        let mObj = id ? menus.find(x => window.cleanId(x.id) === window.cleanId(id)) : { id: 'm_' + Date.now(), isPoolItem: false, createdBy: appState.currentUser.id, parentId: null, parentIds: [] };
         mObj._wasTouched = true;
 
         mObj.name = document.getElementById('nodeName').value.trim();
@@ -578,7 +585,7 @@ async function saveMenuNodeItem(e) {
                 let m = menus.find(x => window.cleanId(x.id) === window.cleanId(node.id));
                 if (!m) {
                     if (node.type === 'folder') {
-                        m = { id: node.id, name: node.name, displayName: node.name, menuMode: 'folder', enabled: true, isEdited: true, parentId: null, parentIds: [], parentOrders: {}, createdBy: currentUser.id, isPoolItem: false };
+                        m = { id: node.id, name: node.name, displayName: node.name, menuMode: 'folder', enabled: true, isEdited: true, parentId: null, parentIds: [], parentOrders: {}, createdBy: appState.currentUser.id, isPoolItem: false };
                         m._wasTouched = true;
                         menus.push(m);
                     } else return;
@@ -612,14 +619,18 @@ async function saveMenuNodeItem(e) {
 
         if (!result.success) {
             customAlert("儲存失敗: " + (result.message || '未知錯誤'));
-            return false; // 失敗時不關 modal、不刷新，保留輸入讓使用者重試
+            return false;
         }
 
+        // 成功後處理
+        hideModalSafely('menuNodeModal');
+        
         try { await window.fetchInitialDataFromDB(); } catch (e) { console.error('fetch 失敗', e); }
-        try { hideModalSafely('menuNodeModal'); } catch (e) { console.error('hideModal 失敗', e); }
         try {
             if (typeof renderMenuConfigTable === 'function') renderMenuConfigTable();
             if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
+            // ⛔️ 不呼叫 goDefaultHome()：編輯/儲存後應停留在「選單配置管理」頁，只關閉編輯視窗 +
+            //    就地刷新表格/側欄即可。goDefaultHome() 會把畫面跳去使用者預設看板（整頁跳走）。
         } catch (e) { console.error('render 失敗', e); }
     } catch (error) {
         console.error("[saveMenuNodeItem] 錯誤:", error);
@@ -628,7 +639,7 @@ async function saveMenuNodeItem(e) {
     return false;
 }
 
-async function deleteMenuNodeItem(id) {
+export async function deleteMenuNodeItem(id) {
     try {
         customConfirm('確定要刪除此選單配置嗎？(底下包含的子看板將會被釋放回池中，不會被刪除)', async () => {
             let menus = getCustomMenus();
@@ -690,12 +701,13 @@ async function deleteMenuNodeItem(id) {
                 customAlert("刪除失敗");
                 return;
             }
-
-            await window.fetchInitialDataFromDB();
-
-            if (typeof renderMenuConfigTable === 'function') renderMenuConfigTable();
-            if (typeof renderWebpageTable === 'function') renderWebpageTable();
-            if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
+            try { await window.fetchInitialDataFromDB(); } catch (e) { console.error('fetch 失敗', e); }
+            try {
+                if (typeof renderMenuConfigTable === 'function') renderMenuConfigTable();
+                if (typeof renderWebpageTable === 'function') renderWebpageTable();
+                if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
+                // ⛔️ 不呼叫 goDefaultHome()：刪除後應停留在「選單配置管理」頁，只就地刷新表格，不可整頁跳轉
+            } catch (e) { console.error('render 失敗', e); }
         });
     } catch (e) { console.error("[deleteMenuNodeItem] 錯誤:", e); }
 }
@@ -720,3 +732,23 @@ window.toggleMenuEnable = async function (id, isEnabled) {
         if (typeof renderMenuConfigTable === 'function') renderMenuConfigTable();
     }
 };
+
+// Expose for HTML inline handlers
+window.togglePerMenuExpand = togglePerMenuExpand;
+window.togglePerAllMenus = togglePerAllMenus;
+window.restoreDefaultPersonalMenu = restoreDefaultPersonalMenu;
+window.editPersonalMenu = editPersonalMenu;
+window.savePersonalMenu = savePersonalMenu;
+window.toggleWebpageMode = toggleWebpageMode;
+window.openAddWebpageModal = openAddWebpageModal;
+window.saveWebpageItem = saveWebpageItem;
+window.deleteWebpageItem = deleteWebpageItem;
+window.toggleNodeMode = toggleNodeMode;
+window.getLinkOptionsHtml = getLinkOptionsHtml;
+window.buildTreeUI = buildTreeUI;
+window.initTreeDragAndDrop = initTreeDragAndDrop;
+window.parseTreeDOM = parseTreeDOM;
+window.openAddMenuNodeModal = openAddMenuNodeModal;
+window.saveMenuNodeItem = saveMenuNodeItem;
+window.deleteMenuNodeItem = deleteMenuNodeItem;
+

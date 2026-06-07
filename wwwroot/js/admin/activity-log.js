@@ -4,13 +4,17 @@
 // 對應頁面：#page-activity-log
 //
 
+import { customAlert, customConfirm } from '../ui/dialogs.js?v=20260607k';
+import { appState } from '../store.js?v=20260607k';
+
+
 window._activityLogPage = 1;
 window._activityLogPageSize = 50;
 window._activityLogTotal = 0;
 
-async function loadActivityLogs() {
-    // ⚠️ 不能用 window.currentUser — config.js 用 `let currentUser` 宣告，不會掛到 window
-    if (!currentUser || String(currentUser.roleLevel || '').toLowerCase() !== 'admin') {
+export async function loadActivityLogs() {
+    // ⚠️ 不能用 appState.currentUser — config.js 用 `let appState.currentUser` 宣告，不會掛到 window
+    if (!appState.currentUser || String(appState.currentUser.roleLevel || '').toLowerCase() !== 'admin') {
         if (typeof customAlert === 'function') customAlert('僅管理員可查看操作紀錄');
         return;
     }
@@ -62,7 +66,7 @@ async function loadActivityLogs() {
     }
 }
 
-function renderActivityRow(r) {
+export function renderActivityRow(r) {
     const tsLocal = r.timestampUtc ? new Date(r.timestampUtc + (r.timestampUtc.endsWith('Z') ? '' : 'Z')) : null;
     const tsStr = tsLocal ? tsLocal.toLocaleString('zh-TW', { hour12: false }) : '';
     const isSuccess = r.isSuccess;
@@ -94,7 +98,7 @@ function renderActivityRow(r) {
     </tr>`;
 }
 
-function changeActivityPage(delta) {
+export function changeActivityPage(delta) {
     const totalPages = Math.max(1, Math.ceil(window._activityLogTotal / window._activityLogPageSize));
     const newPage = window._activityLogPage + delta;
     if (newPage < 1 || newPage > totalPages) return;
@@ -102,8 +106,8 @@ function changeActivityPage(delta) {
     loadActivityLogs();
 }
 
-async function purgeActivityLogs() {
-    if (!currentUser || String(currentUser.roleLevel || '').toLowerCase() !== 'admin') return;
+export async function purgeActivityLogs() {
+    if (!appState.currentUser || String(appState.currentUser.roleLevel || '').toLowerCase() !== 'admin') return;
     if (typeof customConfirm === 'function') {
         customConfirm('確定要清除 90 天前的所有操作紀錄？(此操作無法復原)', async () => {
             try {
@@ -120,7 +124,9 @@ async function purgeActivityLogs() {
     }
 }
 
-// 對外
+// Expose for HTML inline handlers
 window.loadActivityLogs = loadActivityLogs;
+window.renderActivityRow = renderActivityRow;
 window.changeActivityPage = changeActivityPage;
 window.purgeActivityLogs = purgeActivityLogs;
+

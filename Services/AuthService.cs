@@ -2,21 +2,23 @@ using System.DirectoryServices.Protocols;
 using System.Net;
 using EQDashboard.V2.Web.Data;
 using EQDashboard.V2.Web.Models;
+using EQDashboard.V2.Web.Models.Settings;
 using EQDashboard.V2.Web.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace EQDashboard.V2.Web.Services;
 
 public class AuthService : IAuthService
 {
     private readonly AppDbContext _context;
-    private readonly IConfiguration _config;
+    private readonly AuthSettings _authSettings;
     private readonly ILogger<AuthService> _logger;
 
-    public AuthService(AppDbContext context, IConfiguration config, ILogger<AuthService> logger)
+    public AuthService(AppDbContext context, IOptionsSnapshot<AuthSettings> authOptions, ILogger<AuthService> logger)
     {
         _context = context;
-        _config = config;
+        _authSettings = authOptions.Value;
         _logger = logger;
     }
 
@@ -53,18 +55,18 @@ public class AuthService : IAuthService
         if (string.IsNullOrWhiteSpace(empId) || string.IsNullOrWhiteSpace(password))
             return (false, "工號或密碼為空");
 
-        var ldapEnabled = _config.GetValue<bool>("Auth:Ldap:Enabled");
+        var ldapEnabled = _authSettings.Ldap.Enabled;
         if (!ldapEnabled)
         {
             _logger.LogWarning("LDAP 驗證未啟用，拒絕登入 (empId={EmpId})", empId);
             return (false, "LDAP 驗證未啟用");
         }
 
-        var server = _config["Auth:Ldap:Server"] ?? "";
-        var port = _config.GetValue<int?>("Auth:Ldap:Port") ?? 389;
-        var useSsl = _config.GetValue<bool>("Auth:Ldap:UseSsl");
-        var bindDomain = _config["Auth:Ldap:BindDomain"] ?? "";
-        var upnSuffix = _config["Auth:Ldap:UserPrincipalSuffix"] ?? "";
+        var server = _authSettings.Ldap.Server;
+        var port = _authSettings.Ldap.Port > 0 ? _authSettings.Ldap.Port : 389;
+        var useSsl = _authSettings.Ldap.UseSsl;
+        var bindDomain = _authSettings.Ldap.BindDomain ?? "";
+        var upnSuffix = _authSettings.Ldap.UserPrincipalSuffix ?? "";
 
         if (string.IsNullOrWhiteSpace(server))
             return (false, "LDAP server 未配置");
@@ -122,16 +124,16 @@ public class AuthService : IAuthService
 
     public (bool matched, Account? fallbackAccount) VerifyTestAccount(string empId, string password)
     {
-        var enabled = _config.GetValue<bool>("Auth:TestAccounts:Enabled");
+        var enabled = _authSettings.TestAccounts.Enabled;
         if (!enabled) return (false, null);
 
-        var section = _config.GetSection("Auth:TestAccounts:Accounts");
-        if (!section.Exists()) return (false, null);
+        var accounts = _authSettings.TestAccounts.Accounts;
+        if (accounts == null || accounts.Count == 0) return (false, null);
 
-        foreach (var child in section.GetChildren())
+        foreach (var child in accounts)
         {
-            var cfgEmpId = child["EmpId"];
-            var cfgPwd = child["Password"];
+            var cfgEmpId = child.EmpId;
+            var cfgPwd = child.Password;
             if (string.IsNullOrWhiteSpace(cfgEmpId) || cfgPwd == null) continue;
 
             if (!string.Equals(cfgEmpId, empId, StringComparison.OrdinalIgnoreCase)) continue;
@@ -142,10 +144,10 @@ public class AuthService : IAuthService
             var fallback = new Account
             {
                 EmpId = cfgEmpId,
-                Name = child["Name"] ?? cfgEmpId,
-                Department = child["Department"] ?? "測試環境",
-                RoleLevel = child["RoleLevel"] ?? "user",
-                CanEditOthers = bool.TryParse(child["CanEditOthers"], out var b) && b
+                Name = child.Name ?? cfgEmpId,
+                Department = child.Department ?? "測試環境",
+                RoleLevel = child.RoleLevel ?? "user",
+                CanEditOthers = child.CanEditOthers
             };
             _logger.LogInformation("TestAccount 命中 (empId={EmpId})", cfgEmpId);
             return (true, fallback);

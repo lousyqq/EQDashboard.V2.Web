@@ -1,7 +1,16 @@
 // === admin/role-manage.js - 群組管理 CRUD ===
 
+import { getCustomMenus, getRoles } from '../config.js?v=20260607k';
+
+
+import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260607k';
+import { deleteRoleAPI, fetchInitialDataFromDB, saveRoleAPI } from '../api.js?v=20260607k';
+import { renderSidebarMenus } from '../render/sidebar.js?v=20260607k';
+import { renderAccountTable, renderFabTable, renderRoleTable } from '../render/tables.js?v=20260607k';
+import { customAlert, customConfirm } from '../ui/dialogs.js?v=20260607k';
+
 // === Roles 群組管理 ===
-function openAddRoleModal() {
+export function openAddRoleModal() {
     try {
         document.getElementById('roleForm').reset();
         document.getElementById('editRoleId').value = '';
@@ -10,7 +19,7 @@ function openAddRoleModal() {
     } catch (e) { console.error("[openAddRoleModal] 錯誤:", e); }
 }
 
-function editRole(id) {
+export function editRole(id) {
     try {
         const role = getRoles().find(r => window.cleanId(r.id) === window.cleanId(id));
         if (!role) { console.error("找不到對應的群組資料 (ID: " + id + ")"); return; }
@@ -22,7 +31,7 @@ function editRole(id) {
     } catch (e) { console.error("[editRole] 錯誤:", e); }
 }
 
-function toggleRoleMenuSelection(el) {
+export function toggleRoleMenuSelection(el) {
     const cb = el.querySelector('.role-menu-cb');
     cb.checked = !cb.checked;
     const icon = el.querySelector('.role-check-icon');
@@ -100,6 +109,7 @@ window.rmDragStart = function (e, id) {
     rmDragSrcId = id;
     rmDragSrcEl = e.target.closest('.role-menu-item');
     e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', id); // ⭐️ 必須加上這行，否則現代瀏覽器會直接取消拖曳
     setTimeout(() => { if (rmDragSrcEl) rmDragSrcEl.classList.add('dragging'); }, 0);
 };
 window.rmDragOver = function (e) {
@@ -131,7 +141,7 @@ window.rmDrop = function (e, targetId) {
     rmDragSrcId = null;
 };
 
-async function saveRoleItem(e) {
+export async function saveRoleItem(e) {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     else if (window.event && typeof window.event.preventDefault === 'function') window.event.preventDefault();
 
@@ -170,7 +180,7 @@ async function saveRoleItem(e) {
     return false;
 }
 
-async function deleteRole(id) {
+export async function deleteRole(id) {
     try {
         customConfirm('確定要刪除此群組嗎？(若有廠區或帳號綁定此群組將自動解除)', async () => {
             const result = await deleteRoleAPI(id);
@@ -188,3 +198,11 @@ async function deleteRole(id) {
         });
     } catch (e) { console.error("[deleteRole] 錯誤:", e); }
 }
+
+// Expose for HTML inline handlers
+window.openAddRoleModal = openAddRoleModal;
+window.editRole = editRole;
+window.toggleRoleMenuSelection = toggleRoleMenuSelection;
+window.saveRoleItem = saveRoleItem;
+window.deleteRole = deleteRole;
+

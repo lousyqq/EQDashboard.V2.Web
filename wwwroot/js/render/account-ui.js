@@ -1,6 +1,15 @@
 // === render/account-ui.js - 帳號 Modal 內部 UI 渲染 ===
 
-function renderAccRoleCheckboxes(selectedIds) {
+import { getCustomMenus, getFabs, getRoles } from '../config.js?v=20260607k';
+
+
+import { clearDefaultMenu, pickDefaultMenu } from '../admin/account-manage.js?v=20260607k';
+import { generateIconHtml } from '../ui/dialogs.js?v=20260607k';
+import { getFullMenuPathStr } from '../ui/navigation.js?v=20260607k';
+import { appState } from '../store.js?v=20260607k';
+
+
+export function renderAccRoleCheckboxes(selectedIds) {
     if (!selectedIds || !Array.isArray(selectedIds)) selectedIds = [];
     const container = document.getElementById('accRoleCheckboxes');
     if (!container) return;
@@ -44,7 +53,7 @@ function renderAccRoleCheckboxes(selectedIds) {
 
 // 「管理目錄」清單：只列出「該帳號目前勾選的角色 → role.allowedMenuIds（含其下層）」中
 // 屬於 folder 型的選單。沒選任何角色 / 沒對應的 folder → 顯示提示。
-function renderAccManageMenuCheckboxes(selectedIds) {
+export function renderAccManageMenuCheckboxes(selectedIds) {
     if (!selectedIds || !Array.isArray(selectedIds)) selectedIds = [];
     const container = document.getElementById('accManageMenuCheckboxes');
     if (!container) return;
@@ -106,7 +115,7 @@ function renderAccManageMenuCheckboxes(selectedIds) {
 // =========================================================================
 
 // 共用：把所有「非 folder + 啟用」menu 抓出來，並依群組樹狀整理排序
-function getAllSelectableMenus() {
+export function getAllSelectableMenus() {
     const all = getCustomMenus();
     return all.filter(m => {
         const mode = (m.menuMode || m.MenuMode || '').toLowerCase();
@@ -117,7 +126,7 @@ function getAllSelectableMenus() {
 }
 
 // 算出「目前 modal 內已勾選 roles」展開後的全部 menuId 集合（含子節點）
-function computeRoleAllowedSet() {
+export function computeRoleAllowedSet() {
     const checkedRoleIds = Array.from(document.querySelectorAll('.acc-role-cb:checked')).map(cb => cb.value);
     const roles = getRoles();
     let initialMenuIds = [];
@@ -263,14 +272,14 @@ window.renderAccEffectivePreview = function () {
     container.innerHTML = html.join('');
 };
 
-function renderAccDefaultPagesUI() {
+export function renderAccDefaultPagesUI() {
     const container = document.getElementById('accDefaultPagesContainer'); if (!container) return;
     const fabs = getFabs(); const menus = getCustomMenus(); let html = '';
     const escAttr = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
     fabs.forEach(f => {
         const fName = f.fabName || f.FabName || f.id || f.fabId || f.FabId || '';
-        let defMenuId = tempDefaultPages[fName];
+        let defMenuId = appState.tempDefaultPages[fName];
         let defMenuObj = menus.find(m => window.cleanId(m.id || m.MenuId) === window.cleanId(defMenuId));
         let displayTxt = defMenuObj ? getFullMenuPathStr(defMenuId, menus) : '系統自動抓取第一個可視看板';
         let txtColor = defMenuObj ? 'text-success fw-bold' : 'text-muted';
@@ -394,7 +403,7 @@ window.openMenuSelector = function (fabName) {
 
             let rId = rootNode ? window.cleanId(rootNode.id || rootNode.MenuId) : 'other';
             let rName = rootNode ? (rootNode.displayName || rootNode.DisplayName || rootNode.name || rootNode.SysName) : '其他獨立看板';
-            if (typeof i18n !== 'undefined' && i18n[currentLang] && i18n[currentLang]['dyn_' + rId] && rootNode && !rootNode.isEdited && !rootNode.IsEdited) rName = i18n[currentLang]['dyn_' + rId];
+            if (typeof i18n !== 'undefined' && i18n[appState.currentLang] && i18n[appState.currentLang]['dyn_' + rId] && rootNode && !rootNode.isEdited && !rootNode.IsEdited) rName = i18n[appState.currentLang]['dyn_' + rId];
 
             const rOrder = rootNode ? (rootNode.order || rootNode.GlobalOrder || 999) : 999;
             const rIcon = rootNode ? (rootNode.icon || rootNode.Icon || 'fas fa-link') : 'fas fa-link';
@@ -518,4 +527,12 @@ window.filterMenuSelectDrawer = function () {
     });
 };
 
+
+
+// Expose for HTML inline handlers
+window.renderAccRoleCheckboxes = renderAccRoleCheckboxes;
+window.renderAccManageMenuCheckboxes = renderAccManageMenuCheckboxes;
+window.getAllSelectableMenus = getAllSelectableMenus;
+window.computeRoleAllowedSet = computeRoleAllowedSet;
+window.renderAccDefaultPagesUI = renderAccDefaultPagesUI;
 

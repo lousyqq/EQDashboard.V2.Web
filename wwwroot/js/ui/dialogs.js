@@ -1,15 +1,21 @@
+import { enforceSystemModeUI } from './layout.js?v=20260607k';
+import { changeLanguage, renderLangSwitcher } from './navigation.js?v=20260607k';
+import { appState } from '../store.js?v=20260607k';
+
+
 ﻿// === ui/dialogs.js - 同步按鈕、自訂 Alert/Confirm、語系更新 ===
-function generateIconHtml(iconVal, colorCls, extraCls, isFolder = false) {
+export function generateIconHtml(iconVal, colorCls, extraCls, isFolder = false) {
     if (!iconVal) return `<i class="fas ${isFolder ? 'fa-folder text-warning' : 'fa-file-alt text-muted'} ${extraCls}"></i>`;
-    if (iconVal.startsWith('data:image') || iconVal.startsWith('icon/')) return `<img src="${iconVal}" class="custom-icon ${extraCls}" alt="icon">`;
+    // 圖片來源 = data: URI 或任何含 '/' 的路徑（/images/icons/... 實體檔、舊 icon/...）；FA class 永不含 '/'
+    if (iconVal.startsWith('data:') || iconVal.includes('/')) return `<img src="${iconVal}" class="custom-icon ${extraCls}" alt="icon">`;
     return `<i class="${iconVal} ${colorCls} ${extraCls}"></i>`;
 }
 
 // 更新同步按鈕狀態 UI
-function updateSyncButtonUI() {
+export function updateSyncButtonUI() {
     const btn = document.getElementById('btn-sync-excel');
     if (btn) {
-        if (hasUnsavedChanges) { btn.classList.remove('d-none'); btn.classList.add('d-inline-flex'); }
+        if (appState.hasUnsavedChanges) { btn.classList.remove('d-none'); btn.classList.add('d-inline-flex'); }
         else { btn.classList.add('d-none'); btn.classList.remove('d-inline-flex'); }
     }
 }
@@ -31,20 +37,22 @@ window.allowNextImportResultAlert = function () {
 };
 
 
-function customAlert(msg) {
+export function customAlert(msg, isHtml = false) {
     const msgEl = document.getElementById('systemAlertMsg');
 
-    // 轉成 HTML 字串
-    const html = (typeof msg === 'object' && msg !== null)
+    // 轉成字串
+    let rawStr = (typeof msg === 'object' && msg !== null)
         ? (msg.message || JSON.stringify(msg))
         : String(msg ?? '');
 
+    const safeHtml = isHtml ? rawStr : (window.escapeHtml ? window.escapeHtml(rawStr) : rawStr.replace(/</g, "&lt;").replace(/>/g, "&gt;"));
+
     // 1) 若是「匯入結果」訊息：預設不彈，避免你每次編輯/儲存都一直跳
     const isImportResult =
-        html.includes('匯入完畢') ||
-        html.includes('成功同步至資料庫') ||
-        html.includes('略過異常') ||
-        html.includes('全部資料');
+        safeHtml.includes('匯入完畢') ||
+        safeHtml.includes('成功同步至資料庫') ||
+        safeHtml.includes('略過異常') ||
+        safeHtml.includes('全部資料');
 
     if (isImportResult && window.__allowImportResultAlert !== true) {
         // 直接忽略
@@ -53,26 +61,27 @@ function customAlert(msg) {
 
     // 2) 防止同一訊息短時間內重複彈出
     const now = Date.now();
-    if (window.__alertState.lastHtml === html && (now - window.__alertState.lastAt) < 1500) {
+    if (window.__alertState.lastHtml === safeHtml && (now - window.__alertState.lastAt) < 1500) {
         return;
     }
-    window.__alertState.lastHtml = html;
+    window.__alertState.lastHtml = safeHtml;
     window.__alertState.lastAt = now;
 
-    if (msgEl) msgEl.innerHTML = html;
-    if (typeof systemAlertModalObj !== 'undefined' && systemAlertModalObj) systemAlertModalObj.show();
+    if (msgEl) msgEl.innerHTML = safeHtml;
+    if (typeof appState.systemAlertModalObj !== 'undefined' && appState.systemAlertModalObj) appState.systemAlertModalObj.show();
 
     // 匯入結果只允許彈一次就關掉
     if (isImportResult) window.__allowImportResultAlert = false;
 }
 
-function customConfirm(msg, callback) {
+export function customConfirm(msg, callback, isHtml = false) {
     const msgEl = document.getElementById('systemConfirmMsg');
     if (msgEl) {
-        msgEl.innerHTML = (typeof msg === 'object' && msg !== null) ? (msg.message || JSON.stringify(msg)) : msg;
+        let rawStr = (typeof msg === 'object' && msg !== null) ? (msg.message || JSON.stringify(msg)) : String(msg ?? '');
+        msgEl.innerHTML = isHtml ? rawStr : (window.escapeHtml ? window.escapeHtml(rawStr) : rawStr.replace(/</g, "&lt;").replace(/>/g, "&gt;"));
     }
-    confirmActionCallback = callback;
-    if (systemConfirmModalObj) systemConfirmModalObj.show();
+    appState.confirmActionCallback = callback;
+    if (appState.systemConfirmModalObj) appState.systemConfirmModalObj.show();
 }
 
 // 4. 綁定 MutationObserver 監視器
@@ -101,41 +110,41 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (contentZone) {
         contentZone.addEventListener('mouseenter', () => {
-            if (!window.isPinned) document.body.classList.add('nav-hidden', 'sidebar-hidden');
+            if (!appState.isPinned) document.body.classList.add('nav-hidden', 'sidebar-hidden');
         });
     }
 
     if (topNavbar) {
         topNavbar.addEventListener('mouseleave', () => {
-            if (!window.isPinned) document.body.classList.add('nav-hidden');
+            if (!appState.isPinned) document.body.classList.add('nav-hidden');
         });
     }
 
     if (sidebar) {
         sidebar.addEventListener('mouseleave', () => {
-            if (!window.isPinned) document.body.classList.add('sidebar-hidden');
+            if (!appState.isPinned) document.body.classList.add('sidebar-hidden');
         });
     }
 
     if (triggerTop) {
         triggerTop.addEventListener('mouseenter', () => {
-            if (!window.isPinned) document.body.classList.remove('nav-hidden');
+            if (!appState.isPinned) document.body.classList.remove('nav-hidden');
         });
     }
 
     if (triggerLeft) {
         triggerLeft.addEventListener('mouseenter', () => {
-            if (!window.isPinned) document.body.classList.remove('sidebar-hidden');
+            if (!appState.isPinned) document.body.classList.remove('sidebar-hidden');
         });
     }
 });
 
 
-function syncPinButtonUI() {
+export function syncPinButtonUI() {
     const btnPin = document.getElementById('btn-pin');
     if (!btnPin) return;
 
-    const pinned = (typeof isPinned !== 'undefined') ? isPinned : (window.isPinned ?? true);
+    const pinned = (typeof appState.isPinned !== 'undefined') ? appState.isPinned : (appState.isPinned ?? true);
 
     btnPin.innerHTML = pinned
         ? '<i class="fa-solid fa-thumbtack text-danger" style="font-size: 0.9rem;"></i>'
@@ -158,3 +167,11 @@ window.updateLangUI = function (langCode) {
         if (bsDropdown) bsDropdown.hide();
     }
 };
+
+// Expose for HTML inline handlers
+window.generateIconHtml = generateIconHtml;
+window.updateSyncButtonUI = updateSyncButtonUI;
+window.customAlert = customAlert;
+window.customConfirm = customConfirm;
+window.syncPinButtonUI = syncPinButtonUI;
+

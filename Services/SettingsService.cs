@@ -3,6 +3,7 @@ using Microsoft.Data.SqlClient;
 using System.Text.Json;
 using EQDashboard.V2.Web.Services.Interfaces;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.EntityFrameworkCore;
 
 namespace EQDashboard.V2.Web.Services;
 
@@ -14,95 +15,142 @@ public class SettingsService : ISettingsService
     private readonly string _connStr;
     private readonly ILogger<SettingsService> _logger;
     private readonly Microsoft.Extensions.Caching.Memory.IMemoryCache _cache;
+    private readonly EQDashboard.V2.Web.Data.AppDbContext _dbContext;
     private static readonly SemaphoreSlim _semaphore = new(1, 1);
 
-    private const string InitialDataCacheKey = "InitialData";
+    private const string InitialDataCacheKey_Global = "InitialData_Global";
+    private const string InitialDataCacheKey_Volatile = "InitialData_Volatile";
 
     private static readonly string[] TableNames = new[]
     {
         "Menus", "Fabs", "Roles", "Accounts", "Apps", "Requests",
         "Map_Fab_Role", "Map_Account_Role", "Map_Account_ManageMenu",
-        "Map_Role_Menu", "Map_Menu_Structure", "Map_Account_DefaultPage", "PersonalSettings",
+        "Map_Role_Menu", "Map_Menu_Structure", "Map_Account_DefaultPage",
+        // ⚠️ PersonalSettings 刻意「不」列入全量覆寫清單：它是 per-user 自訂版面，
+        //    一律走 RESTful /api/PersonalSettings（per-user delete+insert）。若放進這裡，
+        //    SaveData / Excel 匯入會用單一使用者的快照 DELETE→INSERT 整張表，洗掉所有人的個人版面。
+        //    讀取端 GetInitialDataAsync 是直接以 _dbContext.PersonalSettings 取得，不依賴本清單。
         // 帳號層級可視覆寫 (RBAC 之外的個別調整)
         "Map_Account_ExtraMenu", "Map_Account_DenyMenu",
         // Menu 層級存取控制 (白名單 / 黑名單)
         "Map_Menu_AllowAccount", "Map_Menu_DenyAccount"
     };
 
-    public SettingsService(IConfiguration config, ILogger<SettingsService> logger, Microsoft.Extensions.Caching.Memory.IMemoryCache cache)
+    private static string _currentETag = Guid.NewGuid().ToString("N");
+    public string GetCurrentETag() => _currentETag;
+
+    public SettingsService(IConfiguration config, ILogger<SettingsService> logger, Microsoft.Extensions.Caching.Memory.IMemoryCache cache, EQDashboard.V2.Web.Data.AppDbContext dbContext)
     {
         _connStr = config.GetConnectionString("EQDashboard")
             ?? throw new InvalidOperationException("Missing connection string 'EQDashboard'");
         _logger = logger;
         _cache = cache;
+        _dbContext = dbContext;
     }
 
     public async Task<Dictionary<string, object>> GetInitialDataAsync()
     {
-        // 嘗試從快取取得資料
-        if (_cache.TryGetValue(InitialDataCacheKey, out Dictionary<string, object>? cachedData))
+        var dbData = new Dictionary<string, object>();
+
+        // Helper 函數：將 EF Core 實體轉型為 List<Dictionary<string, object>>
+        // ⭐️ O2 優化：移除雙重序列化 (JsonSerializer.Serialize -> Deserialize) 
+        //             改以 Reflection 直接讀取 Property，大幅降低 CPU 與 GC 記憶體回收壓力。
+        List<Dictionary<string, object>> ConvertToList<T>(IEnumerable<T> data)
         {
-            _logger.LogInformation("Loaded initial data from cache.");
-            return cachedData!;
+            var list = new List<Dictionary<string, object>>();
+            var props = typeof(T).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+            foreach (var item in data)
+            {
+                var dict = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+                foreach (var prop in props)
+                {
+                    dict[prop.Name] = prop.GetValue(item)!;
+                }
+                list.Add(dict);
+            }
+            return list;
         }
 
-        await _semaphore.WaitAsync();
-        try
+        // ⭐️ O1 優化：快取分流 - 將全域快取(60秒)與個人頻繁異動快取(10秒)分離
+        // 1. 取得全域資料 (Menus, Fabs, Roles, Apps, 等等不常變動的配置)
+        if (!_cache.TryGetValue(InitialDataCacheKey_Global, out Dictionary<string, object>? globalData))
         {
-            // Double-Check Locking
-            if (_cache.TryGetValue(InitialDataCacheKey, out cachedData))
+            await _semaphore.WaitAsync();
+            try
             {
-                return cachedData!;
-            }
-
-            var dbData = new Dictionary<string, object>();
-
-            using var conn = new SqlConnection(_connStr);
-            await conn.OpenAsync();
-
-            foreach (var tableName in TableNames)
-            {
-                // ⚠️ 不可跳過 Map_Account_* 那幾張表！前端 api.js fetchInitialDataFromDB 仰賴它們去組
-                // currentUser.manageableMenus / defaultPages / extraMenus / denyMenus，缺一者「委派管理 / 各
-                // 廠區預設首頁 / 個別覆寫」三大功能會全部失效（明明 DB 有設、UI 卻看不到）。
-                // 若日後資料量真的太大要做 lazy-loading，應改成「只回當前登入者 EmpId 那幾筆」而非整張跳過。
-                var tableData = new List<Dictionary<string, object>>();
-                try
+                if (!_cache.TryGetValue(InitialDataCacheKey_Global, out globalData))
                 {
-                    // 讀取前先確認資料表是否存在
-                    using var checkCmd = new SqlCommand(
-                        "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = @tb", conn);
-                    checkCmd.Parameters.AddWithValue("@tb", tableName);
-                    if ((int)(await checkCmd.ExecuteScalarAsync())! == 0) continue;
-
-                    using var cmd = new SqlCommand($"SELECT * FROM [{tableName}]", conn);
-                    using var reader = await cmd.ExecuteReaderAsync();
-                    while (await reader.ReadAsync())
+                    globalData = new Dictionary<string, object>();
+                    try
                     {
-                        var row = new Dictionary<string, object>();
-                        for (int i = 0; i < reader.FieldCount; i++)
-                        {
-                            row[reader.GetName(i)] = reader.IsDBNull(i) ? null! : reader.GetValue(i);
-                        }
-                        tableData.Add(row);
+                        globalData["Menus"] = ConvertToList(await _dbContext.Menus.AsNoTracking().ToListAsync());
+                        globalData["Fabs"] = ConvertToList(await _dbContext.Fabs.AsNoTracking().ToListAsync());
+                        globalData["Roles"] = ConvertToList(await _dbContext.Roles.AsNoTracking().ToListAsync());
+                        globalData["Apps"] = ConvertToList(await _dbContext.Apps.AsNoTracking().ToListAsync());
+                        globalData["Map_Fab_Role"] = ConvertToList(await _dbContext.MapFabRoles.AsNoTracking().ToListAsync());
+                        globalData["Map_Role_Menu"] = ConvertToList(await _dbContext.MapRoleMenus.AsNoTracking().ToListAsync());
+                        globalData["Map_Menu_Structure"] = ConvertToList(await _dbContext.MapMenuStructures.AsNoTracking().ToListAsync());
+                        globalData["Map_Menu_AllowAccount"] = ConvertToList(await _dbContext.MapMenuAllowAccounts.AsNoTracking().ToListAsync());
+                        globalData["Map_Menu_DenyAccount"] = ConvertToList(await _dbContext.MapMenuDenyAccounts.AsNoTracking().ToListAsync());
+
+                        _cache.Set(InitialDataCacheKey_Global, globalData, TimeSpan.FromSeconds(60));
                     }
-                    dbData[tableName] = tableData;
-                }
-                catch (Exception tblEx)
-                {
-                    _logger.LogWarning(tblEx, "Failed to load table {TableName}", tableName);
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to load global data via EF Core.");
+                    }
                 }
             }
-
-            // 寫入快取，設定 30 分鐘過期
-            _cache.Set(InitialDataCacheKey, dbData, TimeSpan.FromMinutes(30));
-
-            return dbData;
+            finally
+            {
+                _semaphore.Release();
+            }
         }
-        finally
+
+        // 2. 取得易變動資料 (Accounts, PersonalSettings, Requests 等使用者操作會頻繁更新的表)
+        if (!_cache.TryGetValue(InitialDataCacheKey_Volatile, out Dictionary<string, object>? volatileData))
         {
-            _semaphore.Release();
+            await _semaphore.WaitAsync();
+            try
+            {
+                if (!_cache.TryGetValue(InitialDataCacheKey_Volatile, out volatileData))
+                {
+                    volatileData = new Dictionary<string, object>();
+                    try
+                    {
+                        volatileData["Accounts"] = ConvertToList(await _dbContext.Accounts.AsNoTracking().ToListAsync());
+                        volatileData["Requests"] = ConvertToList(await _dbContext.Requests.AsNoTracking().ToListAsync());
+                        volatileData["PersonalSettings"] = ConvertToList(await _dbContext.PersonalSettings.AsNoTracking().ToListAsync());
+                        volatileData["Map_Account_Role"] = ConvertToList(await _dbContext.MapAccountRoles.AsNoTracking().ToListAsync());
+                        volatileData["Map_Account_ManageMenu"] = ConvertToList(await _dbContext.MapAccountManageMenus.AsNoTracking().ToListAsync());
+                        volatileData["Map_Account_DefaultPage"] = ConvertToList(await _dbContext.MapAccountDefaultPages.AsNoTracking().ToListAsync());
+                        volatileData["Map_Account_ExtraMenu"] = ConvertToList(await _dbContext.MapAccountExtraMenus.AsNoTracking().ToListAsync());
+                        volatileData["Map_Account_DenyMenu"] = ConvertToList(await _dbContext.MapAccountDenyMenus.AsNoTracking().ToListAsync());
+
+                        _cache.Set(InitialDataCacheKey_Volatile, volatileData, TimeSpan.FromSeconds(10));
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to load volatile data via EF Core.");
+                    }
+                }
+            }
+            finally
+            {
+                _semaphore.Release();
+            }
         }
+
+        if (globalData != null) foreach (var kvp in globalData) dbData[kvp.Key] = kvp.Value;
+        if (volatileData != null) foreach (var kvp in volatileData) dbData[kvp.Key] = kvp.Value;
+
+        // 若載入不全 (某部分 DB 斷線)，直接丟出例外，避免前端拿到殘缺快取
+        if (dbData.Count < 17)
+        {
+            throw new Exception("部分資料表載入失敗，無法回傳完整的 InitialData");
+        }
+
+        return dbData;
     }
 
     public async Task<(bool success, string message)> SaveDataAsync(
@@ -116,24 +164,123 @@ public class SettingsService : ISettingsService
         //   一律放寬到 5 分鐘；本路徑只給 admin 手動觸發，不會造成 thread starvation 風險。
         const int CommandTimeoutSec = 300;
 
+        // ⏱️ 效能量測：逐階段記錄耗時，匯入若變慢可從 log 直接看出卡在哪個階段 / 哪張表。
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
         using var conn = new SqlConnection(_connStr);
         await conn.OpenAsync();
+        _logger.LogInformation("[SaveData] 連線開啟 {Ms} ms", sw.ElapsedMilliseconds);
         using var trans = conn.BeginTransaction();
 
-        // 暫時停用相關資料表的 FK 限制，方便進行無順序的 DELETE/INSERT
-        foreach (var tableName in TableNames)
+        // ⏱️ 設定鎖定逾時 (防禦性安全網)：若本交易要對某張表取得鎖、但該表被外部連線長期持鎖，
+        //    預設會「無限等待」。改為最多等 20 秒、逾時丟 SqlException 1222，避免靜默卡死。
+        //    註：2026-06-06 實測已排除「鎖等待」是匯入變慢的主因 —— EQDashboardV2 已開
+        //    READ_COMMITTED_SNAPSHOT (讀不擋寫)，且實測 40 條併發讀 + 寫入仍 <1 秒。
+        //    匯入若仍慢，請看下方逐表 Bulk 計時 log，並於慢的當下用 SSMS 查該 session 的 wait_type。
+        try
         {
-            try
-            {
-                using var disableFkCmd = new SqlCommand($"ALTER TABLE [{tableName}] NOCHECK CONSTRAINT ALL", conn, trans);
-                disableFkCmd.CommandTimeout = CommandTimeoutSec;
-                await disableFkCmd.ExecuteNonQueryAsync();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to disable FK constraints for {TableName}", tableName);
-            }
+            using var lockTimeoutCmd = new SqlCommand("SET LOCK_TIMEOUT 20000;", conn, trans);
+            await lockTimeoutCmd.ExecuteNonQueryAsync();
         }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to set LOCK_TIMEOUT");
+        }
+
+        // 暫時停用所有相關資料表的 FK 限制，方便進行無順序的 DELETE/INSERT。
+        //   ⚡ 原本每張表一個 round-trip (17 趟)，遠端 DB 光來回延遲就吃掉好幾秒；
+        //      改成「一條 SQL 批次處理 17 張表」只需 1 趟 (TableNames 為硬編碼常數、無注入風險)。
+        try
+        {
+            var disableSql = string.Join("\n", TableNames.Select(t => $"ALTER TABLE [{t}] NOCHECK CONSTRAINT ALL;"));
+            using var disableFkCmd = new SqlCommand(disableSql, conn, trans);
+            disableFkCmd.CommandTimeout = CommandTimeoutSec;
+            await disableFkCmd.ExecuteNonQueryAsync();
+        }
+        catch (Exception ex)
+        {
+            // 第一個取鎖點：若這裡就 1222(取鎖逾時)，代表某張表正被外部連線鎖住，
+            //   再往下做 DELETE/Bulk 也只會一直撞鎖，直接收手回報、不要傻等。
+            var sqlEx = ex as Microsoft.Data.SqlClient.SqlException
+                        ?? ex.InnerException as Microsoft.Data.SqlClient.SqlException;
+            if (sqlEx != null && sqlEx.Number == 1222)
+            {
+                try { trans.Rollback(); } catch { }
+                _logger.LogError(ex, "[SaveData] 停用 FK 約束時取鎖逾時(1222)：資料表正被其他連線鎖住");
+                return (false, "資料表正被其他連線鎖定，等待 20 秒仍無法取得鎖，已取消匯入。" +
+                               "請檢查是否有其他人開著 SSMS 未 commit 的交易、或長時間佔用的查詢，放掉後再匯入一次即可。");
+            }
+            _logger.LogWarning(ex, "Failed to disable FK constraints (batch)");
+        }
+        _logger.LogInformation("[SaveData] 停用 FK 約束 {Ms} ms", sw.ElapsedMilliseconds);
+
+        var allMaxLengths = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
+        var allColumnTypes = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+        var tableHasIdentity = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+
+        // 一次性取得所有 Schema 資訊 (解決 N+1 Query 問題)
+        try
+        {
+            var tableList = string.Join(",", TableNames.Select(t => $"'{t}'"));
+            
+            using var idCmd = new SqlCommand($@"
+                SELECT t.name 
+                FROM sys.columns c 
+                JOIN sys.tables t ON c.object_id = t.object_id 
+                WHERE c.is_identity = 1 AND t.name IN ({tableList})", conn, trans);
+            idCmd.CommandTimeout = CommandTimeoutSec;
+            using var idReader = await idCmd.ExecuteReaderAsync();
+            while (await idReader.ReadAsync())
+            {
+                tableHasIdentity[idReader.GetString(0)] = true;
+            }
+            await idReader.CloseAsync();
+
+            using var schemaCmd = new SqlCommand($@"
+                SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_NAME IN ({tableList})", conn, trans);
+            schemaCmd.CommandTimeout = CommandTimeoutSec;
+            using var schemaReader = await schemaCmd.ExecuteReaderAsync();
+            while (await schemaReader.ReadAsync())
+            {
+                string tName = schemaReader.GetString(0);
+                string colName = schemaReader.GetString(1);
+                string dataType = schemaReader.GetString(2).ToLower();
+                int maxLen = schemaReader.IsDBNull(3) ? 0 : Convert.ToInt32(schemaReader.GetValue(3));
+
+                if (!allMaxLengths.ContainsKey(tName)) allMaxLengths[tName] = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                if (!allColumnTypes.ContainsKey(tName)) allColumnTypes[tName] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+                allMaxLengths[tName][colName] = maxLen;
+                allColumnTypes[tName][colName] = dataType;
+            }
+            await schemaReader.CloseAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load bulk schema information");
+        }
+        _logger.LogInformation("[SaveData] 載入 Schema {Ms} ms", sw.ElapsedMilliseconds);
+
+        // ⚡ 一次撈所有表的舊筆數 (UNION ALL)，取代原本「每張表一個 COUNT」的 17 趟 round-trip。
+        var oldCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var countSql = string.Join("\nUNION ALL\n",
+                TableNames.Select(t => $"SELECT '{t}' AS T, COUNT(*) AS C FROM [{t}]"));
+            using var countCmd = new SqlCommand(countSql, conn, trans);
+            countCmd.CommandTimeout = CommandTimeoutSec;
+            using var cReader = await countCmd.ExecuteReaderAsync();
+            while (await cReader.ReadAsync())
+                oldCounts[cReader.GetString(0)] = Convert.ToInt32(cReader.GetValue(1));
+            await cReader.CloseAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load bulk row counts");
+        }
+        _logger.LogInformation("[SaveData] 統計舊筆數 {Ms} ms", sw.ElapsedMilliseconds);
 
         foreach (var tableName in TableNames)
         {
@@ -149,24 +296,11 @@ public class SettingsService : ISettingsService
 
             if (!hasAnyValidData) continue;
 
-            // 確認資料表是否存在
-            using (var checkCmd = new SqlCommand(
-                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = @tb", conn, trans))
-            {
-                checkCmd.CommandTimeout = CommandTimeoutSec;
-                checkCmd.Parameters.AddWithValue("@tb", tableName);
-                if ((int)(await checkCmd.ExecuteScalarAsync())! == 0) continue;
-            }
+            // 確認資料表是否存在 (直接判斷 schema 是否有抓到該表)
+            if (!allColumnTypes.ContainsKey(tableName)) continue;
 
-            // 防呆：比對舊筆數 vs 新筆數
-            int oldCount = 0;
-            try
-            {
-                using var countCmd = new SqlCommand($"SELECT COUNT(*) FROM [{tableName}]", conn, trans);
-                countCmd.CommandTimeout = CommandTimeoutSec;
-                oldCount = Convert.ToInt32(await countCmd.ExecuteScalarAsync());
-            }
-            catch { }
+            // 防呆：比對舊筆數 vs 新筆數（舊筆數已於上方一次批次撈好）
+            int oldCount = oldCounts.TryGetValue(tableName, out var oc) ? oc : 0;
 
             int newCount = tableData.Count(row => row != null && row.Any(p =>
                 p.Value.ValueKind != JsonValueKind.Null &&
@@ -180,43 +314,20 @@ public class SettingsService : ISettingsService
             }
 
             // 清空舊資料
+            long tBeforeDelete = sw.ElapsedMilliseconds;
             using (var cmd = new SqlCommand($"DELETE FROM [{tableName}]", conn, trans))
             {
                 cmd.CommandTimeout = CommandTimeoutSec;
                 await cmd.ExecuteNonQueryAsync();
             }
+            long tAfterDelete = sw.ElapsedMilliseconds;
+            if (tAfterDelete - tBeforeDelete > 500)
+                _logger.LogWarning("[SaveData] ⚠️ 表 {Table} DELETE 耗時 {Ms} ms (可能遭外部連線鎖定阻塞)", tableName, tAfterDelete - tBeforeDelete);
 
-            // 獲取 Schema 資訊
-            var columnMaxLengths = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            var columnTypes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            bool hasIdentity = false;
-
-            try
-            {
-                using (var idCmd = new SqlCommand(
-                    $"SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('[{tableName}]') AND is_identity = 1",
-                    conn, trans))
-                {
-                    idCmd.CommandTimeout = CommandTimeoutSec;
-                    hasIdentity = (int)(await idCmd.ExecuteScalarAsync())! > 0;
-                }
-
-                using var schemaCmd = new SqlCommand(
-                    "SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @tb",
-                    conn, trans);
-                schemaCmd.CommandTimeout = CommandTimeoutSec;
-                schemaCmd.Parameters.AddWithValue("@tb", tableName);
-                using var schemaReader = await schemaCmd.ExecuteReaderAsync();
-                while (await schemaReader.ReadAsync())
-                {
-                    string colName = schemaReader.GetString(0);
-                    string dataType = schemaReader.GetString(1).ToLower();
-                    int maxLen = schemaReader.IsDBNull(2) ? 0 : Convert.ToInt32(schemaReader.GetValue(2));
-                    columnMaxLengths[colName] = maxLen;
-                    columnTypes[colName] = dataType;
-                }
-            }
-            catch { }
+            // 獲取 Schema 資訊 (由外部批次抓取的快取直接給予)
+            bool hasIdentity = tableHasIdentity.ContainsKey(tableName);
+            var columnMaxLengths = allMaxLengths.ContainsKey(tableName) ? allMaxLengths[tableName] : new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var columnTypes = allColumnTypes.ContainsKey(tableName) ? allColumnTypes[tableName] : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
             if (hasIdentity)
             {
@@ -307,22 +418,75 @@ public class SettingsService : ISettingsService
                     dt.Rows.Add(newRow);
                 }
 
-                var bulkCopyOptions = hasIdentity ? SqlBulkCopyOptions.KeepIdentity : SqlBulkCopyOptions.Default;
-                using var bulkCopy = new SqlBulkCopy(conn, bulkCopyOptions, trans);
-                bulkCopy.BulkCopyTimeout = CommandTimeoutSec;
-                bulkCopy.DestinationTableName = $"[{tableName}]";
-                
-                foreach (DataColumn col in dt.Columns)
+                // 改用「批次多列參數化 INSERT」取代 SqlBulkCopy。
+                // 根因(2026-06-06 同主機實測)：Sariel 僅 6GB RAM，SQL Server Target Memory 被壓到 ~1.4GB，
+                //   記憶體吃緊。SqlBulkCopy 的「大量載入(bulk load)」需向 RESOURCE_SEMAPHORE 申請 workspace
+                //   memory grant；記憶體壓力下該 grant 會排隊等待(cumulative wait avg ~49 秒、forced_grant=5)，
+                //   造成匯入卡 2~3 分鐘。一般 INSERT...VALUES 不需要 workspace memory grant，完全繞過
+                //   RESOURCE_SEMAPHORE。本系統資料量極小(全表合計約 111 筆)，批次 INSERT 反而更快更穩。
+                long tBeforeBulk = sw.ElapsedMilliseconds;
+                if (dt.Rows.Count > 0)
                 {
-                    bulkCopy.ColumnMappings.Add(col.ColumnName, col.ColumnName);
+                    var colNames = dt.Columns.Cast<DataColumn>().Select(c => c.ColumnName).ToList();
+                    int colCount = colNames.Count;
+                    string colList = string.Join(", ", colNames.Select(c => $"[{c}]"));
+                    // SQL Server 限制：單一命令參數上限 2100、單一 INSERT...VALUES 上限 1000 列；取較保守者分批
+                    int batchSize = Math.Max(1, Math.Min(1000, 2000 / Math.Max(1, colCount)));
+
+                    for (int start = 0; start < dt.Rows.Count; start += batchSize)
+                    {
+                        int count = Math.Min(batchSize, dt.Rows.Count - start);
+                        var valueClauses = new List<string>(count);
+                        using var insertCmd = new SqlCommand { Connection = conn, Transaction = trans, CommandTimeout = CommandTimeoutSec };
+                        int pIdx = 0;
+                        for (int r = 0; r < count; r++)
+                        {
+                            var srcRow = dt.Rows[start + r];
+                            var placeholders = new string[colCount];
+                            for (int c = 0; c < colCount; c++)
+                            {
+                                string pn = "@p" + pIdx++;
+                                placeholders[c] = pn;
+                                insertCmd.Parameters.AddWithValue(pn, srcRow[colNames[c]] ?? DBNull.Value);
+                            }
+                            valueClauses.Add("(" + string.Join(", ", placeholders) + ")");
+                        }
+                        insertCmd.CommandText = $"INSERT INTO [{tableName}] ({colList}) VALUES {string.Join(", ", valueClauses)}";
+                        await insertCmd.ExecuteNonQueryAsync();
+                    }
+                }
+                long tAfterBulk = sw.ElapsedMilliseconds;
+
+                // 還原 IDENTITY_INSERT (一個 session 同時只能有一張表 ON；不關掉會害下一張 identity 表 SET ON 失敗)
+                if (hasIdentity)
+                {
+                    try
+                    {
+                        using var cmdOff = new SqlCommand($"SET IDENTITY_INSERT [{tableName}] OFF", conn, trans);
+                        cmdOff.CommandTimeout = CommandTimeoutSec;
+                        await cmdOff.ExecuteNonQueryAsync();
+                    }
+                    catch { }
                 }
 
-                await bulkCopy.WriteToServerAsync(dt);
                 successCount += dt.Rows.Count;
+                _logger.LogInformation("[SaveData] 表 {Table} 寫入 {Rows} 筆 (DELETE後→INSERT {BulkMs} ms，累計 {Ms} ms)", tableName, dt.Rows.Count, tAfterBulk - tBeforeBulk, sw.ElapsedMilliseconds);
             }
             catch (Exception ex)
             {
                 try { trans.Rollback(); } catch { } // 安全的 Rollback，避免因交易已失敗而拋出例外導致 Request 卡死
+
+                // SQL 1222 = Lock request time out：代表這張表正被「其他連線」鎖住放不掉，
+                //   不是程式慢，也不是資料有問題。回一個 admin 看得懂的訊息直接點名兇手。
+                var sqlEx = ex as Microsoft.Data.SqlClient.SqlException
+                            ?? ex.InnerException as Microsoft.Data.SqlClient.SqlException;
+                if (sqlEx != null && sqlEx.Number == 1222)
+                {
+                    _logger.LogError(ex, "[{TableName}] 取得鎖逾時(1222)：該表正被其他連線鎖住", tableName);
+                    return (false, $"[{tableName}] 資料表正被其他連線鎖定，等待 20 秒仍無法取得鎖，已取消全部異動。" +
+                                   "請檢查是否有其他人開著 SSMS 未 commit 的交易、或長時間佔用的查詢，放掉後再匯入一次即可。");
+                }
+
                 _logger.LogError(ex, "[{TableName}] 批次匯入失敗，已退回所有變更", tableName);
                 // SaveData 是 admin-only，把實際 SQL 訊息回給 admin 才能定位是哪個欄位/型別問題
                 //   (Round-7：之前怕洩漏所以隱藏，但 admin 看不到等於要去翻 server log，太不友善)
@@ -332,26 +496,36 @@ public class SettingsService : ISettingsService
             }
         }
 
-        // 重新啟用 FK 限制 (不進行全表掃描檢查舊資料，加速處理)
-        foreach (var tableName in TableNames)
+        // 重新啟用 FK 限制並「重新驗證既有資料」(1.1)。
+        //   原本用 WITH NOCHECK CHECK：constraint 雖被啟用，但 SQL Server 標記為「not trusted」，
+        //   既有列不重驗。後果：① 全量匯入若混入孤兒 FK，靜默殘留資料完整性破口；
+        //   ② 查詢最佳化器不信任 not-trusted constraint，無法做 join elimination 等優化。
+        //   改成 WITH CHECK CHECK：commit 前在交易內重新驗證全部 FK；若有孤兒列會在此拋錯 → 整批 rollback，
+        //   寧可整批失敗也不要寫進不完整資料 (此端點為 admin-only 全量覆寫，正確性 > 速度)。
+        try
         {
-            try
-            {
-                using var enableFkCmd = new SqlCommand($"ALTER TABLE [{tableName}] CHECK CONSTRAINT ALL", conn, trans);
-                enableFkCmd.CommandTimeout = CommandTimeoutSec;
-                await enableFkCmd.ExecuteNonQueryAsync();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to re-enable FK constraints for {TableName}", tableName);
-            }
+            var enableSql = string.Join("\n", TableNames.Select(t => $"ALTER TABLE [{t}] WITH CHECK CHECK CONSTRAINT ALL;"));
+            using var enableFkCmd = new SqlCommand(enableSql, conn, trans);
+            enableFkCmd.CommandTimeout = CommandTimeoutSec;
+            await enableFkCmd.ExecuteNonQueryAsync();
         }
+        catch (Exception ex)
+        {
+            // ⚠️ 改用 WITH CHECK 後，這裡失敗代表「匯入的資料違反 FK 完整性」(或重驗時取鎖逾時)。
+            //   絕不可像舊版那樣吞掉後繼續 commit — 那會寫進孤兒資料。一律 rollback 整批並回報 admin。
+            _logger.LogError(ex, "[SaveData] FK 重新驗證失敗，已退回所有變更");
+            try { trans.Rollback(); } catch (Exception rbEx) { _logger.LogWarning(rbEx, "[SaveData] FK 驗證失敗後 rollback 也失敗"); }
+            var fkDetail = ex.Message;
+            if (ex.InnerException != null) fkDetail += " | " + ex.InnerException.Message;
+            return (false, $"資料外鍵完整性驗證失敗，已取消全部異動（可能有對應不到的關聯 Id）。錯誤詳情：{fkDetail}");
+        }
+        _logger.LogInformation("[SaveData] 重新啟用 FK {Ms} ms", sw.ElapsedMilliseconds);
 
         trans.Commit();
+        _logger.LogInformation("[SaveData] ✅ 全部完成，總耗時 {Ms} ms (成功寫入 {Count} 筆)", sw.ElapsedMilliseconds, successCount);
 
         // 寫入成功後，清除快取
-        _cache.Remove(InitialDataCacheKey);
-        _logger.LogInformation("Cache cleared after successful save.");
+        InvalidateInitialDataCache();
 
         if (errorLogs.Count > 0)
         {
@@ -367,7 +541,17 @@ public class SettingsService : ISettingsService
 
     public void InvalidateInitialDataCache()
     {
-        _cache.Remove(InitialDataCacheKey);
+        _cache.Remove(InitialDataCacheKey_Global);
+        _cache.Remove(InitialDataCacheKey_Volatile);
+        _currentETag = Guid.NewGuid().ToString("N");
+        _logger.LogInformation("InitialData global and volatile caches invalidated.");
+    }
+
+    public void InvalidateVolatileDataCache()
+    {
+        _cache.Remove(InitialDataCacheKey_Volatile);
+        _currentETag = Guid.NewGuid().ToString("N");
+        _logger.LogInformation("InitialData volatile cache invalidated.");
     }
 
     public async Task<(bool success, int loginCount, string? lastLoginTime, string? errorMessage)> UpdateLoginStatsAsync(string empId)
@@ -378,15 +562,8 @@ public class SettingsService : ISettingsService
         using var conn = new SqlConnection(_connStr);
         await conn.OpenAsync();
 
-        // 確認欄位存在
-        using (var alterCmd = new SqlCommand(@"
-            IF COL_LENGTH('Accounts','LoginCount') IS NULL
-                ALTER TABLE Accounts ADD LoginCount INT NULL;
-            IF COL_LENGTH('Accounts','LastLoginTime') IS NULL
-                ALTER TABLE Accounts ADD LastLoginTime DATETIME NULL;", conn))
-        {
-            await alterCmd.ExecuteNonQueryAsync();
-        }
+        // O4：LoginCount / LastLoginTime 欄位已由 SchemaBootstrap.EnsureAccountStatsColumnsAsync 在啟動時補齊，
+        //     此處不再每次登入跑一次 IF COL_LENGTH ... ALTER 探測（DDL 探測對每次登入是多餘負擔）。
 
         // UPDATE 累計 +1
         int affected;
@@ -419,124 +596,5 @@ public class SettingsService : ISettingsService
         }
 
         return (false, 0, null, "找不到帳號 " + empId);
-    }
-
-    /// <summary>插入單筆資料列（含型別防呆）</summary>
-    private async Task<(bool success, string? errorMsg)> InsertRowAsync(
-        SqlConnection conn, SqlTransaction trans, string tableName,
-        Dictionary<string, JsonElement> row,
-        Dictionary<string, string> columnTypes,
-        Dictionary<string, int> columnMaxLengths)
-    {
-        var validColumns = new List<string>();
-        var validParams = new List<string>();
-        string rowIdentifier = "未知";
-        bool idCaptured = false;
-
-        using var insertCmd = new SqlCommand { Connection = conn, Transaction = trans };
-        int pIndex = 0;
-
-        try
-        {
-            foreach (var prop in row)
-            {
-                string colName = prop.Key;
-
-                // ⭐️ SQL Injection 防護：只允許欄位名包含字母、數字、底線
-                if (!System.Text.RegularExpressions.Regex.IsMatch(colName, @"^[a-zA-Z_][a-zA-Z0-9_]*$"))
-                    continue;
-
-                if (!idCaptured && prop.Value.ValueKind != JsonValueKind.Null && prop.Value.ValueKind != JsonValueKind.Undefined)
-                {
-                    string tempStr = prop.Value.ToString();
-                    if (!string.IsNullOrWhiteSpace(tempStr)) { rowIdentifier = tempStr; idCaptured = true; }
-                }
-
-                if (columnTypes.Count > 0 && !columnTypes.ContainsKey(colName)) continue;
-
-                JsonElement val = prop.Value;
-                bool isNull = true;
-                object? paramValue = null;
-
-                if (val.ValueKind != JsonValueKind.Null && val.ValueKind != JsonValueKind.Undefined)
-                {
-                    string strVal = val.ToString();
-                    if (!string.IsNullOrEmpty(strVal))
-                    {
-                        isNull = false;
-                        if (columnTypes.ContainsKey(colName))
-                        {
-                            string dbType = columnTypes[colName];
-                            if (dbType.Contains("char") || dbType.Contains("text"))
-                            {
-                                int maxLen = columnMaxLengths[colName];
-                                if (maxLen > 0 && maxLen < 10000000 && strVal.Length > maxLen)
-                                    strVal = strVal[..maxLen];
-                                paramValue = strVal;
-                            }
-                            else if (dbType.Contains("bit"))
-                            {
-                                paramValue = val.ValueKind == JsonValueKind.True ||
-                                    strVal.Equals("true", StringComparison.OrdinalIgnoreCase) || strVal == "1";
-                            }
-                            else if (dbType.Contains("int"))
-                            {
-                                if (long.TryParse(strVal, out long parsedLong)) paramValue = parsedLong;
-                                else isNull = true;
-                            }
-                            else if (dbType.Contains("float") || dbType.Contains("decimal") || dbType.Contains("numeric"))
-                            {
-                                if (double.TryParse(strVal, out double parsedDouble)) paramValue = parsedDouble;
-                                else isNull = true;
-                            }
-                            else if (dbType.Contains("date") || dbType.Contains("time"))
-                            {
-                                if (DateTime.TryParse(strVal, out DateTime parsedDate)) paramValue = parsedDate;
-                                else isNull = true;
-                            }
-                            else paramValue = strVal;
-                        }
-                        else paramValue = strVal;
-                    }
-                }
-
-                validColumns.Add($"[{colName}]");
-                if (isNull || paramValue == null)
-                {
-                    validParams.Add("NULL");
-                }
-                else
-                {
-                    string paramName = "@p" + pIndex;
-                    validParams.Add(paramName);
-                    insertCmd.Parameters.AddWithValue(paramName, paramValue);
-                    pIndex++;
-                }
-            }
-
-            if (validColumns.Count > 0)
-            {
-                insertCmd.CommandText = $"INSERT INTO [{tableName}] ({string.Join(", ", validColumns)}) VALUES ({string.Join(", ", validParams)})";
-                string savePoint = "Sp_" + Guid.NewGuid().ToString("N")[..8];
-                trans.Save(savePoint);
-
-                try
-                {
-                    await insertCmd.ExecuteNonQueryAsync();
-                    return (true, null);
-                }
-                catch (Exception sqlRowEx)
-                {
-                    trans.Rollback(savePoint);
-                    return (false, $"[{tableName}] (關鍵字: {rowIdentifier}) 寫入失敗 - {sqlRowEx.Message}");
-                }
-            }
-        }
-        catch (Exception preEx)
-        {
-            return (false, $"[{tableName}] (關鍵字: {rowIdentifier}) 解析失敗 - {preEx.Message}");
-        }
-
-        return (true, null);
     }
 }

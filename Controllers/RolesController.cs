@@ -53,10 +53,19 @@ public class RolesController : ControllerBase
 
         _context.Roles.Add(role);
 
-        if (dto.AllowedMenuIds != null)
+        // 1.3：先驗證 MenuId 都存在再插入 Map_Role_Menu，避免撞 FK 直接 500（回 400 + 明確訊息）。
+        //   Distinct 去重，避免重複 MenuId 踩 Map_Role_Menu 複合 PK。
+        var menuIds = dto.AllowedMenuIds?.Where(m => !string.IsNullOrWhiteSpace(m)).Distinct().ToList() ?? new List<string>();
+        if (menuIds.Count > 0)
         {
+            var existingSet = (await _context.Menus.Where(m => menuIds.Contains(m.MenuId)).Select(m => m.MenuId).ToListAsync())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var missing = menuIds.Where(m => !existingSet.Contains(m)).ToList();
+            if (missing.Count > 0)
+                return BadRequest($"下列看板不存在，無法指派：{string.Join(", ", missing)}");
+
             int sortOrder = 0;
-            foreach (var menuId in dto.AllowedMenuIds)
+            foreach (var menuId in menuIds)
             {
                 _context.MapRoleMenus.Add(new MapRoleMenu { RoleId = role.RoleId, MenuId = menuId, SortOrder = sortOrder });
                 sortOrder += 10;
@@ -74,6 +83,17 @@ public class RolesController : ControllerBase
         var role = await _context.Roles.Include(r => r.MapRoleMenus).FirstOrDefaultAsync(r => r.RoleId == id);
         if (role == null) return NotFound();
 
+        // 1.3：在動 DB 之前先驗證新指派的 MenuId 都存在，stale id 直接回 400（避免刪舊後才撞 FK 500）。
+        var menuIds = dto.AllowedMenuIds?.Where(m => !string.IsNullOrWhiteSpace(m)).Distinct().ToList() ?? new List<string>();
+        if (menuIds.Count > 0)
+        {
+            var existingSet = (await _context.Menus.Where(m => menuIds.Contains(m.MenuId)).Select(m => m.MenuId).ToListAsync())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var missing = menuIds.Where(m => !existingSet.Contains(m)).ToList();
+            if (missing.Count > 0)
+                return BadRequest($"下列看板不存在，無法指派：{string.Join(", ", missing)}");
+        }
+
         role.GroupName = dto.GroupName;
 
         // 更新 MapRoleMenus
@@ -83,14 +103,11 @@ public class RolesController : ControllerBase
             await _context.SaveChangesAsync(); // 強制執行刪除以避免 PK tracking 衝突
         }
 
-        if (dto.AllowedMenuIds != null)
+        int sortOrder = 0;
+        foreach (var menuId in menuIds)
         {
-            int sortOrder = 0;
-            foreach (var menuId in dto.AllowedMenuIds)
-            {
-                _context.MapRoleMenus.Add(new MapRoleMenu { RoleId = id, MenuId = menuId, SortOrder = sortOrder });
-                sortOrder += 10;
-            }
+            _context.MapRoleMenus.Add(new MapRoleMenu { RoleId = id, MenuId = menuId, SortOrder = sortOrder });
+            sortOrder += 10;
         }
 
         await _context.SaveChangesAsync();
@@ -99,7 +116,7 @@ public class RolesController : ControllerBase
     }
 
     [HttpDelete("{id}")]
-    public async Task<IActionResult> DeleteRole(string id)
+    public async Task<IActionResult> DeleteRole(string id, [FromServices] IActivityLogger activityLogger)
     {
         var role = await _context.Roles
             .Include(r => r.MapRoleMenus)
@@ -116,8 +133,13 @@ public class RolesController : ControllerBase
         var accLinks = await _context.MapAccountRoles.Where(m => m.RoleId == id).ToListAsync();
         if (accLinks.Count > 0) _context.MapAccountRoles.RemoveRange(accLinks);
 
+        var backupJson = System.Text.Json.JsonSerializer.Serialize(role, new System.Text.Json.JsonSerializerOptions { ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles });
+
         _context.Roles.Remove(role);
         await _context.SaveChangesAsync();
+        
+        await activityLogger.LogAuditAsync(HttpContext, "DataRecovery", "DeleteRole", "Role", id, backupJson);
+        
         _settingsService.InvalidateInitialDataCache();
         return Ok(new { success = true });
     }

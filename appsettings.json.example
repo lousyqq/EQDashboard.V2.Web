@@ -1,0 +1,32 @@
+{
+  "// NOTE": "這是 appsettings.json 的範本（appsettings.json 本身已被 .gitignore，因含真實 DB 密碼）。複製本檔為 appsettings.json 並填入實際連線字串後即可執行。Production 連線字串建議改用環境變數 ConnectionStrings__EQDashboard 或 dotnet user-secrets 注入，勿寫死於檔案。",
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "AllowedHosts": "*",
+  "ConnectionStrings": {
+    "EQDashboard": "Data Source=YOUR_SQL_SERVER;Initial Catalog=EQDashboardV2;User ID=YOUR_DB_USER;Password=YOUR_DB_PASSWORD;TrustServerCertificate=True;"
+  },
+  "Auth": {
+    "WindowsDomainStripPrefix": "UMC",
+    "EnableEmergencyAdmin": false,
+    "AllowManualLogin": true,
+    "TestAccounts": {
+      "// Enabled": "開發/測試白名單；正式部署務必 false。範本預設 false。",
+      "Enabled": false,
+      "Accounts": []
+    },
+    "Ldap": {
+      "Enabled": false,
+      "Server": "REPLACE_WITH_ACTUAL_AD_SERVER",
+      "Port": 389,
+      "UseSsl": true,
+      "BindDomain": "UMC",
+      "SearchBase": "DC=umc,DC=com",
+      "UserPrincipalSuffix": "@umc.com"
+    }
+  }
+}

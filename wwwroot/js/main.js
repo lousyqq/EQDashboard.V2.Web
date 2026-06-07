@@ -1,18 +1,37 @@
-function initModalSafely(id) { const el = document.getElementById(id); return el ? new bootstrap.Modal(el) : null; }
+import { appState } from './store.js?v=20260607k';
+import './config.js?v=20260607h';
+import './api.js?v=20260607h';
+import './auth.js?v=20260607h';
+import './ui/layout.js?v=20260607h';
+import './ui/navigation.js?v=20260607h';
+import './ui/dialogs.js?v=20260607h';
+import './render/sidebar.js?v=20260607h';
+import './render/sidebar-item.js?v=20260607h';
+import './render/tables.js?v=20260607h';
+import './render/account-ui.js?v=20260607h';
+import './admin/modal-utils.js?v=20260607h';
+import './admin/fab-manage.js?v=20260607h';
+import './admin/role-manage.js?v=20260607h';
+import './admin/account-manage.js?v=20260607h';
+import './admin/menu-manage.js?v=20260607h';
+import './admin/misc-manage.js?v=20260607h';
+import './admin/activity-log.js?v=20260607h';
 
-function initDashboardUI() {
-    if (!currentUser) return;
+export function initModalSafely(id) { const el = document.getElementById(id); return el ? new bootstrap.Modal(el) : null; }
 
-    // 校正 currentFab 一律為 fabName，並套用該廠區的預設語言
+export function initDashboardUI(stayOnCurrentPage = false) {
+    if (!appState.currentUser) return;
+
+    // 校正 appState.currentFab 一律為 fabName，並套用該廠區的預設語言
     if (typeof getFabs === 'function') {
         const fabs = getFabs();
         if (fabs.length > 0) {
-            let currentFabVal = typeof currentFab !== 'undefined' ? currentFab : '';
+            let currentFabVal = typeof appState.currentFab !== 'undefined' ? appState.currentFab : '';
             const exists = fabs.find(f =>
                 String(f.id || '').toLowerCase() === String(currentFabVal).toLowerCase() ||
                 String(f.fabName || '').toLowerCase() === String(currentFabVal).toLowerCase()
             );
-            currentFab = exists ? exists.fabName : fabs[0].fabName;
+            appState.currentFab = exists ? exists.fabName : fabs[0].fabName;
 
             const fabObj = exists || fabs[0];
             if (fabObj && fabObj.defaultLang && typeof changeLanguage === 'function') {
@@ -26,7 +45,9 @@ function initDashboardUI() {
     if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
     if (typeof renderFabSwitcher === 'function') renderFabSwitcher(); // ⭐️ 補上廠區切換選單的初始化
     if (typeof switchLayoutMode === 'function') switchLayoutMode('system');
-    if (typeof renderHomeDashboard === 'function') renderHomeDashboard();
+    if (!stayOnCurrentPage) {
+        if (typeof window.goDefaultHome === 'function') window.goDefaultHome();
+    }
 }
 
 async function waitForTryAutoLogin(timeoutMs = 5000) {
@@ -38,8 +59,8 @@ async function waitForTryAutoLogin(timeoutMs = 5000) {
     return false;
 }
 
-// 還原 localStorage 已有的 currentUser；若沒有則 return false（讓 tryAutoLogin 接手）
-function restoreLoginFromStorage() {
+// 還原 localStorage 已有的 appState.currentUser；若沒有則 return false（讓 tryAutoLogin 接手）
+export function restoreLoginFromStorage() {
     const storedUser = localStorage.getItem('umc_current_user');
     if (!storedUser || storedUser === 'null' || storedUser === 'undefined') return false;
 
@@ -48,11 +69,11 @@ function restoreLoginFromStorage() {
 
         // ⚠️ slimUser 存進去的鍵叫 `empId`，舊程式碼讀成 tempUser.id 永遠是 undefined。
         //   後果：find 永遠回 undefined → 誤判帳號被刪除 → 假警告 + 強制重新登入 +
-        //   重新登入後 currentUser.id 是 undefined → sidebar.js 用 currentUser.id 做權限判定全錯
+        //   重新登入後 appState.currentUser.id 是 undefined → sidebar.js 用 appState.currentUser.id 做權限判定全錯
         //   → 上方導覽列空白要等使用者匯入 excel 才復原。
         //   修法：empId 為主、id 為相容備援。
         const storedEmpId = tempUser.empId || tempUser.id || '';
-        // 順手補回 id 欄位讓下游用 currentUser.id 的程式碼能正常 (sidebar.js getMenuPermissions 等)
+        // 順手補回 id 欄位讓下游用 appState.currentUser.id 的程式碼能正常 (sidebar.js getMenuPermissions 等)
         if (!tempUser.id) tempUser.id = storedEmpId;
 
         if (typeof getAccounts === 'function') {
@@ -69,16 +90,18 @@ function restoreLoginFromStorage() {
             tempUser.manageableMenus = freshAcc.manageableMenus || [];
             tempUser.canEditOthers = freshAcc.canEditOthers || false;
             tempUser.defaultPages = freshAcc.defaultPages || {};
+            tempUser.loginCount = typeof freshAcc.loginCount === 'number' ? freshAcc.loginCount : parseInt(freshAcc.loginCount) || 0;
+            tempUser.lastLoginTime = freshAcc.lastLoginTime || null;
         }
 
-        currentUser = tempUser;
-        localStorage.setItem('umc_current_user', JSON.stringify(currentUser));
+        appState.currentUser = tempUser;
+        localStorage.setItem('umc_current_user', JSON.stringify(appState.currentUser));
 
         const nameEl = document.getElementById('user-name');
-        if (nameEl) nameEl.innerText = currentUser.id || currentUser.empId || '';
+        if (nameEl) nameEl.innerText = appState.currentUser.id || appState.currentUser.empId || '';
         return true;
     } catch (e) {
-        currentUser = null;
+        appState.currentUser = null;
         return false;
     }
 }
@@ -175,7 +198,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         initModalInstances();
 
         if (isDbLoaded) {
-            // 1) 有 DB 資料時，嘗試還原 localStorage 中既有的 currentUser
+            // 1) 有 DB 資料時，嘗試還原 localStorage 中既有的 appState.currentUser
             const restored = restoreLoginFromStorage();
             if (restored) {
                 initDashboardUI();
@@ -212,17 +235,17 @@ document.addEventListener("DOMContentLoaded", async () => {
 function initModalInstances() {
     // ⭐️ 致命錯誤修復：完整補齊所有遺失的 Modal 宣告，這樣點擊編輯按鈕才會彈出視窗！
     if (typeof bootstrap !== 'undefined') {
-        modals.fab = initModalSafely('fabModal');
-        modals.role = initModalSafely('roleModal');
-        modals.acc = initModalSafely('accModal');
-        modals.webpage = initModalSafely('webpageModal');
-        modals.menuNode = initModalSafely('menuNodeModal');
-        modals.personalMenu = initModalSafely('personalMenuModal');
-        modals.appGrid = initModalSafely('appGridModal');
-        modals.apply = initModalSafely('applyModal');
-        modals.withdraw = initModalSafely('withdrawModal');
-        modals.audit = initModalSafely('auditModal');
-        systemAlertModalObj = initModalSafely('systemAlertModal');
-        systemConfirmModalObj = initModalSafely('systemConfirmModal');
+        appState.modals.fab = initModalSafely('fabModal');
+        appState.modals.role = initModalSafely('roleModal');
+        appState.modals.acc = initModalSafely('accModal');
+        appState.modals.webpage = initModalSafely('webpageModal');
+        appState.modals.menuNode = initModalSafely('menuNodeModal');
+        appState.modals.personalMenu = initModalSafely('personalMenuModal');
+        appState.modals.appGrid = initModalSafely('appGridModal');
+        appState.modals.apply = initModalSafely('applyModal');
+        appState.modals.withdraw = initModalSafely('withdrawModal');
+        appState.modals.audit = initModalSafely('auditModal');
+        appState.systemAlertModalObj = initModalSafely('systemAlertModal');
+        appState.systemConfirmModalObj = initModalSafely('systemConfirmModal');
     }
 }

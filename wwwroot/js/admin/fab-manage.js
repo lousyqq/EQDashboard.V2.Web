@@ -1,24 +1,34 @@
 // === admin/fab-manage.js - 廠區管理 CRUD ===
 
+import { getCustomMenus, getFabs } from '../config.js?v=20260607k';
+
+
+import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260607k';
+import { deleteFabAPI, fetchInitialDataFromDB, saveFabAPI } from '../api.js?v=20260607k';
+import { renderFabTable } from '../render/tables.js?v=20260607k';
+import { customAlert, customConfirm } from '../ui/dialogs.js?v=20260607k';
+import { appState } from '../store.js?v=20260607k';
+
+
 // === 權限檢查輔助 ===
-function canManageFolderStructure(folderId) {
-    if (!currentUser) return false;
-    if (currentUser.roleLevel === 'admin') return true;
+export function canManageFolderStructure(folderId) {
+    if (!appState.currentUser) return false;
+    if (appState.currentUser.roleLevel === 'admin') return true;
     if (!folderId) return true;
 
     const menus = getCustomMenus();
     const fNode = menus.find(m => window.cleanId(m.id) === window.cleanId(folderId));
     if (!fNode) return true;
 
-    if (window.cleanId(fNode.createdBy) === window.cleanId(currentUser.id)) return true;
-    if (currentUser.manageableMenus && currentUser.manageableMenus.some(m => window.cleanId(m) === window.cleanId(folderId))) return true;
+    if (window.cleanId(fNode.createdBy) === window.cleanId(appState.currentUser.id)) return true;
+    if (appState.currentUser.manageableMenus && appState.currentUser.manageableMenus.some(m => window.cleanId(m) === window.cleanId(folderId))) return true;
 
     let isUnderDelegated = false;
     let queue = [window.cleanId(folderId)];
     let visited = new Set();
     while (queue.length > 0) {
         let curr = queue.shift();
-        if (currentUser.manageableMenus && currentUser.manageableMenus.some(m => window.cleanId(m) === curr)) { isUnderDelegated = true; break; }
+        if (appState.currentUser.manageableMenus && appState.currentUser.manageableMenus.some(m => window.cleanId(m) === curr)) { isUnderDelegated = true; break; }
         visited.add(curr);
         let m = menus.find(x => window.cleanId(x.id) === curr);
         if (m) {
@@ -34,7 +44,7 @@ function canManageFolderStructure(folderId) {
 }
 
 // === Fabs 廠區管理 ===
-function openAddFabModal() {
+export function openAddFabModal() {
     try {
         document.getElementById('fabForm').reset();
         document.getElementById('editFabId').value = '';
@@ -44,7 +54,7 @@ function openAddFabModal() {
     } catch (e) { console.error("[openAddFabModal] 錯誤:", e); }
 }
 
-function editFab(id) {
+export function editFab(id) {
     try {
         const fab = getFabs().find(f => window.cleanId(f.id) === window.cleanId(id));
         if (!fab) { console.error("找不到對應的廠區資料 (ID: " + id + ")"); return; }
@@ -59,7 +69,7 @@ function editFab(id) {
     } catch (e) { console.error("[editFab] 錯誤:", e); }
 }
 
-async function saveFabItem(e) {
+export async function saveFabItem(e) {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     else if (window.event && typeof window.event.preventDefault === 'function') window.event.preventDefault();
 
@@ -107,7 +117,7 @@ async function saveFabItem(e) {
     return false;
 }
 
-async function deleteFab(id) {
+export async function deleteFab(id) {
     try {
         customConfirm('確定要刪除此廠區嗎？', async () => {
             const result = await deleteFabAPI(id);
@@ -124,3 +134,11 @@ async function deleteFab(id) {
         });
     } catch (e) { console.error("[deleteFab] 錯誤:", e); }
 }
+
+// Expose for HTML inline handlers
+window.canManageFolderStructure = canManageFolderStructure;
+window.openAddFabModal = openAddFabModal;
+window.editFab = editFab;
+window.saveFabItem = saveFabItem;
+window.deleteFab = deleteFab;
+

@@ -57,12 +57,19 @@ public class FabsController : ControllerBase
 
         _context.Fabs.Add(fab);
 
-        if (dto.AssignedRoles != null)
+        // 1.3：先驗證 RoleId 都存在再插入 Map_Fab_Role，避免撞 FK 直接 500（回 400 + 明確訊息給前端）。
+        //   順帶 Distinct 去重，否則重複 RoleId 會踩 Map_Fab_Role 的複合 PK。
+        var roleIds = dto.AssignedRoles?.Where(r => !string.IsNullOrWhiteSpace(r)).Distinct().ToList() ?? new List<string>();
+        if (roleIds.Count > 0)
         {
-            foreach (var roleId in dto.AssignedRoles)
-            {
+            var existingSet = (await _context.Roles.Where(r => roleIds.Contains(r.RoleId)).Select(r => r.RoleId).ToListAsync())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var missing = roleIds.Where(r => !existingSet.Contains(r)).ToList();
+            if (missing.Count > 0)
+                return BadRequest($"下列角色不存在，無法指派：{string.Join(", ", missing)}");
+
+            foreach (var roleId in roleIds)
                 _context.MapFabRoles.Add(new MapFabRole { FabId = fab.FabId, RoleId = roleId });
-            }
         }
 
         await _context.SaveChangesAsync();
@@ -76,6 +83,17 @@ public class FabsController : ControllerBase
         var fab = await _context.Fabs.Include(f => f.MapFabRoles).FirstOrDefaultAsync(f => f.FabId == id);
         if (fab == null) return NotFound();
 
+        // 1.3：在動 DB 之前先驗證新指派的 RoleId 都存在，stale id 直接回 400（避免刪舊後才撞 FK 500）。
+        var roleIds = dto.AssignedRoles?.Where(r => !string.IsNullOrWhiteSpace(r)).Distinct().ToList() ?? new List<string>();
+        if (roleIds.Count > 0)
+        {
+            var existingSet = (await _context.Roles.Where(r => roleIds.Contains(r.RoleId)).Select(r => r.RoleId).ToListAsync())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var missing = roleIds.Where(r => !existingSet.Contains(r)).ToList();
+            if (missing.Count > 0)
+                return BadRequest($"下列角色不存在，無法指派：{string.Join(", ", missing)}");
+        }
+
         fab.DisplayName = dto.DisplayName;
         fab.DefaultLang = dto.DefaultLang;
 
@@ -86,13 +104,8 @@ public class FabsController : ControllerBase
             await _context.SaveChangesAsync(); // 強制執行刪除以避免 PK tracking 衝突
         }
 
-        if (dto.AssignedRoles != null)
-        {
-            foreach (var roleId in dto.AssignedRoles)
-            {
-                _context.MapFabRoles.Add(new MapFabRole { FabId = id, RoleId = roleId });
-            }
-        }
+        foreach (var roleId in roleIds)
+            _context.MapFabRoles.Add(new MapFabRole { FabId = id, RoleId = roleId });
 
         await _context.SaveChangesAsync();
         _settingsService.InvalidateInitialDataCache();
@@ -100,7 +113,7 @@ public class FabsController : ControllerBase
     }
 
     [HttpDelete("{id}")]
-    public async Task<IActionResult> DeleteFab(string id)
+    public async Task<IActionResult> DeleteFab(string id, [FromServices] IActivityLogger activityLogger)
     {
         var fab = await _context.Fabs
             .Include(f => f.MapFabRoles)
@@ -117,8 +130,13 @@ public class FabsController : ControllerBase
         if (defaultPages.Count > 0)
             _context.MapAccountDefaultPages.RemoveRange(defaultPages);
 
+        var backupJson = System.Text.Json.JsonSerializer.Serialize(fab, new System.Text.Json.JsonSerializerOptions { ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles });
+
         _context.Fabs.Remove(fab);
         await _context.SaveChangesAsync();
+        
+        await activityLogger.LogAuditAsync(HttpContext, "DataRecovery", "DeleteFab", "Fab", id, backupJson);
+        
         _settingsService.InvalidateInitialDataCache();
         return Ok(new { success = true });
     }

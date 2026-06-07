@@ -1,11 +1,19 @@
+import { getCustomMenus } from '../config.js?v=20260607k';
+
+
+import { renderSidebarMenus } from '../render/sidebar.js?v=20260607k';
+import { goDefaultHome, navTo } from './navigation.js?v=20260607k';
+import { appState } from '../store.js?v=20260607k';
+
+
 ﻿// === ui/layout.js - 版面切換、側邊欄、全螢幕、釘選 ===
 // 切換側邊欄
-function toggleSidebar() {
+export function toggleSidebar() {
     let hasChildren = false;
-    if (window.currentActiveTopMenuId === 'system_settings') {
+    if (appState.currentActiveTopMenuId === 'system_settings') {
         hasChildren = true;
-    } else if (window.currentActiveTopMenuId) {
-        const cTargetId = window.cleanId(window.currentActiveTopMenuId);
+    } else if (appState.currentActiveTopMenuId) {
+        const cTargetId = window.cleanId(appState.currentActiveTopMenuId);
         const menus = getCustomMenus();
         const children = menus.filter(m => window.cleanId(m.parentId) === cTargetId || (m.parentIds || []).map(window.cleanId).includes(cTargetId));
         if (children.length > 0) hasChildren = true;
@@ -19,24 +27,24 @@ function toggleSidebar() {
 }
 
 // 全域釘選狀態（對齊 TEST：預設固定）
-window.isPinned = (typeof window.isPinned === 'boolean') ? window.isPinned : true;
+appState.isPinned = (typeof appState.isPinned === 'boolean') ? appState.isPinned : true;
 
-function togglePin() {
-    window.isPinned = !window.isPinned;
+export function togglePin() {
+    appState.isPinned = !appState.isPinned;
 
     const btnPin = document.getElementById('btn-pin');
 
-    if (window.isPinned) {
+    if (appState.isPinned) {
         // 固定模式：nav 一定顯示
         document.body.classList.remove('nav-hidden');
 
         // 只有「有子選單 / 系統設定」才展開 sidebar（對齊 TEST）
         let hasChildren = false;
         try {
-            if (window.currentActiveTopMenuId === 'system_settings') {
+            if (appState.currentActiveTopMenuId === 'system_settings') {
                 hasChildren = true;
-            } else if (window.currentActiveTopMenuId && typeof getCustomMenus === 'function') {
-                const cTargetId = window.cleanId(window.currentActiveTopMenuId);
+            } else if (appState.currentActiveTopMenuId && typeof getCustomMenus === 'function') {
+                const cTargetId = window.cleanId(appState.currentActiveTopMenuId);
                 const menus = getCustomMenus() || [];
                 const children = menus.filter(m =>
                     window.cleanId(m.parentId) === cTargetId ||
@@ -74,7 +82,7 @@ function togglePin() {
 window.togglePin = togglePin;
 
 // 切換全螢幕
-function toggleFullscreen() {
+export function toggleFullscreen() {
     document.body.classList.toggle('fullscreen-mode');
     if (document.body.classList.contains('fullscreen-mode')) {
         if (document.documentElement.requestFullscreen) { document.documentElement.requestFullscreen().catch(err => console.log(err)); }
@@ -87,8 +95,8 @@ function toggleFullscreen() {
 // ⭐️ 重構：安全、精準補獲側邊欄「個人頁面管理」按鈕 (絕不影響主畫面 Table 內容)
 // ============================================================================
 let enforceTimer = null;
-function enforceSystemModeUI() {
-    if (typeof currentLayoutMode === 'undefined') return;
+export function enforceSystemModeUI() {
+    if (typeof appState.currentLayoutMode === 'undefined') return;
 
     if (enforceTimer) clearTimeout(enforceTimer);
     enforceTimer = setTimeout(() => {
@@ -98,7 +106,7 @@ function enforceSystemModeUI() {
             // 尋找其外層包裝容器 (如 border-top 分隔線或是 sidebar-footer 底部區塊)
             const wrapper = personalBtn.closest('li, .nav-item, .sidebar-footer, .mt-auto, .border-top') || personalBtn;
 
-            if (currentLayoutMode === 'system') {
+            if (appState.currentLayoutMode === 'system') {
                 // 系統模式下：隱藏按鈕與其外層容器
                 wrapper.style.setProperty('display', 'none', 'important');
             } else {
@@ -111,12 +119,12 @@ function enforceSystemModeUI() {
 
 // ⭐️ 核心修復：切換系統/自訂版面
 // ===== 單一真實來源：切換系統/自訂版面（對齊 TEST_20260429.html，統一使用 'personal'）=====
-function switchLayoutMode(mode) {
-    // normalize to: system / personal （與 TEST_20260429.html:2147 currentLayoutMode='system' 一致）
+export function switchLayoutMode(mode) {
+    // normalize to: system / personal （與 TEST_20260429.html:2147 appState.currentLayoutMode='system' 一致）
     const m = String(mode ?? 'system').toLowerCase();
     const finalMode = (m.includes('custom') || m.includes('personal') || m.includes('自訂')) ? 'personal' : 'system';
 
-    currentLayoutMode = finalMode;
+    appState.currentLayoutMode = finalMode;
 
     // 同步 slider UI
     const wrapper = document.getElementById('layout-toggle-wrapper');
@@ -135,11 +143,11 @@ function switchLayoutMode(mode) {
     }
 
     try {
-        const isInSystemSettings = (window.currentActiveTopMenuId === 'system_settings');
+        const isInSystemSettings = (appState.currentActiveTopMenuId === 'system_settings');
 
         if (!isInSystemSettings) {
-            window.currentActiveTopMenuId = null;
-            window.currentActiveSidebarMenuId = null;
+            appState.currentActiveTopMenuId = null;
+            appState.currentActiveSidebarMenuId = null;
         }
 
         // 頂部頁籤已由 renderSidebarMenus 一併渲染，無需另外呼叫 renderTopMenus
@@ -150,7 +158,7 @@ function switchLayoutMode(mode) {
             const personalPage = document.getElementById('page-personal-manage');
             if (finalMode === 'system' && personalPage && personalPage.classList.contains('active')) {
                 if (typeof navTo === 'function') {
-                    if (typeof currentUser !== 'undefined' && currentUser?.roleLevel === 'admin') navTo('page-account-manage', null, '帳號管理');
+                    if (typeof appState.currentUser !== 'undefined' && appState.currentUser?.roleLevel === 'admin') navTo('page-account-manage', null, '帳號管理');
                     else navTo('page-apply', null, '需求申請');
                 }
             }
@@ -166,5 +174,13 @@ function switchLayoutMode(mode) {
 }
 
 // 讓 index.html 的 onclick="switchLayoutMode(...)" 一定能呼叫到
+window.switchLayoutMode = switchLayoutMode;
+
+
+// Expose for HTML inline handlers
+window.toggleSidebar = toggleSidebar;
+window.togglePin = togglePin;
+window.toggleFullscreen = toggleFullscreen;
+window.enforceSystemModeUI = enforceSystemModeUI;
 window.switchLayoutMode = switchLayoutMode;
 

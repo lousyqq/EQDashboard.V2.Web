@@ -28,10 +28,22 @@ public class SettingsController : Controller
     }
 
     [HttpGet]
-    // 不再加 action-level [Authorize] — 繼承 class-level [Authorize] 即可。
-    // 所有登入者都要拿這份資料才能組 appState。
-    public async Task<JsonResult> GetInitialData()
+    public async Task<IActionResult> GetInitialData()
     {
+        var eTag = $"\"{_settingsService.GetCurrentETag()}\"";
+
+        if (Request.Headers.TryGetValue("If-None-Match", out var incomingETag))
+        {
+            if (incomingETag == eTag)
+            {
+                return StatusCode(StatusCodes.Status304NotModified);
+            }
+        }
+
+        Response.Headers["ETag"] = eTag;
+        // 確保瀏覽器每次都會來詢問，避免卡在舊快取
+        Response.Headers["Cache-Control"] = "no-cache, must-revalidate";
+
         try
         {
             var data = await _settingsService.GetInitialDataAsync();
@@ -57,12 +69,15 @@ public class SettingsController : Controller
                         .ToHashSet(StringComparer.OrdinalIgnoreCase)
                     : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+                var mapFabRole = data.TryGetValue("Map_Fab_Role", out var mfr) && mfr is List<Dictionary<string, object>> mfrList
+                    ? mfrList : new List<Dictionary<string, object>>();
+
                 var filteredData = new Dictionary<string, object>();
                 foreach (var kvp in data)
                 {
                     if (kvp.Value is List<Dictionary<string, object>> list)
                     {
-                        filteredData[kvp.Key] = FilterTable(kvp.Key, list, empId, visibleMenuIds, myRoleIds);
+                        filteredData[kvp.Key] = FilterTable(kvp.Key, list, empId, visibleMenuIds, myRoleIds, mapFabRole);
                     }
                     else
                     {
@@ -77,8 +92,22 @@ public class SettingsController : Controller
         catch (Exception ex)
         {
             Console.Error.WriteLine($"GetInitialData 錯誤: {ex}");
+            // D3：改回正確的 HTTP 5xx（原本回 200 + {error:true} 是反模式，靠前端自檢旗標）。
+            //   前端 fetchInitialDataFromDB 已用 `if (!response.ok)` 處理非 2xx，故安全；
+            //   保留 body 的 {error,message} 供除錯，但狀態碼語意正確 → 監控/代理也看得懂。
+            Response.StatusCode = StatusCodes.Status500InternalServerError;
             return Json(new { error = true, message = "讀取初始資料時發生錯誤，請聯繫系統管理員。" });
         }
+    }
+
+    [HttpPost("/Settings/RefreshCache")]
+    [Authorize(Roles = "admin")]
+    // 當 admin 從 SSMS 直接改 DB (繞過 RESTful endpoints) 時，可呼叫此端點立刻清空 InitialData 快取，
+    //   不需等 60 秒 TTL 自然過期。網頁端按「重新整理權限」按鈕會打這支。
+    public JsonResult RefreshCache()
+    {
+        _settingsService.InvalidateInitialDataCache();
+        return Json(new { success = true, message = "已清空快取，下次讀取資料會直接打 DB。請重新整理網頁。" });
     }
 
     [HttpPost]
@@ -142,7 +171,8 @@ public class SettingsController : Controller
         List<Dictionary<string, object>> list,
         string empId,
         HashSet<string> visibleMenuIds,
-        HashSet<string> myRoleIds)
+        HashSet<string> myRoleIds,
+        List<Dictionary<string, object>> mapFabRole)
     {
         bool MatchEmpId(Dictionary<string, object> row)
         {
@@ -183,7 +213,7 @@ public class SettingsController : Controller
             "Map_Fab_Role" => list.Where(MatchRoleId).ToList(),
 
             // 廠區本體 — 只留跟我 role 有交集的
-            "Fabs" => FilterFabs(list, myRoleIds),
+            "Fabs" => FilterFabs(list, myRoleIds, mapFabRole),
 
             // 其他表 (理論上不會有) — 整張藏起來、空陣列安全
             _ => new List<Dictionary<string, object>>(),
@@ -192,13 +222,27 @@ public class SettingsController : Controller
 
     private static List<Dictionary<string, object>> FilterFabs(
         List<Dictionary<string, object>> fabsList,
-        HashSet<string> myRoleIds)
+        HashSet<string> myRoleIds,
+        List<Dictionary<string, object>> mapFabRole)
     {
-        // Fabs 本身沒 RoleId 欄位 — 從 Map_Fab_Role 反查，但這邊只拿到 fabs 表。
-        // 安全方向：只保留 user 至少有一個 role 對應的 fab。
-        // 但 Map_Fab_Role 不在這個 helper 的 scope，所以這裡只能保守 — 給空集合會讓前端廠區下拉空，更糟。
-        // 折衷：所有 fab 都回，但只給最少屬性 (FabId/FabName/DisplayName/DefaultLang) — 跟既有 schema 一致，本來就無敏感。
-        // (若 Fabs 表將來加敏感欄位，這個 helper 要重看。)
-        return fabsList;
+        var visibleFabIds = mapFabRole
+            .Where(m =>
+            {
+                var rk = m.Keys.FirstOrDefault(k => string.Equals(k, "RoleId", StringComparison.OrdinalIgnoreCase));
+                return rk != null && myRoleIds.Contains(m[rk]?.ToString() ?? "");
+            })
+            .Select(m =>
+            {
+                var fk = m.Keys.FirstOrDefault(k => string.Equals(k, "FabId", StringComparison.OrdinalIgnoreCase));
+                return fk != null ? m[fk]?.ToString() ?? "" : "";
+            })
+            .Where(s => !string.IsNullOrEmpty(s))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return fabsList.Where(f =>
+        {
+            var k = f.Keys.FirstOrDefault(x => string.Equals(x, "FabId", StringComparison.OrdinalIgnoreCase));
+            return k != null && visibleFabIds.Contains(f[k]?.ToString() ?? "");
+        }).ToList();
     }
 }

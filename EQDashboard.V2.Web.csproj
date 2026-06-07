@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="AspNetCore.HealthChecks.SqlServer" Version="9.0.0" />
     <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.1" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.0">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -19,6 +20,9 @@
     </PackageReference>
     <!-- Windows 自動身份識別 (Kestrel) -->
     <PackageReference Include="Microsoft.AspNetCore.Authentication.Negotiate" Version="9.0.0" />
+    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="7.2.0" />
     <!-- AD LDAP bind (用於手動模式密碼驗證) -->
     <PackageReference Include="System.DirectoryServices.Protocols" Version="9.0.0" />
   </ItemGroup>

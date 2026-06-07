@@ -1,5 +1,12 @@
 // === 全域變數：取代原本的 localStorage，達成真正的 DB 讀寫 ===
 
+// ⭐️ ES Module imports：fetch 覆寫攔截 401/403 時會用到 logout()/customAlert()。
+//    其餘 getter / 渲染函式皆透過 window.* 呼叫，毋須在此 import。
+import { logout } from './auth.js?v=20260607k';
+import { customAlert } from './ui/dialogs.js?v=20260607k';
+import { appState } from './store.js?v=20260607k';
+
+
 // ⭐️ IIS 子目錄部署自適應：把絕對路徑 URL 自動 prepend APP_BASE。
 //   背景：所有 fetch('/api/...') / fetch('/Settings/...') 寫的是「以網域根目錄為起點」的絕對路徑。
 //   本機 dotnet run 時 APP_BASE = "/" → 維持原行為
@@ -23,23 +30,66 @@ window.toAppUrl = function (url) {
 
 // ⭐️ 全域 fetch 攔截器：處理 401 Unauthorized，強制退回登入畫面
 const originalFetch = window.fetch;
+
+// 套用 CSRF 防護標頭（X-Requested-With + X-CSRF-TOKEN）。
+//   用「覆寫」語意（set / 直接指派）而非 append，重試時才不會重複附加多個 token。
+function applyCsrfHeaders(opts) {
+    opts.headers = opts.headers || {};
+    if (opts.headers instanceof Headers) {
+        opts.headers.set('X-Requested-With', 'XMLHttpRequest');
+        if (window._csrfToken) opts.headers.set('X-CSRF-TOKEN', window._csrfToken);
+    } else {
+        opts.headers['X-Requested-With'] = 'XMLHttpRequest';
+        if (window._csrfToken) opts.headers['X-CSRF-TOKEN'] = window._csrfToken;
+    }
+}
+
+// 重新向後端索取 CSRF token。登入後使用者身分改變（antiforgery token 綁定登入者身分）、
+//   或伺服器重啟 / DataProtection 金鑰更新時，頁面初次載入時取得的舊 token 會失效。
+//   ⚠️ 一律走 originalFetch，避免遞迴觸發本攔截器。
+async function refreshCsrfToken() {
+    try {
+        const r = await originalFetch(window.toAppUrl('/api/Auth/CsrfToken'), { credentials: 'same-origin' });
+        if (r.ok) {
+            const d = await r.json();
+            if (d && d.token) { window._csrfToken = d.token; return true; }
+        }
+    } catch (e) { /* 靜默：失敗就維持舊 token，交給呼叫端處理 */ }
+    return false;
+}
+window.refreshCsrfToken = refreshCsrfToken;
+
 window.fetch = async function (...args) {
-    if (args[0] && typeof args[0] === 'string') {
+    const isString = args[0] && typeof args[0] === 'string';
+    if (isString) {
         // IIS 虛擬目錄自動 prepend
         args[0] = window.toAppUrl(args[0]);
 
         if (!args[1]) args[1] = {};
         args[1].credentials = 'same-origin';
+        applyCsrfHeaders(args[1]);
+    }
+    let response = await originalFetch.apply(this, args);
 
-        if (!args[1].headers) args[1].headers = {};
-        if (args[1].headers instanceof Headers) {
-            args[1].headers.append('X-Requested-With', 'XMLHttpRequest');
-        } else {
-            args[1].headers['X-Requested-With'] = 'XMLHttpRequest';
+    // 🛡️ 自我修復：寫入請求若因 CSRF token 失效（400 + "Invalid Token"）被擋，
+    //   重新取得 token 後自動重試一次。涵蓋「登入後身分改變舊 token 失效」與
+    //   「伺服器重啟/金鑰更新」兩種情境，使用者不再看到「CSRF validation failed: Invalid Token」。
+    if (isString && response.status === 400) {
+        const method = String((args[1] && args[1].method) || 'GET').toUpperCase();
+        if (method !== 'GET' && method !== 'HEAD') {
+            let isCsrfInvalid = false;
+            try {
+                const txt = await response.clone().text();
+                isCsrfInvalid = txt.includes('CSRF validation failed: Invalid Token');
+            } catch (e) { /* 無法讀取 body 就不重試 */ }
+            if (isCsrfInvalid && await refreshCsrfToken()) {
+                applyCsrfHeaders(args[1]);   // 套用剛取得的新 token
+                response = await originalFetch.apply(this, args);
+            }
         }
     }
-    const response = await originalFetch.apply(this, args);
-    const urlStr = typeof args[0] === 'string' ? args[0] : '';
+
+    const urlStr = isString ? args[0] : '';
     // 如果後端回傳 401 (未登入或 Cookie 失效)，自動觸發登出 (排除允許 401 的 API)
     if (response.status === 401 && !urlStr.includes('/api/Auth/Login') && !urlStr.includes('/Settings/GetInitialData') && !urlStr.includes('/api/Auth/WhoAmI')) {
         if (typeof logout === 'function') {
@@ -69,12 +119,12 @@ window.appState = window.appState || {
 };
 
 // ⭐️ 終極保險：全域宣告讀取函式，保證任何地方呼叫都是抓取記憶體 (DB) 的資料
-function getCustomMenus() { return window.appState.menus || []; }
-function getFabs() { return window.appState.fabs || []; }
-function getRoles() { return window.appState.roles || []; }
-function getAccounts() { return window.appState.accounts || []; }
-function getAppItems() { return window.appState.apps || []; }
-function getRequests() { return window.appState.requests || []; }
+export function getCustomMenus() { return window.appState.menus || []; }
+export function getFabs() { return window.appState.fabs || []; }
+export function getRoles() { return window.appState.roles || []; }
+export function getAccounts() { return window.appState.accounts || []; }
+export function getAppItems() { return window.appState.apps || []; }
+export function getRequests() { return window.appState.requests || []; }
 
 // 覆寫至 window，霸道蓋掉舊版 localStorage 的設定
 window.getCustomMenus = getCustomMenus;
@@ -95,7 +145,7 @@ const getVal = (obj, key) => {
 };
 
 // ⭐️ 核心：從後端 API 獲取資料，並將 SQL 關聯表「組裝」回前端 UI 預期的結構
-async function fetchInitialDataFromDB() {
+export async function fetchInitialDataFromDB() {
     try {
         const response = await fetch('/Settings/GetInitialData', { cache: 'no-store' });
 
@@ -362,7 +412,9 @@ async function fetchInitialDataFromDB() {
         window.appState.apps = mappedApps;
         window.appState.requests = mappedReqs;
 
-        // ⭐ 7. 讀取 PersonalSettings 並寫入 localStorage（讓既有讀取函式無縫銜接）
+        // ⭐ 7. 解析 PersonalSettings（後端非 admin 已只回自己這一列；admin 雖回全量，
+        //       但本機只需快取「登入者自己」的版面，避免把他人個人版面寫進本機 localStorage）。
+        //       實際 localStorage 寫入延後到取得登入者 empId 之後（見下方 MyProfile 區塊）。
         const psData = getVal(result, 'PersonalSettings') || [];
         const psByEmp = {};
         psData.forEach(row => {
@@ -379,9 +431,6 @@ async function fetchInitialDataFromDB() {
                     ? parseInt(rawOrder) : undefined
             };
         });
-        Object.keys(psByEmp).forEach(empId => {
-            localStorage.setItem('umc_personal_menus_' + empId, JSON.stringify(psByEmp[empId]));
-        });
 
         // console.log("資料庫載入與轉換完成:", window.appState);
 
@@ -395,10 +444,12 @@ async function fetchInitialDataFromDB() {
         window.getRequests = function () { return window.appState.requests || []; };
 
         // 🛡️ Lazy Loading：向後端取得登入者自身的詳細權限 (因為 InitialData 已剔除全量權限)
+        let myEmpId = '';
         try {
             const myProfileRes = await fetch('/api/Auth/MyProfile');
             if (myProfileRes.ok) {
                 const myProfile = await myProfileRes.json();
+                myEmpId = String(myProfile.empId || '');
                 let myAcc = window.appState.accounts.find(a => String(a.empId) === String(myProfile.empId));
                 if (myAcc) {
                     myAcc.assignedRoles = myProfile.assignedRoles || [];
@@ -410,6 +461,14 @@ async function fetchInitialDataFromDB() {
             }
         } catch (e) {
             console.error("無法取得個人權限", e);
+        }
+
+        // ⭐ O3：只把「登入者自己」的個人版面寫進 localStorage（始終覆寫成 DB 真實值）。
+        //    舊版會把 psByEmp 內所有人的版面都寫進本機，既無用又會殘留他人資料；
+        //    現在只快取自己這一份，且每次載入都對齊 DB（含「DB 已清空 → 本機也清空」）。
+        if (!myEmpId) myEmpId = String(appState.currentUser?.id || '');
+        if (myEmpId) {
+            localStorage.setItem('umc_personal_menus_' + myEmpId, JSON.stringify(psByEmp[myEmpId] || {}));
         }
 
         // ⭐️ 超級覆寫：確保不論在這裡之後才呼叫 initDashboardUI()，也不會因為載入順序而讀到靜態設定
@@ -440,7 +499,7 @@ async function fetchInitialDataFromDB() {
 }
 
 // 取得當前網頁資料，轉換為符合 C# API 所需的 JSON 物件
-function getDatabasePayload() {
+export function getDatabasePayload() {
     const menus = window.getCustomMenus(); const fabs = window.getFabs(); const roles = window.getRoles();
     const accs = window.getAccounts(); const apps = window.getAppItems(); const reqs = window.getRequests();
     let payload = {};
@@ -511,23 +570,10 @@ function getDatabasePayload() {
         WithdrawReason: safeLongStr(r.withdrawReason), Reply: safeLongStr(r.reply)
     }));
 
-    // ⭐ PersonalSettings 雙向同步
-    payload.PersonalSettings = [];
-    accs.forEach(a => {
-        try {
-            const pSet = JSON.parse(localStorage.getItem('umc_personal_menus_' + a.empId)) || {};
-            Object.keys(pSet).forEach(mId => {
-                payload.PersonalSettings.push({
-                    EmpId: String(a.empId),
-                    MenuId: String(mId),
-                    IsHidden: pSet[mId].hidden === true,
-                    OpenTarget: safeStr(pSet[mId].target || '', 20),
-                    Icon: safeLongStr(pSet[mId].icon || ''),
-                    SortOrder: pSet[mId].order !== undefined ? pSet[mId].order : null
-                });
-            });
-        } catch (e) { /* 忽略單一帳號的 localStorage 解析錯誤 */ }
-    });
+    // ⚠️ PersonalSettings 刻意「不」併入此 payload：
+    //   它是 per-user 自訂版面，一律走 RESTful /api/PersonalSettings（per-user delete+insert）。
+    //   後端 SaveDataAsync 的 TableNames 也已移除 PersonalSettings，故此 payload 即使帶了它也不會被寫入。
+    //   舊版用 admin 自己 localStorage 重建整張表，會用過時快照洗掉所有人的個人版面 → 移除。
 
     // 組裝關聯表 (當後端升級為新版結構時，這些關聯表將自動發揮作用)
     payload.Map_Fab_Role = []; fabs.forEach(f => { if (f.assignedRoles) f.assignedRoles.forEach(rId => payload.Map_Fab_Role.push({ FabId: String(f.id), RoleId: String(rId) })); });
@@ -549,7 +595,7 @@ function getDatabasePayload() {
 // 將前端資料同步寫入後端 DB 的核心功能
 // showFeedback=true 時會顯示 loading 遮罩與成功訊息（手動觸發匯入時用）；
 // 一般 CRUD 操作走 showFeedback=false（靜默同步，避免干擾使用者）。
-async function syncDataToDB(showFeedback) {
+export async function syncDataToDB(showFeedback) {
     const payload = getDatabasePayload();
 
     let loadingOverlay = null;
@@ -571,7 +617,7 @@ async function syncDataToDB(showFeedback) {
         if (loadingOverlay) loadingOverlay.remove();
 
         if (result.success) {
-            hasUnsavedChanges = false;
+            appState.hasUnsavedChanges = false;
             if (showFeedback === true && typeof customAlert === 'function') {
                 customAlert(result.message || "資料已成功同步至資料庫！");
             }
@@ -595,7 +641,7 @@ window.syncDataToDB = syncDataToDB;
 // RESTful API 呼叫區 (逐步淘汰 syncDataToDB)
 // ==========================================
 
-async function saveFabAPI(isNew, fabData) {
+export async function saveFabAPI(isNew, fabData) {
     const url = isNew ? '/api/Fabs' : `/api/Fabs/${fabData.id}`;
     const method = isNew ? 'POST' : 'PUT';
 
@@ -619,7 +665,7 @@ async function saveFabAPI(isNew, fabData) {
 }
 window.saveFabAPI = saveFabAPI;
 
-async function deleteFabAPI(id) {
+export async function deleteFabAPI(id) {
     try {
         const res = await fetch(`/api/Fabs/${id}`, { method: 'DELETE' });
         if (!res.ok) {
@@ -634,7 +680,7 @@ async function deleteFabAPI(id) {
 }
 window.deleteFabAPI = deleteFabAPI;
 
-async function saveRoleAPI(isNew, roleData) {
+export async function saveRoleAPI(isNew, roleData) {
     const url = isNew ? '/api/Roles' : `/api/Roles/${roleData.id}`;
     const method = isNew ? 'POST' : 'PUT';
 
@@ -658,7 +704,7 @@ async function saveRoleAPI(isNew, roleData) {
 }
 window.saveRoleAPI = saveRoleAPI;
 
-async function deleteRoleAPI(id) {
+export async function deleteRoleAPI(id) {
     try {
         const res = await fetch(`/api/Roles/${id}`, { method: 'DELETE' });
         if (!res.ok) {
@@ -673,7 +719,7 @@ async function deleteRoleAPI(id) {
 }
 window.deleteRoleAPI = deleteRoleAPI;
 
-async function saveAccountAPI(isNew, accountData) {
+export async function saveAccountAPI(isNew, accountData) {
     const url = isNew ? '/api/Accounts' : `/api/Accounts/${accountData.empId}`;
     const method = isNew ? 'POST' : 'PUT';
 
@@ -697,7 +743,7 @@ async function saveAccountAPI(isNew, accountData) {
 }
 window.saveAccountAPI = saveAccountAPI;
 
-async function deleteAccountAPI(id) {
+export async function deleteAccountAPI(id) {
     try {
         const res = await fetch(`/api/Accounts/${id}`, { method: 'DELETE' });
         if (!res.ok) {
@@ -712,7 +758,7 @@ async function deleteAccountAPI(id) {
 }
 window.deleteAccountAPI = deleteAccountAPI;
 
-async function saveMenuAPI(isNew, menuData) {
+export async function saveMenuAPI(isNew, menuData) {
     const url = isNew ? '/api/Menus' : `/api/Menus/${menuData.id}`;
     const method = isNew ? 'POST' : 'PUT';
 
@@ -736,7 +782,7 @@ async function saveMenuAPI(isNew, menuData) {
 }
 window.saveMenuAPI = saveMenuAPI;
 
-async function deleteMenuAPI(id) {
+export async function deleteMenuAPI(id) {
     try {
         const res = await fetch(`/api/Menus/${id}`, { method: 'DELETE' });
         if (!res.ok) {
@@ -751,7 +797,7 @@ async function deleteMenuAPI(id) {
 }
 window.deleteMenuAPI = deleteMenuAPI;
 
-async function batchSaveMenusAPI(menusData) {
+export async function batchSaveMenusAPI(menusData) {
     try {
         const res = await fetch('/api/Menus/batch', {
             method: 'POST',
@@ -771,7 +817,7 @@ async function batchSaveMenusAPI(menusData) {
 }
 window.batchSaveMenusAPI = batchSaveMenusAPI;
 
-async function batchDeleteMenusAPI(ids) {
+export async function batchDeleteMenusAPI(ids) {
     try {
         const res = await fetch('/api/Menus/batch', {
             method: 'DELETE',
@@ -791,7 +837,7 @@ async function batchDeleteMenusAPI(ids) {
 }
 window.batchDeleteMenusAPI = batchDeleteMenusAPI;
 
-async function saveAppAPI(isNew, appData) {
+export async function saveAppAPI(isNew, appData) {
     const url = isNew ? '/api/Apps' : `/api/Apps/${appData.id}`;
     const method = isNew ? 'POST' : 'PUT';
 
@@ -815,7 +861,7 @@ async function saveAppAPI(isNew, appData) {
 }
 window.saveAppAPI = saveAppAPI;
 
-async function deleteAppAPI(id) {
+export async function deleteAppAPI(id) {
     try {
         const res = await fetch(`/api/Apps/${id}`, { method: 'DELETE' });
         if (!res.ok) {
@@ -829,3 +875,10 @@ async function deleteAppAPI(id) {
     }
 }
 window.deleteAppAPI = deleteAppAPI;
+
+// ⭐️ 暴露給 HTML inline handler（onclick=...）使用。
+//    其餘 getter / CRUD 函式已於上方各自宣告後就近 window.* 賦值，
+//    這裡僅補上唯二未在上方暴露的兩支（給 main.js / auth.js 以外的呼叫端備用）。
+window.fetchInitialDataFromDB = fetchInitialDataFromDB;
+window.getDatabasePayload = getDatabasePayload;
+

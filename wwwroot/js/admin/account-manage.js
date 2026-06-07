@@ -1,7 +1,19 @@
 // === admin/account-manage.js - 帳號管理 CRUD ===
 
+import { getAccounts } from '../config.js?v=20260607k';
+
+
+import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260607k';
+import { deleteAccountAPI, fetchInitialDataFromDB, saveAccountAPI } from '../api.js?v=20260607k';
+import { renderAccDefaultPagesUI, renderAccManageMenuCheckboxes, renderAccRoleCheckboxes } from '../render/account-ui.js?v=20260607k';
+import { renderSidebarMenus } from '../render/sidebar.js?v=20260607k';
+import { renderAccountTable } from '../render/tables.js?v=20260607k';
+import { customAlert, customConfirm } from '../ui/dialogs.js?v=20260607k';
+import { appState } from '../store.js?v=20260607k';
+
+
 // === Accounts 帳號管理 ===
-function openAddAccountModal() {
+export function openAddAccountModal() {
     try {
         document.getElementById('accForm').reset();
         document.getElementById('editAccMode').value = '';
@@ -21,7 +33,7 @@ function openAddAccountModal() {
         // ⭐️ 修復 2：移除這行舊版的 HTML 覆寫，它會因為找不到舊容器而導致程式報錯中斷！
         // document.getElementById('accRoleCheckboxesContainer').innerHTML = '<div id="accRoleCheckboxes" class="d-flex flex-wrap gap-1 mt-1"></div>';
 
-        tempDefaultPages = {};
+        appState.tempDefaultPages = {};
 
         // ⭐️ 修復 3：重置時連同委派細節區塊一併還原/收起
         if (typeof toggleAccDelegationUI === 'function') toggleAccDelegationUI();
@@ -39,7 +51,7 @@ function openAddAccountModal() {
     } catch (e) { console.error("[openAddAccountModal] 錯誤:", e); }
 }
 
-async function editAccount(empId) {
+export async function editAccount(empId) {
     try {
         let acc = getAccounts().find(a => window.cleanId(a.empId) === window.cleanId(empId));
         if (!acc) { console.error("找不到對應的帳號資料 (工號: " + empId + ")"); return; }
@@ -73,7 +85,7 @@ async function editAccount(empId) {
         document.getElementById('accEnableDelegation').checked = (acc.manageableMenus && acc.manageableMenus.length > 0);
         document.getElementById('accCanEditOthers').checked = acc.canEditOthers || false;
 
-        tempDefaultPages = JSON.parse(JSON.stringify(acc.defaultPages || {}));
+        appState.tempDefaultPages = JSON.parse(JSON.stringify(acc.defaultPages || {}));
         if (typeof renderAccDefaultPagesUI === 'function') renderAccDefaultPagesUI();
         if (typeof renderAccRoleCheckboxes === 'function') renderAccRoleCheckboxes(acc.assignedRoles || []);
         if (typeof renderAccManageMenuCheckboxes === 'function') renderAccManageMenuCheckboxes(acc.manageableMenus || []);
@@ -87,7 +99,7 @@ async function editAccount(empId) {
     } catch (e) { console.error("[editAccount] 錯誤:", e); }
 }
 
-async function saveAccountItem(e) {
+export async function saveAccountItem(e) {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     else if (window.event && typeof window.event.preventDefault === 'function') window.event.preventDefault();
 
@@ -125,7 +137,7 @@ async function saveAccountItem(e) {
             manageableMenus: manageable,
             extraMenus: extraMenus,
             denyMenus: denyMenus,
-            defaultPages: JSON.parse(JSON.stringify(tempDefaultPages))
+            defaultPages: JSON.parse(JSON.stringify(appState.tempDefaultPages))
         };
 
         const result = await saveAccountAPI(isNew, payload);
@@ -140,11 +152,11 @@ async function saveAccountItem(e) {
         hideModalSafely('accModal');
         if (typeof renderAccountTable === 'function') renderAccountTable();
 
-        if (currentUser && window.cleanId(currentUser.id) === window.cleanId(empId)) {
-            currentUser.name = name; currentUser.department = dept; currentUser.roleLevel = lvl;
-            currentUser.assignedRoles = assigned; currentUser.manageableMenus = manageable;
-            currentUser.canEditOthers = canEditOthers; currentUser.defaultPages = JSON.parse(JSON.stringify(tempDefaultPages));
-            localStorage.setItem('umc_current_user', JSON.stringify(currentUser));
+        if (appState.currentUser && window.cleanId(appState.currentUser.id) === window.cleanId(empId)) {
+            appState.currentUser.name = name; appState.currentUser.department = dept; appState.currentUser.roleLevel = lvl;
+            appState.currentUser.assignedRoles = assigned; appState.currentUser.manageableMenus = manageable;
+            appState.currentUser.canEditOthers = canEditOthers; appState.currentUser.defaultPages = JSON.parse(JSON.stringify(appState.tempDefaultPages));
+            localStorage.setItem('umc_current_user', JSON.stringify(appState.currentUser));
 
             // 修改到自己的可視群組版面時，立即刷新右上角廠區下拉與側邊欄
             if (typeof renderFabSwitcher === 'function') renderFabSwitcher();
@@ -154,7 +166,7 @@ async function saveAccountItem(e) {
     return false;
 }
 
-async function deleteAccount(empId) {
+export async function deleteAccount(empId) {
     try {
         if (window.cleanId(empId) === 'admin') { customAlert('系統預設管理員無法刪除！'); return; }
         customConfirm('確定要刪除此帳號嗎？', async () => {
@@ -172,9 +184,9 @@ async function deleteAccount(empId) {
     } catch (e) { console.error("[deleteAccount] 錯誤:", e); }
 }
 
-function pickDefaultMenu(menuId) {
+export function pickDefaultMenu(menuId) {
     const fab = document.getElementById('pickingForFab').value;
-    tempDefaultPages[fab] = menuId;
+    appState.tempDefaultPages[fab] = menuId;
     if (typeof renderAccDefaultPagesUI === 'function') renderAccDefaultPagesUI();
     const drawerEl = document.getElementById('menuSelectDrawer');
     if (drawerEl) {
@@ -183,19 +195,30 @@ function pickDefaultMenu(menuId) {
     }
 }
 
-function clearDefaultMenu(fabName) {
-    delete tempDefaultPages[fabName];
+export function clearDefaultMenu(fabName) {
+    delete appState.tempDefaultPages[fabName];
     if (typeof renderAccDefaultPagesUI === 'function') renderAccDefaultPagesUI();
 }
 
-function toggleAccDelegationUI() {
+export function toggleAccDelegationUI() {
     const lvl = document.getElementById('accRoleLevel').value;
     const grp = document.getElementById('accDelegationGroup');
     if (grp) grp.style.display = lvl === 'user' ? 'block' : 'none';
 }
 
-function toggleDelegationDetails() {
+export function toggleDelegationDetails() {
     const checked = document.getElementById('accEnableDelegation').checked;
     const det = document.getElementById('accDelegationDetails');
     if (det) det.style.display = checked ? 'block' : 'none';
 }
+
+// Expose for HTML inline handlers
+window.openAddAccountModal = openAddAccountModal;
+window.editAccount = editAccount;
+window.saveAccountItem = saveAccountItem;
+window.deleteAccount = deleteAccount;
+window.pickDefaultMenu = pickDefaultMenu;
+window.clearDefaultMenu = clearDefaultMenu;
+window.toggleAccDelegationUI = toggleAccDelegationUI;
+window.toggleDelegationDetails = toggleDelegationDetails;
+

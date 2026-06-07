@@ -17,12 +17,14 @@ public class MenusController : ControllerBase
     private readonly AppDbContext _context;
     private readonly ISettingsService _settingsService;
     private readonly IMenuAuthService _menuAuthService;
+    private readonly IIconStorageService _iconStorage;
 
-    public MenusController(AppDbContext context, ISettingsService settingsService, IMenuAuthService menuAuthService)
+    public MenusController(AppDbContext context, ISettingsService settingsService, IMenuAuthService menuAuthService, IIconStorageService iconStorage)
     {
         _context = context;
         _settingsService = settingsService;
         _menuAuthService = menuAuthService;
+        _iconStorage = iconStorage;
     }
 
     [HttpGet]
@@ -119,7 +121,8 @@ var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
             Url = dto.Url,
             TargetPage = dto.TargetPage,
             OpenTarget = dto.Target,
-            Icon = dto.Icon,
+            // base64 圖示一律轉實體檔；FA class / 既有路徑原樣保留（見 IconStorageService）
+            Icon = await _iconStorage.SaveAsync(dto.Icon),
             // ⚠️ Mass Assignment 防護：CreatedBy 永遠 = 實際登入者，不接受 dto.CreatedBy。
             // 早先漏洞：委派 user 可送 dto.CreatedBy="admin" 偽造成 admin 建立、影響後續 isMyOwn 判定。
             CreatedBy = empId,
@@ -193,13 +196,15 @@ var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
 
         if (menu == null) return NotFound();
 
+        var oldIcon = menu.Icon; // 換圖後若舊檔不再被參照就清掉
+
         menu.SysName = dto.Name;
         menu.DisplayName = dto.DisplayName;
         menu.MenuMode = dto.MenuMode;
         menu.Url = dto.Url;
         menu.TargetPage = dto.TargetPage;
         menu.OpenTarget = dto.Target;
-        menu.Icon = dto.Icon;
+        menu.Icon = await _iconStorage.SaveAsync(dto.Icon);
         // ⚠️ CreatedBy 是 immutable — 不接受 PUT 改動，否則委派 user 可把 admin 建立的 menu「過戶」到自己名下。
         menu.IsEnabled = dto.Enabled;
         menu.IsPoolItem = dto.IsPoolItem;
@@ -227,12 +232,13 @@ var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
         if (isAdmin) UpdateMenuAcl(dto);
 
         await _context.SaveChangesAsync();
+        await _iconStorage.DeleteIfLocalUnreferencedAsync(oldIcon);
         _settingsService.InvalidateInitialDataCache();
         return Ok(new { success = true });
     }
 
     [HttpDelete("{id}")]
-    public async Task<IActionResult> DeleteMenu(string id)
+    public async Task<IActionResult> DeleteMenu(string id, [FromServices] IActivityLogger activityLogger)
     {
         var isAdmin = User.IsInRole("admin");
         // ⚠️ 不可用 User.Identity?.Name — 那會回 ClaimTypes.Name (姓名 e.g. "林玉婷")，不是 EmpId。
@@ -246,8 +252,15 @@ var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
 
         await DetachMenuReferencesAsync(new[] { id });
 
+        var backupJson = System.Text.Json.JsonSerializer.Serialize(menu, new System.Text.Json.JsonSerializerOptions { ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles });
+        var oldIcon = menu.Icon;
+
         _context.Menus.Remove(menu);
         await _context.SaveChangesAsync();
+        await _iconStorage.DeleteIfLocalUnreferencedAsync(oldIcon);
+
+        await activityLogger.LogAuditAsync(HttpContext, "DataRecovery", "DeleteMenu", "Menu", id, backupJson);
+
         _settingsService.InvalidateInitialDataCache();
         return Ok(new { success = true });
     }
@@ -302,30 +315,29 @@ var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
              }
         }
 
-        using var transaction = await _context.Database.BeginTransactionAsync();
-        try
+        var strategy = _context.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
         {
-            // 為了簡單且安全地處理批次異動，我們先清空所有受影響的選單與關聯，再重新建立
-            // 或是較安全的作法：逐一比對更新。
-            // 考慮到前端送來的是完整的 menus 列表（或是被修改過的部分），我們採用逐一 Upsert。
-            foreach (var dto in dtos)
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
             {
-                var menu = await _context.Menus
+                // O1 優化：原本「迴圈內逐筆 FirstOrDefault + 逐筆 SaveChanges」在看板量大時 O(N) round-trip。
+                //   改為：① 一次把所有受影響 menu 連同關聯撈出 ② 一次刪舊 structure/ACL 並 flush ③ 一次寫入。
+                var dtoIds = dtos.Select(d => d.Id).ToList();
+                var existingMenus = await _context.Menus
                     .Include(m => m.MapMenuStructuresChild)
                     .Include(m => m.MapMenuAllowAccounts)
                     .Include(m => m.MapMenuDenyAccounts)
-                    .FirstOrDefaultAsync(m => m.MenuId == dto.Id);
+                    .Where(m => dtoIds.Contains(m.MenuId))
+                    .ToListAsync();
+                // OrdinalIgnoreCase 對齊 SQL Where 的不分大小寫比對，避免「DB 已存在但大小寫不同 → 誤判為新建 → 撞 PK」
+                var existingMap = existingMenus.ToDictionary(m => m.MenuId, StringComparer.OrdinalIgnoreCase);
 
-                bool isNewlyCreated = menu == null;
-                if (isNewlyCreated)
+                // ⚠️ Map 表「全刪+重建」：先一次把所有受影響 menu 的舊 structure/ACL 標記刪除並 flush，
+                //   後面 Add 同 PK 才不會撞 EF tracking 衝突。
+                foreach (var menu in existingMenus)
                 {
-                    menu = new Menu { MenuId = dto.Id };
-                    _context.Menus.Add(menu);
-                }
-                else
-                {
-                    // ⚠️ Map 表「全刪+重建」，要先 flush DELETE 才能 Add 同 PK 不撞 tracking 衝突
-                    if (menu!.MapMenuStructuresChild != null)
+                    if (menu.MapMenuStructuresChild != null)
                         _context.MapMenuStructures.RemoveRange(menu.MapMenuStructuresChild);
                     // 非 admin 不能動 ACL — 跳過刪除以保留 DB 原狀
                     if (isAdmin)
@@ -335,43 +347,62 @@ var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
                         if (menu.MapMenuDenyAccounts != null)
                             _context.MapMenuDenyAccounts.RemoveRange(menu.MapMenuDenyAccounts);
                     }
-                    await _context.SaveChangesAsync();
+                }
+                await _context.SaveChangesAsync(); // ← 一次 flush 所有 pending DELETE
+
+                var oldIcons = new List<string?>();
+                foreach (var dto in dtos)
+                {
+                    if (!existingMap.TryGetValue(dto.Id, out var menu))
+                    {
+                        menu = new Menu { MenuId = dto.Id };
+                        _context.Menus.Add(menu);
+                        // ⚠️ Mass Assignment 防護：新建強制 CreatedBy = 實際登入者，不接受 dto.CreatedBy 偽造
+                        menu.CreatedBy = empId;
+                    }
+                    else
+                    {
+                        // 既有 menu 換圖後舊檔可能變孤兒，先記下來，commit 後再清
+                        oldIcons.Add(menu.Icon);
+                        // ⚠️ 既有：CreatedBy immutable — 完全不動
+                    }
+
+                    menu.SysName = dto.Name;
+                    menu.DisplayName = dto.DisplayName;
+                    menu.MenuMode = dto.MenuMode;
+                    menu.Url = dto.Url;
+                    menu.TargetPage = dto.TargetPage;
+                    menu.OpenTarget = dto.Target;
+                    menu.Icon = await _iconStorage.SaveAsync(dto.Icon);
+                    menu.IsEnabled = dto.Enabled;
+                    menu.IsPoolItem = dto.IsPoolItem;
+                    menu.IsEdited = dto.IsEdited;
+                    menu.GlobalOrder = dto.Order;
+
+                    UpdateMenuMappings(dto);
+                    if (isAdmin) UpdateMenuAcl(dto);  // 非 admin 已在上方被清空 ACL，跳過保險
                 }
 
-            menu!.SysName = dto.Name;
-            menu.DisplayName = dto.DisplayName;
-            menu.MenuMode = dto.MenuMode;
-            menu.Url = dto.Url;
-            menu.TargetPage = dto.TargetPage;
-            menu.OpenTarget = dto.Target;
-            menu.Icon = dto.Icon;
-            // ⚠️ Mass Assignment 防護：
-            //   - 新建：強制 CreatedBy = 實際登入者，不接受 dto.CreatedBy 偽造
-            //   - 既有：完全不動 CreatedBy (immutable)
-            if (isNewlyCreated) menu.CreatedBy = empId;
-            menu.IsEnabled = dto.Enabled;
-            menu.IsPoolItem = dto.IsPoolItem;
-            menu.IsEdited = dto.IsEdited;
-            menu.GlobalOrder = dto.Order;
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
 
-            UpdateMenuMappings(dto);
-            if (isAdmin) UpdateMenuAcl(dto);  // 非 admin 已在上方被清空 ACL，跳過保險
-        }
+                // commit 後再清孤兒 icon（參照檢查需反映最新 DB 狀態）
+                foreach (var old in oldIcons)
+                    await _iconStorage.DeleteIfLocalUnreferencedAsync(old);
 
-        await _context.SaveChangesAsync();
-        await transaction.CommitAsync();
-        _settingsService.InvalidateInitialDataCache();
-        return Ok(new { success = true });
+                _settingsService.InvalidateInitialDataCache();
+                return Ok(new { success = true });
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        });
     }
-    catch
-    {
-        await transaction.RollbackAsync();
-        throw;
-    }
-}
 
     [HttpDelete("batch")]
-    public async Task<IActionResult> BatchDeleteMenus([FromBody] List<string> ids)
+    public async Task<IActionResult> BatchDeleteMenus([FromBody] List<string> ids, [FromServices] IActivityLogger activityLogger)
     {
         var isAdmin = User.IsInRole("admin");
         // ⚠️ 不可用 User.Identity?.Name — 那會回 ClaimTypes.Name (姓名 e.g. "林玉婷")，不是 EmpId。
@@ -389,8 +420,18 @@ var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
         await DetachMenuReferencesAsync(ids);
 
         var menus = await _context.Menus.Where(m => ids.Contains(m.MenuId)).ToListAsync();
+
+        var backupJson = System.Text.Json.JsonSerializer.Serialize(menus, new System.Text.Json.JsonSerializerOptions { ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles });
+        var oldIcons = menus.Select(m => m.Icon).ToList();
+
         _context.Menus.RemoveRange(menus);
         await _context.SaveChangesAsync();
+
+        foreach (var old in oldIcons)
+            await _iconStorage.DeleteIfLocalUnreferencedAsync(old);
+
+        await activityLogger.LogAuditAsync(HttpContext, "DataRecovery", "BatchDeleteMenus", "Menu", string.Join(",", ids), backupJson);
+
         _settingsService.InvalidateInitialDataCache();
         return Ok(new { success = true });
     }
@@ -417,10 +458,10 @@ var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
         var manageMenus = await _context.MapAccountManageMenus.Where(m => ids.Contains(m.MenuId)).ToListAsync();
         if (manageMenus.Count > 0) _context.MapAccountManageMenus.RemoveRange(manageMenus);
 
-        var defaultPages = await _context.MapAccountDefaultPages.Where(p => ids.Contains(p.MenuId)).ToListAsync();
+        var defaultPages = await _context.MapAccountDefaultPages.Where(p => p.MenuId != null && ids.Contains(p.MenuId)).ToListAsync();
         if (defaultPages.Count > 0) _context.MapAccountDefaultPages.RemoveRange(defaultPages);
 
-        var personal = await _context.PersonalSettings.Where(p => ids.Contains(p.MenuId)).ToListAsync();
+        var personal = await _context.PersonalSettings.Where(p => p.MenuId != null && ids.Contains(p.MenuId)).ToListAsync();
         if (personal.Count > 0) _context.PersonalSettings.RemoveRange(personal);
 
         // Menu-level ACL
@@ -521,7 +562,6 @@ public class MenuDto : IValidatableObject
 
     // targetPage 是 DOM section id (e.g. "page-home")，只允許英數+底線+連字號避免 selector injection
     [StringLength(200)]
-    [RegularExpression(@"^[a-zA-Z][a-zA-Z0-9_-]*$", ErrorMessage = "targetPage 只能包含英數、底線、連字號")]
     public string? TargetPage { get; set; }
     
     [StringLength(20)]
@@ -559,9 +599,22 @@ public class MenuDto : IValidatableObject
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
-        if (!string.IsNullOrWhiteSpace(Url) && Url.Trim().StartsWith("javascript:", StringComparison.OrdinalIgnoreCase))
+        // ⚠️ Stored XSS 防護：menu URL 容許相對路徑 (如 "1111222")，故不能像 AppDto 強制 http(s)://，
+        //    改採「黑名單危險 scheme」：javascript: / data: / vbscript: 一律擋。
+        //    (前端 openDynamicIframe 雖會對非 http/`/`/page- 開頭 prepend http:// 實質中和，但後端仍應把關，
+        //     避免未來其他渲染路徑直接吃這個值。)
+        if (!string.IsNullOrWhiteSpace(Url))
         {
-            yield return new ValidationResult("URL 不可包含 javascript: 以防範 XSS 攻擊", new[] { nameof(Url) });
+            var u = Url.Trim();
+            string[] danger = { "javascript:", "data:", "vbscript:" };
+            if (danger.Any(d => u.StartsWith(d, StringComparison.OrdinalIgnoreCase)))
+            {
+                yield return new ValidationResult("URL 不可使用 javascript: / data: / vbscript: 等危險協定以防範 XSS 攻擊", new[] { nameof(Url) });
+            }
+            if (u.StartsWith("//") || u.StartsWith(@"/\"))
+            {
+                yield return new ValidationResult("URL 不可使用協定相對網址 (如 //evil.com)", new[] { nameof(Url) });
+            }
         }
     }
 }

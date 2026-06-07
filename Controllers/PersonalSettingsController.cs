@@ -73,10 +73,8 @@ public class PersonalSettingsController : ControllerBase
         }
 
         await _context.SaveChangesAsync();
-        // ⚠️ 必須 invalidate /Settings/GetInitialData 的快取：PersonalSettings 是該回應的一部分，
-        //     若不 invalidate，個人模式拖曳排序後緊接的 fetchInitialDataFromDB 會拿到舊快照，
-        //     反而把使用者剛改的順序覆蓋掉，上方導覽列就不會更新。
-        _settingsService.InvalidateInitialDataCache();
+        // ⚠️ 呼叫 InvalidateVolatileDataCache 僅清除個人相關快取，不影響全域設定快取，降低 DB 負載
+        _settingsService.InvalidateVolatileDataCache();
         return Ok(new { success = true, message = "個人設定已儲存" });
     }
 }
@@ -90,7 +88,8 @@ public class PersonalSettingDto
     [StringLength(20)]
     public string? OpenTarget { get; set; }
     
-    [StringLength(50)]
+    // H3 修復：圖示存的是路徑 /images/icons/{guid}.{ext}（約 50+ 字），50 會被擋掉；放寬到 200。
+    [StringLength(200)]
     public string? Icon { get; set; }
     
     public int? SortOrder { get; set; }

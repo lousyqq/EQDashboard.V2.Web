@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using EQDashboard.V2.Web.Models;
 using EQDashboard.V2.Web.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using System.ComponentModel.DataAnnotations;
@@ -12,10 +11,12 @@ namespace EQDashboard.V2.Web.Controllers;
 public class AccountsController : ControllerBase
 {
     private readonly IAccountService _accountService;
+    private readonly IActivityLogger _activityLogger;
 
-    public AccountsController(IAccountService accountService)
+    public AccountsController(IAccountService accountService, IActivityLogger activityLogger)
     {
         _accountService = accountService;
+        _activityLogger = activityLogger;
     }
 
     [HttpGet]
@@ -54,8 +55,14 @@ public class AccountsController : ControllerBase
     {
         // 取 cookie claim 中的 EmpId 傳給 service，用於擋「刪自己」
         var currentEmpId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        var (success, errorMessage) = await _accountService.DeleteAccountAsync(id, currentEmpId);
+        var (success, errorMessage, backupJson) = await _accountService.DeleteAccountAsync(id, currentEmpId);
         if (!success) return BadRequest(errorMessage);  // 改回 400 — 拒絕原因應該明確（NotFound 只適用「真的找不到」）
+        
+        if (backupJson != null)
+        {
+            await _activityLogger.LogAuditAsync(HttpContext, "Accounts", "Delete", id, "Soft Delete Backup", backupJson);
+        }
+        
         return Ok(new { success = true });
     }
 }

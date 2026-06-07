@@ -30,6 +30,7 @@ public class SchemaBootstrap : ISchemaBootstrap
             await EnsureMenuAclTableAsync(conn, "Map_Menu_AllowAccount");
             await EnsureMenuAclTableAsync(conn, "Map_Menu_DenyAccount");
             await EnsureUserActivityLogsAsync(conn);
+            await EnsureIndexesAsync(conn);
             await SeedTestAccountsAsync(conn);
 
             _logger.LogInformation("✅ SchemaBootstrap 完成");
@@ -116,7 +117,7 @@ public class SchemaBootstrap : ISchemaBootstrap
         }
     }
 
-    /// <summary>確保 UserActivityLogs 表 + 3 個查詢索引存在</summary>
+    /// <summary>確保 UserActivityLogs 表存在（索引統一由 EnsureIndexesAsync 建立，避免兩處各自維護）</summary>
     private async Task EnsureUserActivityLogsAsync(SqlConnection conn)
     {
         using (var checkCmd = new SqlCommand(
@@ -146,15 +147,56 @@ public class SchemaBootstrap : ISchemaBootstrap
                         Detail       NVARCHAR(MAX) NULL,
                         IsSuccess    BIT           NULL,
                         ErrorMessage NVARCHAR(500) NULL
-                    );
-                    CREATE INDEX IX_UserActivityLogs_EmpId_Timestamp ON UserActivityLogs (EmpId, Timestamp DESC);
-                    CREATE INDEX IX_UserActivityLogs_Timestamp       ON UserActivityLogs (Timestamp DESC);
-                    CREATE INDEX IX_UserActivityLogs_Category_Time   ON UserActivityLogs (Category, Timestamp DESC);";
+                    );";
                 using var createCmd = new SqlCommand(createSql, conn);
                 await createCmd.ExecuteNonQueryAsync();
-                _logger.LogInformation("✅ SchemaBootstrap 建立資料表 UserActivityLogs + 3 索引");
+                _logger.LogInformation("✅ SchemaBootstrap 建立資料表 UserActivityLogs（索引稍後由 EnsureIndexesAsync 建立）");
             }
         }
+    }
+
+    /// <summary>
+    /// 效能索引的「單一事實來源」(single source of truth)。
+    /// 本專案無 EF Migrations、啟動也不呼叫 EnsureCreated/Migrate，
+    /// 因此 EF Fluent 的 HasIndex 只是 model metadata、不會在既有 DB 真的建索引；
+    /// 所有實體索引一律集中在此以 idempotent raw SQL 建立。
+    /// 表名/欄位皆為硬編碼常數（非使用者輸入），無 SQL injection 風險。
+    /// </summary>
+    private async Task EnsureIndexesAsync(SqlConnection conn)
+    {
+        var indexes = new (string Name, string Table, string Cols)[]
+        {
+            ("IX_Accounts_RoleLevel",                "Accounts",         "RoleLevel"),
+            ("IX_Requests_Status",                   "Requests",         "Status"),
+            ("IX_UserActivityLogs_EmpId_Timestamp",  "UserActivityLogs", "EmpId, Timestamp DESC"),
+            ("IX_UserActivityLogs_Timestamp",        "UserActivityLogs", "Timestamp DESC"),
+            ("IX_UserActivityLogs_Category_Time",    "UserActivityLogs", "Category, Timestamp DESC"),
+            // E6：menu-level ACL 兩張表 PK 皆為 (MenuId, EmpId)，故「WHERE EmpId=@me」原本走全表掃描；
+            //     補 EmpId 索引讓 MenuAuthService.GetVisibleMenuIdsAsync 的可見性查詢走 index seek。
+            ("IX_Map_Menu_AllowAccount_EmpId",       "Map_Menu_AllowAccount", "EmpId"),
+            ("IX_Map_Menu_DenyAccount_EmpId",        "Map_Menu_DenyAccount",  "EmpId"),
+        };
+
+        foreach (var ix in indexes)
+        {
+            try
+            {
+                var sql = $@"
+                    IF OBJECT_ID('{ix.Table}') IS NOT NULL
+                       AND NOT EXISTS (SELECT 1 FROM sys.indexes
+                                       WHERE name = '{ix.Name}' AND object_id = OBJECT_ID('{ix.Table}'))
+                        CREATE NONCLUSTERED INDEX [{ix.Name}] ON [{ix.Table}] ({ix.Cols});";
+                using var cmd = new SqlCommand(sql, conn);
+                await cmd.ExecuteNonQueryAsync();
+            }
+            catch (Exception ex)
+            {
+                // 單一索引失敗不該擋啟動 — 記 warning 後繼續
+                _logger.LogWarning(ex, "建立索引 {Index} 失敗（略過，不影響啟動）", ix.Name);
+            }
+        }
+
+        _logger.LogInformation("✅ SchemaBootstrap 效能索引檢查完成 (idempotent)");
     }
 
     /// <summary>把 appsettings.Auth.TestAccounts.Accounts 中所有工號 upsert 進 Accounts 表 (僅在 TestAccounts.Enabled=true 時)</summary>
