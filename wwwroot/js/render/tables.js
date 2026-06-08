@@ -306,12 +306,20 @@ export function renderRoleTable() {
 
 export function renderAccountTable() {
     safeDestroyDataTable('dtAccount'); const tbody = document.getElementById('accTableBody'); if (!tbody) return; tbody.innerHTML = '';
-    const accs = getAccounts(); const roles = getRoles(); const menus = getCustomMenus();
+    const accs = getAccounts(); const roles = getRoles(); const menus = getCustomMenus(); const fabs = getFabs();
     let htmlBuffer = [];
     accs.forEach(a => {
         const aRoles = a.assignedRoles || a.AssignedRoles || [];
-        let roleBadges = aRoles.map(rId => { let r = roles.find(x => window.cleanId(x.id || x.RoleId) === window.cleanId(rId)); return r ? `<span class="badge badge-flat-list me-1 mb-1">${window.escapeHTML(r.groupName || r.GroupName)}</span>` : ''; }).join('');
-        if (!roleBadges) roleBadges = '<span class="text-muted small">無個人版面群組</span>';
+        let visibleFabs = fabs.filter(f => {
+            const fRoles = f.assignedRoles || f.AssignedRoles || [];
+            return fRoles.some(fr => aRoles.some(ar => window.cleanId(fr) === window.cleanId(ar)));
+        });
+        let fabBadges = visibleFabs.map(f => {
+            const fName = f.displayName || f.DisplayName || f.fabName || f.FabName || f.id || f.FabId;
+            return `<span class="badge badge-flat-list me-1 mb-1">${window.escapeHTML(fName)}</span>`;
+        }).join('');
+        if (!fabBadges) fabBadges = '<span class="text-muted small">無可視廠區</span>';
+
 
         const aLevel = a.roleLevel || a.RoleLevel || '';
         const lvlBadge = aLevel === 'admin' ? '<span class="badge bg-danger">Admin</span>' : '<span class="badge bg-secondary">User</span>';
@@ -328,7 +336,7 @@ export function renderAccountTable() {
 
         const aId = a.empId || a.EmpId || ''; const aName = window.escapeHTML(a.name || a.Name || ''); const aDept = window.escapeHTML(a.department || a.Department || '');
         let actionBtns = `<div class="d-flex flex-nowrap justify-content-center gap-2"><button type="button" class="btn btn-sm btn-outline-primary" style="width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center;" onclick="event.stopPropagation(); editAccount('${aId}');" title="編輯"><i class="fas fa-edit"></i></button><button type="button" class="btn btn-sm btn-outline-danger" style="width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center;" onclick="event.stopPropagation(); deleteAccount('${aId}')" title="刪除"><i class="fas fa-trash-alt"></i></button></div>`;
-        htmlBuffer.push(`<tr><td class="fw-bold align-middle">${aId}</td><td class="align-middle"><div class="fw-bold text-dark">${aName}</div><div class="small text-muted">${aDept}</div></td><td class="align-middle">${lvlBadge}</td><td class="text-start align-middle">${defPagesHtml}</td><td class="text-start align-middle" style="white-space: normal;">${roleBadges}</td><td class="text-center align-middle" style="white-space: nowrap; width: 1%;">${actionBtns}</td></tr>`);
+        htmlBuffer.push(`<tr><td class="fw-bold align-middle">${aId}</td><td class="align-middle"><div class="fw-bold text-dark">${aName}</div><div class="small text-muted">${aDept}</div></td><td class="align-middle">${lvlBadge}</td><td class="text-start align-middle">${defPagesHtml}</td><td class="text-start align-middle" style="white-space: normal;">${fabBadges}</td><td class="text-center align-middle" style="white-space: nowrap; width: 1%;">${actionBtns}</td></tr>`);
     });
     tbody.innerHTML = htmlBuffer.join('');
     initDataTable('dtAccount');
@@ -583,15 +591,30 @@ window.renderFabRoleCheckboxes = function (selectedIds) {
     if (!container) return;
     container.innerHTML = '';
 
+    // ⭐️ 一個廠區只能指派「一個」權限群組(模組) → 改用 radio 單選（取代原本可複選 checkbox）。
+    //    搭配「帳號設定 → 可視廠區」label 顯示廠區名：一廠一群組，才不會出現同名廠區重複格。
+    //    保留 class `fab-role-cb` 與 value=roleId 不變；另加「無」選項允許不指派（該廠區對所有人隱藏）。
+    //    舊資料若一廠掛多群組，僅取第一個顯示為已選，其餘於下次儲存時自動收斂為單一。
+    const selectedId = selectedIds.length ? window.cleanId(selectedIds[0]) : '';
+
     let htmlBuffer = [];
+    // 「無」：不指派任何群組（無人可見此廠區）
+    const noneChecked = selectedId ? '' : 'checked';
+    htmlBuffer.push(`
+        <div class="form-check form-check-inline border rounded px-3 py-1 bg-white mb-1 shadow-sm" style="border-color:#dee2e6 !important;">
+            <input class="form-check-input ms-0 me-2 fab-role-cb cursor-pointer" type="radio" name="fabRoleRadioGroup" id="fab_role_none" value="" ${noneChecked}>
+            <label class="form-check-label small fw-bold text-muted cursor-pointer" for="fab_role_none">無 (不指派)</label>
+        </div>
+    `);
+
     getRoles().forEach(r => {
         const rId = r.id || r.roleId || r.RoleId || '';
         const rName = window.escapeHTML(r.groupName || r.GroupName || rId);
-        const isChecked = selectedIds.some(s => window.cleanId(s) === window.cleanId(rId)) ? 'checked' : '';
+        const isChecked = (selectedId && window.cleanId(rId) === selectedId) ? 'checked' : '';
         const safeRId = window.escapeHTML(rId);
         htmlBuffer.push(`
             <div class="form-check form-check-inline border rounded px-3 py-1 bg-white mb-1 shadow-sm" style="border-color:#dee2e6 !important;">
-                <input class="form-check-input ms-0 me-2 fab-role-cb cursor-pointer" type="checkbox" id="fr_${safeRId}" value="${safeRId}" ${isChecked}>
+                <input class="form-check-input ms-0 me-2 fab-role-cb cursor-pointer" type="radio" name="fabRoleRadioGroup" id="fr_${safeRId}" value="${safeRId}" ${isChecked}>
                 <label class="form-check-label small fw-bold text-dark cursor-pointer" for="fr_${safeRId}">${rName}</label>
             </div>
         `);

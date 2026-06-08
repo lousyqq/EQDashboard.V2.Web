@@ -79,8 +79,9 @@ export async function saveFabItem(e) {
         const displayName = document.getElementById('fabDisplayNameInput').value.trim();
         const lang = document.getElementById('fabLangSelect').value;
 
+        // 一個廠區限選一個群組（radio 單選）；「無」選項 value="" 需過濾掉 → assignedRoles 為 0 或 1 個
         let assignedRoles = [];
-        document.querySelectorAll('.fab-role-cb:checked').forEach(cb => assignedRoles.push(cb.value));
+        document.querySelectorAll('.fab-role-cb:checked').forEach(cb => { if (cb.value) assignedRoles.push(cb.value); });
 
         let isNew = !id;
         let fabId = id || ('fab_' + Date.now());

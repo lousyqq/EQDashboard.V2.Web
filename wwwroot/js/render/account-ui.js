@@ -15,16 +15,36 @@ export function renderAccRoleCheckboxes(selectedIds) {
     if (!container) return;
     container.innerHTML = '';
 
+    // ⭐️ 顯示「所屬廠區名」而非角色(模組)名：建立 roleId → 所屬廠區名稱 的對應。
+    //    勾選綁定值(value)仍為 roleId、class 仍為 acc-role-cb，故權限邏輯完全不變，純顯示層調整。
+    //    一個角色可能掛在多個廠區 → 以「、」串接；若不屬於任何廠區 → fallback 回角色群組名。
+    const roleIdToFabNames = {};
+    getFabs().forEach(f => {
+        const fabName = f.fabName || f.FabName || f.id || f.fabId || f.FabId || '';
+        const fabRoles = f.assignedRoles || f.AssignedRoles || [];
+        if (!Array.isArray(fabRoles)) return;
+        fabRoles.forEach(roleId => {
+            const key = String(roleId);
+            if (!roleIdToFabNames[key]) roleIdToFabNames[key] = [];
+            if (fabName && !roleIdToFabNames[key].includes(fabName)) {
+                roleIdToFabNames[key].push(fabName);
+            }
+        });
+    });
+
     let html = [];
     getRoles().forEach(r => {
         const rId = r.id || r.roleId || r.RoleId || '';
         const rName = r.groupName || r.GroupName || rId;
+        // 以所屬廠區名顯示；找不到對應廠區則退回角色群組名
+        const fabNames = roleIdToFabNames[String(rId)];
+        const displayName = (fabNames && fabNames.length) ? fabNames.join('、') : rName;
         const isChecked = selectedIds.includes(rId) ? 'checked' : '';
 
         html.push(`
             <div class="form-check form-check-inline border rounded px-3 py-1 bg-white mb-1 shadow-sm" style="border-color: #dee2e6 !important;">
                 <input class="form-check-input ms-0 me-2 acc-role-cb cursor-pointer" type="checkbox" id="acr_${window.escapeHTML(rId)}" value="${window.escapeHTML(rId)}" ${isChecked}>
-                <label class="form-check-label small fw-bold text-dark cursor-pointer" for="acr_${window.escapeHTML(rId)}">${window.escapeHTML(rName)}</label>
+                <label class="form-check-label small fw-bold text-dark cursor-pointer" for="acr_${window.escapeHTML(rId)}">${window.escapeHTML(displayName)}</label>
             </div>
         `);
     });
@@ -353,14 +373,16 @@ window.openMenuSelector = function (fabName) {
     const searchInput = document.getElementById('menuSelectSearchInput');
     if (searchInput) searchInput.value = '';
 
-    const roleLevel = document.getElementById('accRoleLevel').value;
     let assignedRoles = []; document.querySelectorAll('.acc-role-cb:checked').forEach(cb => assignedRoles.push(cb.value));
 
     const fabs = getFabs();
     const fabObj = fabs.find(f => window.cleanId(f.fabName || f.FabName || f.id || f.fabId || f.FabId) === window.cleanId(fabName));
     const fabRoleIds = fabObj ? (fabObj.assignedRoles || fabObj.AssignedRoles || []) : [];
 
-    const activeRoleIds = (roleLevel === 'admin') ? fabRoleIds : fabRoleIds.filter(id => assignedRoles.includes(id));
+    // ⭐️ 不分 admin / 非 admin：預設看板挑選器一律以「該廠區綁定的 role ∩ 帳號可視廠區」之 allowedMenuIds（含子節點）為範圍，
+    //    與實際側邊欄 renderSidebarMenus(sidebar.js) 的 fabRoleIds ∩ assignedRoles 過濾邏輯一致。
+    //    （修正：admin 帳號原本走特例把「全部看板」都倒出來、無視廠區，導致「只設給 12M 可見的看板，在 12A 的預設看板挑選器也跑出來」。）
+    const activeRoleIds = fabRoleIds.filter(id => assignedRoles.includes(id));
     const roles = getRoles(); let initialMenuIds = [];
     activeRoleIds.forEach(roleId => {
         const role = roles.find(r => window.cleanId(r.id || r.RoleId) === window.cleanId(roleId));
@@ -371,20 +393,17 @@ window.openMenuSelector = function (fabName) {
     const allMenus = getCustomMenus();
     let allowedIds = new Set(initialMenuIds.map(id => window.cleanId(id)));
 
-    if (roleLevel === 'admin') {
-        allMenus.forEach(m => allowedIds.add(window.cleanId(m.id || m.MenuId)));
-    } else {
-        let added = true;
-        while (added) {
-            added = false;
-            allMenus.forEach(m => {
-                let mId = window.cleanId(m.id || m.MenuId);
-                if (!allowedIds.has(mId)) {
-                    let pId = window.cleanId(m.parentId || m.ParentMenuId || (m.parentIds && m.parentIds[0]));
-                    if (allowedIds.has(pId)) { allowedIds.add(mId); added = true; }
-                }
-            });
-        }
+    // 由已允許的資料夾往下展開子節點（含 app_grid 等），確保資料夾底下的看板也可被選為預設頁
+    let added = true;
+    while (added) {
+        added = false;
+        allMenus.forEach(m => {
+            let mId = window.cleanId(m.id || m.MenuId);
+            if (!allowedIds.has(mId)) {
+                let pId = window.cleanId(m.parentId || m.ParentMenuId || (m.parentIds && m.parentIds[0]));
+                if (allowedIds.has(pId)) { allowedIds.add(mId); added = true; }
+            }
+        });
     }
 
     const viewableMenus = allMenus.filter(m => String(m.menuMode || m.MenuMode).toLowerCase() !== 'folder' && (m.enabled !== false && m.IsEnabled !== false) && allowedIds.has(window.cleanId(m.id || m.MenuId)));
