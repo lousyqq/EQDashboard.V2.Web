@@ -55,18 +55,17 @@ export function renderAccRoleCheckboxes(selectedIds) {
         container.setAttribute('data-roles-bound', '1');
         container.addEventListener('change', (e) => {
             if (!e.target.classList.contains('acc-role-cb')) return;
+            // 切換角色前，先把目前廠區的 extra/deny 勾選狀態落回 temp（避免重繪時遺失）
+            if (typeof persistOverrideDom === 'function') persistOverrideDom();
             // 保留目前勾選的管理目錄狀態
             const stillCheckedManage = Array.from(document.querySelectorAll('.acc-menu-cb:checked')).map(cb => cb.value);
-            const stillCheckedExtra = Array.from(document.querySelectorAll('.acc-extra-cb:checked')).map(cb => cb.value);
-            const stillCheckedDeny = Array.from(document.querySelectorAll('.acc-deny-cb:checked')).map(cb => cb.value);
 
             if (typeof renderAccManageMenuCheckboxes === 'function') {
                 renderAccManageMenuCheckboxes(stillCheckedManage);
             }
             if (typeof renderAccDefaultPagesUI === 'function') renderAccDefaultPagesUI();
-            if (typeof renderAccExtraMenuCheckboxes === 'function') renderAccExtraMenuCheckboxes(stillCheckedExtra);
-            if (typeof renderAccDenyMenuCheckboxes === 'function') renderAccDenyMenuCheckboxes(stillCheckedDeny);
-            if (typeof renderAccEffectivePreview === 'function') renderAccEffectivePreview();
+            // 角色變動會影響「可存取廠區」與各廠區 role 可見集合 → 整個覆寫面板重繪
+            if (typeof window.renderAccOverridePanel === 'function') window.renderAccOverridePanel();
         });
     }
 }
@@ -131,10 +130,13 @@ export function renderAccManageMenuCheckboxes(selectedIds) {
 }
 
 // =========================================================================
-// 個別覆寫：額外開放 / 個別封鎖 / 即時可見預覽
+// 個別覆寫 (per-fab)：以「廠區」為單位的額外開放 / 個別封鎖 / 即時可見預覽
+//   狀態：appState.tempExtraMenus / appState.tempDenyMenus = { fabName: [menuId,...] }
+//         appState.overrideFab = 目前正在編輯的廠區名（與 defaultPages 同樣以「廠區名」為 key）
+//   優先序與 sidebar.js 對齊：該廠區 role 可見 ＋ extra[fab] − deny[fab]。
 // =========================================================================
 
-// 共用：把所有「非 folder + 啟用」menu 抓出來，並依群組樹狀整理排序
+// 共用：把所有「非 folder + 啟用」menu 抓出來
 export function getAllSelectableMenus() {
     const all = getCustomMenus();
     return all.filter(m => {
@@ -145,9 +147,14 @@ export function getAllSelectableMenus() {
     });
 }
 
-// 算出「目前 modal 內已勾選 roles」展開後的全部 menuId 集合（含子節點）
+// 目前 modal 內已勾選的角色 id 清單
+function getCheckedRoleIds() {
+    return Array.from(document.querySelectorAll('.acc-role-cb:checked')).map(cb => cb.value);
+}
+
+// 算出「目前 modal 內已勾選 roles」展開後的全部 menuId 集合（含子節點）— 跨廠區聯集（保留給外部相容用）
 export function computeRoleAllowedSet() {
-    const checkedRoleIds = Array.from(document.querySelectorAll('.acc-role-cb:checked')).map(cb => cb.value);
+    const checkedRoleIds = getCheckedRoleIds();
     const roles = getRoles();
     let initialMenuIds = [];
     checkedRoleIds.forEach(rId => {
@@ -159,25 +166,101 @@ export function computeRoleAllowedSet() {
     return window.getAllowedIdsWithHierarchy(getCustomMenus(), initialMenuIds);
 }
 
-// 額外開放：列出「不在 Role 範圍內的 menus」，讓 admin 勾選來補
-window.renderAccExtraMenuCheckboxes = function (selectedExtraIds) {
-    if (!Array.isArray(selectedExtraIds)) selectedExtraIds = [];
+// 此帳號「可存取的廠區」= 廠區綁定角色 ∩ 目前已勾選角色 ≠ ∅（回傳廠區名陣列）
+function getAccessibleOverrideFabs() {
+    const checked = getCheckedRoleIds().map(window.cleanId);
+    return getFabs().filter(f => {
+        const fabRoles = (f.assignedRoles || f.AssignedRoles || []).map(window.cleanId);
+        return fabRoles.some(r => checked.includes(r));
+    }).map(f => f.fabName || f.FabName || f.id || f.fabId || f.FabId || '').filter(Boolean);
+}
+window.__getAccessibleOverrideFabs = getAccessibleOverrideFabs;
+
+// 某廠區「role 可見集合」= (該廠區綁定且目前已勾選的角色) 的 allowedMenuIds 展開（含子節點）
+function computeRoleAllowedSetForFab(fabName) {
+    const checked = getCheckedRoleIds().map(window.cleanId);
+    const fab = getFabs().find(f => window.cleanId(f.fabName || f.FabName || f.id || f.fabId || f.FabId) === window.cleanId(fabName));
+    const fabRoles = fab ? (fab.assignedRoles || fab.AssignedRoles || []).map(window.cleanId) : [];
+    const activeRoleIds = fabRoles.filter(r => checked.includes(r));
+    const roles = getRoles();
+    let initialMenuIds = [];
+    activeRoleIds.forEach(rId => {
+        const role = roles.find(r => window.cleanId(r.id || r.RoleId) === window.cleanId(rId));
+        if (role && (role.allowedMenuIds || role.AllowedMenuIds)) initialMenuIds.push(...(role.allowedMenuIds || role.AllowedMenuIds));
+    });
+    return window.getAllowedIdsWithHierarchy(getCustomMenus(), initialMenuIds);
+}
+
+// 把目前畫面上的 extra/deny 勾選狀態存回 temp（綁定 appState.overrideFab 這個廠區）
+function persistOverrideDom() {
+    const fab = appState.overrideFab;
+    if (!fab) return;
+    if (!appState.tempExtraMenus) appState.tempExtraMenus = {};
+    if (!appState.tempDenyMenus) appState.tempDenyMenus = {};
+    appState.tempExtraMenus[fab] = Array.from(document.querySelectorAll('.acc-extra-cb:checked')).map(cb => cb.value);
+    appState.tempDenyMenus[fab] = Array.from(document.querySelectorAll('.acc-deny-cb:checked')).map(cb => cb.value);
+}
+window.__persistAccOverrideDom = persistOverrideDom;
+
+// 主入口：建立「廠區選擇器」＋ 該廠區的 extra/deny 清單 ＋ 預覽
+window.renderAccOverridePanel = function () {
+    if (!appState.tempExtraMenus) appState.tempExtraMenus = {};
+    if (!appState.tempDenyMenus) appState.tempDenyMenus = {};
+    const accessible = getAccessibleOverrideFabs();
+    const selWrap = document.getElementById('accOverrideFabSelector');
+
+    // 目前選的廠區若已不在可存取清單 → 改選第一個（或清空）
+    if (!appState.overrideFab || !accessible.some(f => window.cleanId(f) === window.cleanId(appState.overrideFab))) {
+        appState.overrideFab = accessible.length ? accessible[0] : '';
+    }
+
+    if (selWrap) {
+        if (accessible.length === 0) {
+            selWrap.innerHTML = '<div class="text-warning small px-1"><i class="fas fa-exclamation-circle me-1"></i>請先在「可視群組版面」勾選至少一個廠區，才能設定該廠區的個別覆寫</div>';
+        } else {
+            const btns = accessible.map(fName => {
+                const active = window.cleanId(fName) === window.cleanId(appState.overrideFab) ? 'btn-primary' : 'btn-outline-primary';
+                return `<button type="button" class="btn btn-sm ${active} js-override-fab" data-fab="${window.escapeHTML(fName)}">${window.escapeHTML(fName)}</button>`;
+            }).join('');
+            selWrap.innerHTML = `<div class="d-flex align-items-center flex-wrap gap-1"><span class="small text-secondary fw-bold me-1"><i class="fas fa-industry me-1"></i>設定廠區：</span><div class="btn-group btn-group-sm flex-wrap" role="group">${btns}</div></div>`;
+            if (!selWrap.hasAttribute('data-ovfab-bound')) {
+                selWrap.setAttribute('data-ovfab-bound', '1');
+                selWrap.addEventListener('click', (e) => {
+                    const b = e.target.closest('.js-override-fab');
+                    if (!b) return;
+                    persistOverrideDom();                       // 切換前先把目前廠區存起來
+                    appState.overrideFab = b.getAttribute('data-fab');
+                    window.renderAccOverridePanel();
+                });
+            }
+        }
+    }
+
+    window.renderAccExtraMenuCheckboxes();
+    window.renderAccDenyMenuCheckboxes();
+    window.renderAccEffectivePreview();
+};
+
+// 額外開放（當前廠區）：列出「不在該廠區 Role 範圍內的 menus」，讓 admin 勾選來補
+window.renderAccExtraMenuCheckboxes = function () {
     const container = document.getElementById('accExtraMenuCheckboxes');
     if (!container) return;
+    const fab = appState.overrideFab;
+    if (!fab) { container.innerHTML = '<div class="text-muted small px-2 py-1"><i class="fas fa-info-circle me-1 opacity-50"></i>請先選擇要設定的廠區</div>'; return; }
 
     const selectableMenus = getAllSelectableMenus();
-    const roleAllowedSet = computeRoleAllowedSet();
-    const lowerSelected = selectedExtraIds.map(id => window.cleanId(id));
+    const roleAllowedSet = computeRoleAllowedSetForFab(fab);
+    const selected = (((appState.tempExtraMenus || {})[fab]) || []).map(window.cleanId);
 
-    // 候選 = (全部可選的 menus) — (已經被 role 包進來的)；但已勾選的「extra」即使後來 role 也加進來，仍然顯示為勾選讓 admin 看到
+    // 候選 = (全部可選 menus) − (該廠區 role 已涵蓋)；已勾選的 extra 一律顯示
     const candidates = selectableMenus.filter(m => {
         const mId = window.cleanId(m.id || m.MenuId);
-        if (lowerSelected.includes(mId)) return true; // 已勾的一定顯示
+        if (selected.includes(mId)) return true;
         return !roleAllowedSet.has(mId);
     });
 
     if (candidates.length === 0) {
-        container.innerHTML = '<div class="text-muted small px-2 py-1"><i class="fas fa-info-circle me-1 opacity-50"></i>目前所選 Role 已涵蓋所有看板，不需要額外開放</div>';
+        container.innerHTML = '<div class="text-muted small px-2 py-1"><i class="fas fa-info-circle me-1 opacity-50"></i>此廠區的 Role 已涵蓋所有看板，不需要額外開放</div>';
         return;
     }
 
@@ -185,7 +268,7 @@ window.renderAccExtraMenuCheckboxes = function (selectedExtraIds) {
     candidates.forEach(m => {
         const mId = m.id || m.MenuId || '';
         const mName = m.displayName || m.DisplayName || m.name || m.SysName || mId;
-        const checked = lowerSelected.includes(window.cleanId(mId)) ? 'checked' : '';
+        const checked = selected.includes(window.cleanId(mId)) ? 'checked' : '';
         const pathStr = typeof getFullMenuPathStr === 'function' ? getFullMenuPathStr(mId, getCustomMenus()) : mName;
         html.push(`
             <div class="form-check d-flex align-items-center">
@@ -199,22 +282,23 @@ window.renderAccExtraMenuCheckboxes = function (selectedExtraIds) {
     container.innerHTML = html.join('');
 };
 
-// 個別封鎖：列出「目前可見的 menus = role + extra」，讓 admin 勾要扣掉的
-window.renderAccDenyMenuCheckboxes = function (selectedDenyIds) {
-    if (!Array.isArray(selectedDenyIds)) selectedDenyIds = [];
+// 個別封鎖（當前廠區）：列出「該廠區目前可見 = role + 已勾 extra」，讓 admin 勾要扣掉的
+window.renderAccDenyMenuCheckboxes = function () {
     const container = document.getElementById('accDenyMenuCheckboxes');
     if (!container) return;
+    const fab = appState.overrideFab;
+    if (!fab) { container.innerHTML = '<div class="text-muted small px-2 py-1"><i class="fas fa-info-circle me-1 opacity-50"></i>請先選擇要設定的廠區</div>'; return; }
 
-    // 候選 = role allowed + 目前 modal 勾的 extra
-    const roleAllowedSet = computeRoleAllowedSet();
+    // 候選 = 該廠區 role allowed + 目前 modal 勾的 extra
+    const roleAllowedSet = computeRoleAllowedSetForFab(fab);
     const checkedExtraIds = Array.from(document.querySelectorAll('.acc-extra-cb:checked')).map(cb => window.cleanId(cb.value));
     const candidateSet = new Set([...roleAllowedSet, ...checkedExtraIds]);
 
     const selectable = getAllSelectableMenus().filter(m => candidateSet.has(window.cleanId(m.id || m.MenuId)));
-    const lowerSelected = selectedDenyIds.map(id => window.cleanId(id));
+    const selected = (((appState.tempDenyMenus || {})[fab]) || []).map(window.cleanId);
 
     if (selectable.length === 0) {
-        container.innerHTML = '<div class="text-muted small px-2 py-1"><i class="fas fa-info-circle me-1 opacity-50"></i>目前帳號沒有可被封鎖的看板（先勾選 Role 或加入額外開放）</div>';
+        container.innerHTML = '<div class="text-muted small px-2 py-1"><i class="fas fa-info-circle me-1 opacity-50"></i>此廠區沒有可被封鎖的看板（先勾選 Role 或加入額外開放）</div>';
         return;
     }
 
@@ -222,7 +306,7 @@ window.renderAccDenyMenuCheckboxes = function (selectedDenyIds) {
     selectable.forEach(m => {
         const mId = m.id || m.MenuId || '';
         const mName = m.displayName || m.DisplayName || m.name || m.SysName || mId;
-        const checked = lowerSelected.includes(window.cleanId(mId)) ? 'checked' : '';
+        const checked = selected.includes(window.cleanId(mId)) ? 'checked' : '';
         const pathStr = typeof getFullMenuPathStr === 'function' ? getFullMenuPathStr(mId, getCustomMenus()) : mName;
         html.push(`
             <div class="form-check d-flex align-items-center">
@@ -236,36 +320,29 @@ window.renderAccDenyMenuCheckboxes = function (selectedDenyIds) {
     container.innerHTML = html.join('');
 };
 
-// 統一處理：勾選 extra/deny 時，連動更新對方的候選清單與預覽
+// 統一處理：勾選 extra/deny 時，先把當前廠區狀態落到 temp，再連動更新候選與預覽
 window.__accOverrideChanged = function (which) {
-    const stillCheckedExtra = Array.from(document.querySelectorAll('.acc-extra-cb:checked')).map(cb => cb.value);
-    const stillCheckedDeny = Array.from(document.querySelectorAll('.acc-deny-cb:checked')).map(cb => cb.value);
+    persistOverrideDom();
     if (which === 'extra') {
-        // extra 動了 → deny 的候選池需重整 (因為 deny 候選 = role + extra)
-        if (typeof window.renderAccDenyMenuCheckboxes === 'function') {
-            window.renderAccDenyMenuCheckboxes(stillCheckedDeny);
-        }
-    } else if (which === 'deny') {
-        // deny 動了不影響 extra 候選池 (extra 候選 = 全部非 role 內的)，所以不需重畫
+        // extra 動了 → deny 的候選池需重整 (deny 候選 = role + extra)
+        if (typeof window.renderAccDenyMenuCheckboxes === 'function') window.renderAccDenyMenuCheckboxes();
     }
-    if (typeof window.renderAccEffectivePreview === 'function') {
-        window.renderAccEffectivePreview();
-    }
+    if (typeof window.renderAccEffectivePreview === 'function') window.renderAccEffectivePreview();
 };
 
-// 即時預覽：role + extra - deny
+// 即時預覽（當前廠區）：role + extra - deny
 window.renderAccEffectivePreview = function () {
     const container = document.getElementById('accEffectivePreview');
     if (!container) return;
+    const fab = appState.overrideFab;
 
-    const roleAllowedSet = computeRoleAllowedSet();
+    const roleAllowedSet = fab ? computeRoleAllowedSetForFab(fab) : new Set();
     const checkedExtraIds = Array.from(document.querySelectorAll('.acc-extra-cb:checked')).map(cb => window.cleanId(cb.value));
     const checkedDenyIds = Array.from(document.querySelectorAll('.acc-deny-cb:checked')).map(cb => window.cleanId(cb.value));
 
     const effective = new Set([...roleAllowedSet, ...checkedExtraIds]);
     checkedDenyIds.forEach(id => effective.delete(id));
 
-    // 把 effective 對應到實際 menu 物件並過濾出非 folder + 啟用
     const items = getCustomMenus().filter(m => {
         const mId = window.cleanId(m.id || m.MenuId);
         if (!effective.has(mId)) return false;
@@ -275,8 +352,12 @@ window.renderAccEffectivePreview = function () {
         return true;
     });
 
+    if (!fab) {
+        container.innerHTML = '<div class="text-muted small"><i class="fas fa-info-circle me-1 opacity-50"></i>選擇廠區後即可預覽該廠區實際可見看板</div>';
+        return;
+    }
     if (items.length === 0) {
-        container.innerHTML = '<div class="text-warning small"><i class="fas fa-exclamation-triangle me-1"></i>此帳號目前沒有任何可見看板</div>';
+        container.innerHTML = '<div class="text-warning small"><i class="fas fa-exclamation-triangle me-1"></i>此帳號在「' + window.escapeHTML(fab) + '」目前沒有任何可見看板</div>';
         return;
     }
 
@@ -284,8 +365,7 @@ window.renderAccEffectivePreview = function () {
     items.forEach(m => {
         const mName = m.displayName || m.DisplayName || m.name || m.SysName || '';
         const mId = window.cleanId(m.id || m.MenuId);
-        // 標記來源：extra 綠 / role 藍 / 同時 extra 也綠（extra 優先）
-        const isExtra = checkedExtraIds.includes(mId);
+        const isExtra = checkedExtraIds.includes(mId);  // extra 綠 / role 藍
         const bg = isExtra ? 'bg-success-subtle text-success border-success' : 'bg-primary-subtle text-primary border-primary';
         html.push(`<span class="badge border ${bg} border-opacity-50" style="font-size:0.7rem;"><i class="fas fa-file-alt me-1 opacity-75"></i>${mName}</span>`);
     });
@@ -406,7 +486,11 @@ window.openMenuSelector = function (fabName) {
         });
     }
 
-    const viewableMenus = allMenus.filter(m => String(m.menuMode || m.MenuMode).toLowerCase() !== 'folder' && (m.enabled !== false && m.IsEnabled !== false) && allowedIds.has(window.cleanId(m.id || m.MenuId)));
+    // ⭐ 預設看板挑選器：除了「可開啟的看板」，也納入「有子選單的資料夾」(folder)，讓管理者能把整個群組
+    //    （例：ZE 強化防禦群組）指定為預設首頁；登入時 goDefaultHome(navigation.js) 會自動展開、落到其下
+    //    第一個可看的子看板。可見集合 (allowedIds) 完全不變、只放寬「可被選取的類型」，與側邊欄
+    //    renderSidebarMenus(sidebar.js) 的可見範圍仍保持對齊。
+    const viewableMenus = allMenus.filter(m => (m.enabled !== false && m.IsEnabled !== false) && allowedIds.has(window.cleanId(m.id || m.MenuId)));
 
     if (viewableMenus.length === 0) {
         container.innerHTML = `<div class="text-center text-muted py-5 fw-bold"><i class="fas fa-folder-open mb-3 fs-1 opacity-50"></i><br>此帳號在該廠區沒有可觀看的看板。<br><small class="fw-normal">請先勾選下方的可視群組版面。</small></div>`;
@@ -449,14 +533,18 @@ window.openMenuSelector = function (fabName) {
 
             let listHtml = `<div class="bg-white border border-top-0 rounded-bottom pt-1 pb-2 shadow-sm">`;
             group.items.forEach(item => {
-                let badge = item.type === 'app_grid' ? '<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 ms-2" style="font-size:0.6rem;">應用集合</span>' : '';
+                const isFolderItem = String(item.type || '').toLowerCase() === 'folder';
+                let badge = item.type === 'app_grid'
+                    ? '<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 ms-2" style="font-size:0.6rem;">應用集合</span>'
+                    : (isFolderItem ? '<span class="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25 ms-2" style="font-size:0.6rem;">資料夾 (登入落第一個子看板)</span>' : '');
                 let subPathHtml = item.subPath ? `<div class="badge bg-secondary bg-opacity-10 text-secondary border mt-1 fw-normal" style="font-size:0.65rem;">位於: ${item.subPath}</div>` : '';
+                const itemIcon = item.type === 'app_grid' ? 'fa-th-large text-success' : (isFolderItem ? 'fa-folder text-warning' : 'fa-file-alt text-secondary');
 
                 listHtml += `
                     <div class="drawer-item d-flex justify-content-between align-items-center p-2 border-bottom cursor-pointer hover-bg-light" style="transition: all 0.2s;" onclick="pickDefaultMenu('${item.id}'); window.closeMenuSelector();">
                         <div class="pe-2">
                             <div class="fw-bold text-dark d-flex align-items-center mb-0" style="font-size: 0.85rem;">
-                                <i class="fas ${item.type === 'app_grid' ? 'fa-th-large text-success' : 'fa-file-alt text-secondary'} item-icon me-2 opacity-75"></i> ${item.displayName} ${badge}
+                                <i class="fas ${itemIcon} item-icon me-2 opacity-75"></i> ${item.displayName} ${badge}
                             </div>
                             ${subPathHtml}
                         </div>

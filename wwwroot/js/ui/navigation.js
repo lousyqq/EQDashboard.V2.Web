@@ -350,6 +350,33 @@ export function goDefaultHome() {
         }
 
         const menus = getCustomMenus() || [];
+        const validList = appState._currentValidMenus || [];
+
+        const _isFolder = (m) => !!m && String(m.menuMode || m.MenuMode || '').toLowerCase() === 'folder';
+        const _isOpenable = (m) => !!m && !!(m.url || m.Url || m.targetPage || m.TargetPage || (m.menuMode || m.MenuMode) === 'app_grid');
+        // ⭐ 預設頁若指向「資料夾」（管理者在挑選器把整個群組指定為預設）→ 自動往下展開到第一個可開啟的子看板，
+        //    避免登入落在資料夾空殼（activateMenu 對 folder 會顯示「內容建置中」）。只在「可見」(validList) 的
+        //    子節點中找，優先挑可直接開啟者；找不到可開啟者就鑽進第一個子資料夾繼續展開。
+        const _resolveFolderToFirstLeaf = (folderId) => {
+            let curId = window.cleanId(folderId), guard = 0;
+            while (guard++ < 100) {
+                const node = menus.find(m => window.cleanId(m.id || m.MenuId) === curId);
+                if (!node || !_isFolder(node)) return curId;
+                let children = validList.filter(m =>
+                    window.cleanId(m.parentId || m.ParentMenuId) === curId ||
+                    (m.parentIds || []).map(window.cleanId).includes(curId)
+                );
+                if (children.length === 0) return curId;
+                children.sort((a, b) => {
+                    const oa = (a.parentOrders && a.parentOrders[curId] != null) ? a.parentOrders[curId] : (a.order || a.GlobalOrder || 0);
+                    const ob = (b.parentOrders && b.parentOrders[curId] != null) ? b.parentOrders[curId] : (b.order || b.GlobalOrder || 0);
+                    return oa - ob;
+                });
+                const next = children.find(_isOpenable) || children[0];
+                curId = window.cleanId(next.id || next.MenuId);
+            }
+            return curId;
+        };
 
         // 2. 未設定 → 依目前廠區 fab.assignedRoles 與帳號 assignedRoles 的交集，找出該帳號可看的第一個 root
         if (!defPage) {
@@ -408,8 +435,17 @@ export function goDefaultHome() {
             }
         }
 
+        // 2.5 預設頁指向資料夾 → 展開到第一個可開啟子看板（管理者可把整個群組設為預設首頁）
+        if (defPage) {
+            const _defObj = menus.find(m => window.cleanId(m.id || m.MenuId) === window.cleanId(defPage));
+            if (_isFolder(_defObj)) {
+                const _resolved = _resolveFolderToFirstLeaf(defPage);
+                const _resObj = menus.find(m => window.cleanId(m.id || m.MenuId) === window.cleanId(_resolved));
+                defPage = (_resObj && !_isFolder(_resObj)) ? _resolved : null; // 仍是資料夾(空) → 交給下方防呆
+            }
+        }
+
         // 3. 終極防呆：仍找不到或合法權限已被拔除 → 從安全過濾後的清單尋找
-        let validList = appState._currentValidMenus || [];
         if (!defPage || !validList.find(m => window.cleanId(m.id) === window.cleanId(defPage))) {
             let firstVisible = validList.find(m => (m.menuMode || '').toLowerCase() !== 'folder');
             if (firstVisible) defPage = firstVisible.id;
@@ -417,7 +453,9 @@ export function goDefaultHome() {
         }
 
         if (defPage) activateMenu(defPage);
-        else navTo('page-unauthorized'); // ⭐️ 導向獨立的無權限頁面，避免影響首頁預設視圖
+        else navTo('page-unauthorized'); // ⭐️ 此廠區無任何可視看板 → 導向中性「空狀態」頁（非「無權限」警示）。
+        //    上方導覽列本就因 renderSidebarMenus 沒有 root 而自然留空；此處只是讓內容區顯示中性提示而非空白/警示，
+        //    避免使用者誤以為系統出錯或資料遺失（廠區能被切到＝已有可存取角色，零看板＝尚未配置看板而非權限問題）。
 
     } catch (error) {
         console.error("🚨 導向預設首頁時發生錯誤:", error);

@@ -176,10 +176,25 @@ public class AuthController : ControllerBase
             empId = a.EmpId,
             assignedRoles = a.MapAccountRoles?.Select(m => m.RoleId).ToList() ?? new List<string>(),
             manageableMenus = a.MapAccountManageMenus?.Select(m => m.MenuId).ToList() ?? new List<string>(),
-            extraMenus = a.MapAccountExtraMenus?.Select(m => m.MenuId).ToList() ?? new List<string>(),
-            denyMenus = a.MapAccountDenyMenus?.Select(m => m.MenuId).ToList() ?? new List<string>(),
+            // per-fab：以 FabId 分組成 { fabId: [menuId,...] }
+            extraMenus = GroupOverridesByFab(a.MapAccountExtraMenus?.Select(m => (m.FabId, m.MenuId))),
+            denyMenus = GroupOverridesByFab(a.MapAccountDenyMenus?.Select(m => (m.FabId, m.MenuId))),
             defaultPages = a.MapAccountDefaultPages?.ToDictionary(m => m.FabId, m => m.MenuId ?? "") ?? new Dictionary<string, string>()
         });
+    }
+
+    /// <summary>把 per-fab 覆寫關聯列 [(FabId, MenuId)] 分組成 { fabId: [menuId,...] }（前端字典形狀）。</summary>
+    private static Dictionary<string, List<string>> GroupOverridesByFab(IEnumerable<(string FabId, string MenuId)>? rows)
+    {
+        var dict = new Dictionary<string, List<string>>();
+        if (rows == null) return dict;
+        foreach (var (fabId, menuId) in rows)
+        {
+            var key = fabId ?? string.Empty;
+            if (!dict.TryGetValue(key, out var list)) { list = new List<string>(); dict[key] = list; }
+            if (!list.Contains(menuId)) list.Add(menuId);
+        }
+        return dict;
     }
 
     /// <summary>
@@ -187,7 +202,7 @@ public class AuthController : ControllerBase
     /// </summary>
     [HttpPost("Login")]
     [AllowAnonymous]
-    [EnableRateLimiting("login-ip")]  // Round-3 P1 #4：每 IP 60 秒最多 5 次嘗試，擋暴力破解
+    [EnableRateLimiting("login-ip")]  // Round-3 P1 #4：每 IP 60 秒最多 10 次嘗試，擋暴力破解
     public async Task<IActionResult> Login([FromBody] LoginRequest req)
     {
         // 部署到正式環境後可把 appsettings.Auth.AllowManualLogin 設為 false，整個手動登入入口會被擋住、

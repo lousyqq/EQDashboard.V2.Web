@@ -157,7 +157,8 @@ builder.Services.AddAuthorization(options =>
 
 // === Rate Limiting (Round-3 P1 #4) ===
 // 對 /api/Auth/Login 加 IP 粒度的速率限制，阻止離線暴力破解 TestAccounts / LDAP 密碼。
-//   - 每個 IP 60 秒內最多 5 次嘗試 (含成功)，超過回 429 Too Many Requests
+//   - 每個 IP 60 秒內最多 10 次嘗試 (含成功)，超過回 429 Too Many Requests
+//     （留少量緩衝給合法使用者打錯密碼；多數人走 Windows 自動登入，手動 LDAP 是 fallback）
 //   - QueueLimit=0：超出直接 reject、不排隊，避免攻擊者 batch 灌入
 //   - 真實上線環境若有反向代理 (Nginx/IIS ARR)，需確認 RemoteIpAddress 是真實 client IP
 //     (一般需設 ForwardedHeadersOptions 處理 X-Forwarded-For，已有 UseHttpsRedirection 配合)
@@ -169,7 +170,7 @@ builder.Services.AddRateLimiter(options =>
         var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
         return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
         {
-            PermitLimit = 5,
+            PermitLimit = 10,
             Window = TimeSpan.FromSeconds(60),
             QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
             QueueLimit = 0,

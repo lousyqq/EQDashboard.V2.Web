@@ -295,9 +295,9 @@ export async function fetchInitialDataFromDB() {
                 manageableMenus: parsedManageable,
                 assignedRoles: parsedAssigned,
                 defaultPages: parsedDefPages,
-                // 個別覆寫 — 由 Map_Account_ExtraMenu / Map_Account_DenyMenu 補入
-                extraMenus: [],
-                denyMenus: [],
+                // per-fab 個別覆寫 — 由 Map_Account_ExtraMenu / Map_Account_DenyMenu 補入，形狀 { fabId: [menuId,...] }
+                extraMenus: {},
+                denyMenus: {},
                 // 登入統計
                 loginCount: parseInt(getVal(a, 'LoginCount') || getVal(a, 'loginCount') || 0) || 0,
                 lastLoginTime: getVal(a, 'LastLoginTime') || getVal(a, 'lastLoginTime') || null
@@ -322,18 +322,26 @@ export async function fetchInitialDataFromDB() {
             if (acc && fId && mId) acc.defaultPages[fId] = mId;
         });
 
-        // 個別覆寫：額外開放
+        // per-fab 個別覆寫：額外開放（依 FabId 分組）
         mapAccExtraData.forEach(rel => {
             let acc = mappedAccounts.find(a => a.empId === String(getVal(rel, 'EmpId')));
+            let fId = String(getVal(rel, 'FabId') || '');
             let mId = String(getVal(rel, 'MenuId'));
-            if (acc && mId && !acc.extraMenus.includes(mId)) acc.extraMenus.push(mId);
+            if (acc && fId && mId) {
+                if (!acc.extraMenus[fId]) acc.extraMenus[fId] = [];
+                if (!acc.extraMenus[fId].includes(mId)) acc.extraMenus[fId].push(mId);
+            }
         });
 
-        // 個別覆寫：個別封鎖
+        // per-fab 個別覆寫：個別封鎖（依 FabId 分組）
         mapAccDenyData.forEach(rel => {
             let acc = mappedAccounts.find(a => a.empId === String(getVal(rel, 'EmpId')));
+            let fId = String(getVal(rel, 'FabId') || '');
             let mId = String(getVal(rel, 'MenuId'));
-            if (acc && mId && !acc.denyMenus.includes(mId)) acc.denyMenus.push(mId);
+            if (acc && fId && mId) {
+                if (!acc.denyMenus[fId]) acc.denyMenus[fId] = [];
+                if (!acc.denyMenus[fId].includes(mId)) acc.denyMenus[fId].push(mId);
+            }
         });
 
         // 3. 轉換 Roles (⭐️ 雙軌相容讀取)
@@ -454,8 +462,9 @@ export async function fetchInitialDataFromDB() {
                 if (myAcc) {
                     myAcc.assignedRoles = myProfile.assignedRoles || [];
                     myAcc.manageableMenus = myProfile.manageableMenus || [];
-                    myAcc.extraMenus = myProfile.extraMenus || [];
-                    myAcc.denyMenus = myProfile.denyMenus || [];
+                    // per-fab 形狀 { fabId: [menuId,...] }
+                    myAcc.extraMenus = myProfile.extraMenus || {};
+                    myAcc.denyMenus = myProfile.denyMenus || {};
                     myAcc.defaultPages = myProfile.defaultPages || {};
                 }
             }
@@ -582,9 +591,9 @@ export function getDatabasePayload() {
     payload.Map_Role_Menu = []; roles.forEach(r => { if (r.allowedMenuIds) r.allowedMenuIds.forEach((mId, idx) => payload.Map_Role_Menu.push({ RoleId: String(r.id), MenuId: String(mId), SortOrder: idx * 10 })); });
     payload.Map_Menu_Structure = []; menus.forEach(m => { if (m.parentIds && m.parentIds.length > 0) { m.parentIds.forEach(pId => payload.Map_Menu_Structure.push({ ParentMenuId: String(pId), ChildMenuId: String(m.id), SortOrder: m.parentOrders ? (m.parentOrders[pId] || 0) : 0 })); } else if (m.parentId) { payload.Map_Menu_Structure.push({ ParentMenuId: String(m.parentId), ChildMenuId: String(m.id), SortOrder: m.order || 0 }); } });
     payload.Map_Account_DefaultPage = []; accs.forEach(a => { if (a.defaultPages) { for (let fab in a.defaultPages) { payload.Map_Account_DefaultPage.push({ EmpId: String(a.empId), FabId: String(fab), MenuId: String(a.defaultPages[fab]) }); } } });
-    // 個別覆寫
-    payload.Map_Account_ExtraMenu = []; accs.forEach(a => { if (a.extraMenus) a.extraMenus.forEach(mId => payload.Map_Account_ExtraMenu.push({ EmpId: String(a.empId), MenuId: String(mId) })); });
-    payload.Map_Account_DenyMenu = []; accs.forEach(a => { if (a.denyMenus) a.denyMenus.forEach(mId => payload.Map_Account_DenyMenu.push({ EmpId: String(a.empId), MenuId: String(mId) })); });
+    // per-fab 個別覆寫：extraMenus / denyMenus 形狀為 { fabId: [menuId,...] }，逐廠區攤平成 {EmpId, FabId, MenuId}
+    payload.Map_Account_ExtraMenu = []; accs.forEach(a => { if (a.extraMenus && typeof a.extraMenus === 'object') { for (let fab in a.extraMenus) { if (!fab) continue; (a.extraMenus[fab] || []).forEach(mId => payload.Map_Account_ExtraMenu.push({ EmpId: String(a.empId), FabId: String(fab), MenuId: String(mId) })); } } });
+    payload.Map_Account_DenyMenu = []; accs.forEach(a => { if (a.denyMenus && typeof a.denyMenus === 'object') { for (let fab in a.denyMenus) { if (!fab) continue; (a.denyMenus[fab] || []).forEach(mId => payload.Map_Account_DenyMenu.push({ EmpId: String(a.empId), FabId: String(fab), MenuId: String(mId) })); } } });
     // Menu 層級存取控制
     payload.Map_Menu_AllowAccount = []; menus.forEach(m => { if (m.allowedEmpIds) m.allowedEmpIds.forEach(eId => payload.Map_Menu_AllowAccount.push({ MenuId: String(m.id), EmpId: String(eId) })); });
     payload.Map_Menu_DenyAccount = []; menus.forEach(m => { if (m.deniedEmpIds) m.deniedEmpIds.forEach(eId => payload.Map_Menu_DenyAccount.push({ MenuId: String(m.id), EmpId: String(eId) })); });

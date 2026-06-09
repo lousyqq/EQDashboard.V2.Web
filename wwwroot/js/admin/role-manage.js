@@ -63,12 +63,18 @@ window.renderRoleMenuCheckboxes = function (selectedIds) {
     if (!container) return;
     container.innerHTML = '';
 
-    // 過濾出可供綁定的主選單 (排除已被停用、或是歸類為池中項目的選單)
-    const menus = getCustomMenus().filter(m =>
-        (m.enabled !== false && m.IsEnabled !== false) &&
-        String(m.isPoolItem || m.IsPoolItem).toLowerCase() !== 'true' &&
-        (!window.cleanId(m.parentId || m.ParentMenuId) || window.cleanId(m.parentId || m.ParentMenuId) === '')
-    );
+    // 過濾出可供綁定的「最上層 (root) 選單」(排除已被停用、或是歸類為池中項目的選單)
+    // ⭐ 拖曳排序的結果會顯示在「上方導覽列」，上方只放最上層選單項目；
+    //    凡是掛在其他選單底下的子項目 (如 ZE 強化防禦群組底下的 WL子群組、12M EAS 底下的 N-Sys/xHelp) 一律不可出現於此。
+    //    注意：DB 的 Menus 表無 ParentId 欄位，api.js 對「有父節點」者只會填 parentIds(陣列) 而非 parentId(常為 undefined)，
+    //    故 root 判定必須同時檢查 parentId 與 parentIds，只靠 parentId 會把子項目誤判為 root。
+    const menus = getCustomMenus().filter(m => {
+        const pid = window.cleanId(m.parentId || m.ParentMenuId || '');
+        const pids = (m.parentIds || m.ParentIds || []).map(window.cleanId).filter(x => x && x !== '');
+        return (m.enabled !== false && m.IsEnabled !== false) &&
+            String(m.isPoolItem || m.IsPoolItem).toLowerCase() !== 'true' &&
+            (!pid || pid === '') && pids.length === 0;
+    });
 
     let sortedMenus = [];
     // 1. 已被勾選的按照排序放在最前面

@@ -61,31 +61,65 @@ public class SchemaBootstrap : ISchemaBootstrap
         await cmd.ExecuteNonQueryAsync();
     }
 
-    /// <summary>確保 Map_Account_ExtraMenu / Map_Account_DenyMenu 兩張覆寫表存在</summary>
+    /// <summary>
+    /// 確保 Map_Account_ExtraMenu / Map_Account_DenyMenu 兩張「per-fab 覆寫表」存在且為新版結構。
+    /// 結構：(EmpId, FabId, MenuId) 複合主鍵；FabId 為一般欄位（刻意不設 FK 到 Fabs，避免多重 cascade path）。
+    /// 兩種情境皆 idempotent：
+    ///   (a) 全新安裝 → 直接以新版結構 CREATE TABLE。
+    ///   (b) 既有舊版表 (僅 EmpId, MenuId) → ALTER 補 FabId NOT NULL DEFAULT('') + 重建主鍵成 (EmpId, FabId, MenuId)。
+    ///       舊資料因無廠區歸屬 → FabId='' (在前端/後端比對任一真實廠區皆 miss → 自動失效)，
+    ///       使用者下次儲存該帳號即會被 RemoveRange→per-fab 重寫清掉，屬可接受的安全遷移。
+    /// （tableName 為呼叫端硬編碼常數、非使用者輸入，無 SQL injection 風險。）
+    /// </summary>
     private async Task EnsureOverrideTableAsync(SqlConnection conn, string tableName)
     {
         // 先檢查是否存在
+        bool exists;
         using (var checkCmd = new SqlCommand(
             "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = @tb", conn))
         {
             checkCmd.Parameters.AddWithValue("@tb", tableName);
-            var exists = (int)(await checkCmd.ExecuteScalarAsync())! > 0;
-            if (exists) return;
+            exists = (int)(await checkCmd.ExecuteScalarAsync())! > 0;
         }
 
-        // 建表 (FK 到 Accounts ON DELETE CASCADE；FK 到 Menus 預設 NO ACTION 避免多重 cascade path)
-        var createSql = $@"
-            CREATE TABLE [{tableName}] (
-                EmpId  NVARCHAR(50) NOT NULL,
-                MenuId NVARCHAR(50) NOT NULL,
-                CONSTRAINT PK_{tableName} PRIMARY KEY (EmpId, MenuId),
-                CONSTRAINT FK_{tableName}_Acc FOREIGN KEY (EmpId)  REFERENCES Accounts(EmpId) ON DELETE CASCADE,
-                CONSTRAINT FK_{tableName}_Mnu FOREIGN KEY (MenuId) REFERENCES Menus(MenuId)
-            );";
-        using (var cmd = new SqlCommand(createSql, conn))
+        if (!exists)
+        {
+            // 全新安裝：新版 per-fab 結構 (FK 到 Accounts ON DELETE CASCADE；FK 到 Menus 預設 NO ACTION)
+            var createSql = $@"
+                CREATE TABLE [{tableName}] (
+                    EmpId  NVARCHAR(50) NOT NULL,
+                    FabId  NVARCHAR(50) NOT NULL CONSTRAINT DF_{tableName}_FabId DEFAULT(''),
+                    MenuId NVARCHAR(50) NOT NULL,
+                    CONSTRAINT PK_{tableName} PRIMARY KEY (EmpId, FabId, MenuId),
+                    CONSTRAINT FK_{tableName}_Acc FOREIGN KEY (EmpId)  REFERENCES Accounts(EmpId) ON DELETE CASCADE,
+                    CONSTRAINT FK_{tableName}_Mnu FOREIGN KEY (MenuId) REFERENCES Menus(MenuId)
+                );";
+            using var cmd = new SqlCommand(createSql, conn);
+            await cmd.ExecuteNonQueryAsync();
+            _logger.LogInformation("✅ SchemaBootstrap 建立資料表 {Table} (per-fab)", tableName);
+            return;
+        }
+
+        // 既有表：若還是舊版 (沒有 FabId 欄) → 補欄位並重建主鍵成 (EmpId, FabId, MenuId)。
+        //   以 COL_LENGTH 判斷，FabId 存在即視為已遷移、整段不執行 → idempotent。
+        var migrateSql = $@"
+            IF COL_LENGTH('{tableName}','FabId') IS NULL
+            BEGIN
+                ALTER TABLE [{tableName}] ADD FabId NVARCHAR(50) NOT NULL
+                    CONSTRAINT DF_{tableName}_FabId DEFAULT('');
+
+                DECLARE @pk NVARCHAR(128);
+                SELECT @pk = name FROM sys.key_constraints
+                    WHERE [type]='PK' AND parent_object_id = OBJECT_ID('{tableName}');
+                IF @pk IS NOT NULL
+                    EXEC('ALTER TABLE [{tableName}] DROP CONSTRAINT [' + @pk + ']');
+
+                ALTER TABLE [{tableName}] ADD CONSTRAINT [PK_{tableName}]
+                    PRIMARY KEY (EmpId, FabId, MenuId);
+            END";
+        using (var cmd = new SqlCommand(migrateSql, conn))
         {
             await cmd.ExecuteNonQueryAsync();
-            _logger.LogInformation("✅ SchemaBootstrap 建立資料表 {Table}", tableName);
         }
     }
 

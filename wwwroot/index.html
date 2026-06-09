@@ -239,11 +239,14 @@
                     </div>
                 </div>
 
+                <!-- 廠區無任何可視看板時的「空狀態」。刻意走中性 (非警示) 樣式：
+                     無 alert-warning / 無 lock 圖示 / 無「無權限」字樣，避免使用者誤以為系統出錯或資料遺失。
+                     （此廠區能被切到代表已有可存取角色，零看板＝該廠區尚未配置看板，而非權限問題。）-->
                 <div id="page-unauthorized" class="page-section">
-                    <div class="alert alert-warning text-center mt-5" style="max-width: 600px; margin: 0 auto; padding: 40px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
-                        <i class="fas fa-lock text-warning mb-3" style="font-size: 3rem;"></i>
-                        <h4 class="fw-bold text-dark" data-i18n="unauthorized_title">無權限瀏覽</h4>
-                        <p class="text-muted mb-0 mt-2" data-i18n="unauthorized_desc">您目前在此廠區沒有任何可視的看板權限。<br>請聯絡系統管理員，或從右上方切換至其他廠區。</p>
+                    <div class="text-center mt-5" style="max-width: 600px; margin: 0 auto; padding: 40px;">
+                        <i class="fas fa-folder-open text-secondary opacity-50 mb-3" style="font-size: 3rem;"></i>
+                        <h5 class="fw-bold text-secondary" data-i18n="empty_fab_title">此廠區尚未配置看板</h5>
+                        <p class="text-muted mb-0 mt-2 small" data-i18n="empty_fab_desc">可於右上方切換至其他廠區，或由系統管理員於選單配置管理新增看板。</p>
                     </div>
                 </div>
 

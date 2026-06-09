@@ -257,14 +257,24 @@ export function renderSidebarMenus() {
             }
         });
 
-        // 帳號層級 extra (在 Role 之外額外開放)
-        const extraMenus = appState.currentUser.extraMenus || appState.currentUser.ExtraMenus || [];
+        // per-fab 個別覆寫：extraMenus / denyMenus 形狀為 { fabName: [menuId,...] }，
+        //   只取「當前廠區 (appState.currentFab)」的那一份，做到「在 12A 多看 X」「在 12M 禁看 Y」。
+        const _ovForCurrentFab = (dict) => {
+            if (!dict || typeof dict !== 'object') return [];
+            if (Array.isArray(dict)) return dict;                              // 容錯：理論上不會是陣列（舊形狀）
+            if (Array.isArray(dict[appState.currentFab])) return dict[appState.currentFab]; // 精準命中
+            const key = Object.keys(dict).find(k => window.cleanId(k) === cCurrentFab);     // 容錯：cleanId 比對
+            return key && Array.isArray(dict[key]) ? dict[key] : [];
+        };
+
+        // 帳號層級 extra (在 Role 之外、於「當前廠區」額外開放)
+        const extraMenus = _ovForCurrentFab(appState.currentUser.extraMenus || appState.currentUser.ExtraMenus);
         if (extraMenus.length > 0) initialMenuIds.push(...extraMenus);
 
         let allowedSet = new Set(initialMenuIds.map(window.cleanId).filter(id => id !== ''));
 
-        // 帳號層級 deny — 但若該 menu 被 Menu ACL force-allow，仍視為允許 (Menu 優先)
-        const accountDenySet = new Set((appState.currentUser.denyMenus || appState.currentUser.DenyMenus || []).map(window.cleanId).filter(id => id !== ''));
+        // 帳號層級 deny — 但若該 menu 被 Menu ACL force-allow，仍視為允許 (Menu 優先)。只扣「當前廠區」這份。
+        const accountDenySet = new Set(_ovForCurrentFab(appState.currentUser.denyMenus || appState.currentUser.DenyMenus).map(window.cleanId).filter(id => id !== ''));
         accountDenySet.forEach(id => {
             if (!menuAclForceAllow.has(id)) allowedSet.delete(id);
         });
@@ -303,10 +313,36 @@ export function renderSidebarMenus() {
         // disabled 項目對所有人（含 admin）都不顯示在側邊欄/上方導覽
         // (ACL/extra/deny 已在 allowedSet 計算階段全部處理完畢，這裡只剩 enabled 過濾)
         const inPersonalMode = (appState.currentLayoutMode === 'personal');
+
+        // ⭐️ 父選單被「禁用」(enabled===false) → 整個子樹（所有子選單/看板）都要一併移除。
+        //    只過濾「自己 enabled===false」會讓子節點失去父節點 → 在後面 rootMenus 計算時被誤判成
+        //    最上層而「升格」顯示在上方導覽列（曾發生：禁用「ZE 強化防禦群組」後，MNOP/WL子群組/
+        //    ScalingTEST/Non Scaling/BSL 仍冒出在導覽列）。故先用 BFS 收集所有被禁用節點的後代成 killSet。
+        const killSet = new Set();
+        menus.filter(m => m.enabled === false).forEach(dRoot => {
+            const dId = window.cleanId(dRoot.id);
+            if (dId) killSet.add(dId);                                   // 禁用節點本身（descendant 收集起點）
+            const queue = [dRoot];
+            let guard = 0;
+            while (queue.length > 0 && guard++ < 5000) {
+                const cur = queue.shift();
+                menus.forEach(ch => {
+                    if (ch.id === cur.id) return;
+                    const cId = window.cleanId(ch.id);
+                    if (!cId || killSet.has(cId)) return;
+                    if (window.isParentMatch(ch.parentId, cur) || (ch.parentIds || []).some(pid => window.isParentMatch(pid, cur))) {
+                        killSet.add(cId);
+                        queue.push(ch);
+                    }
+                });
+            }
+        });
+
         let validMenus = menus.filter(m => {
             let cId = window.cleanId(m.id);
             if (!cId || !allowedSet.has(cId)) return false;
             if (m.enabled === false) return false;
+            if (killSet.has(cId)) return false;                         // ⭐️ 祖先被禁用 → 整個子樹一併隱藏
             return true;
         });
         menus = validMenus;

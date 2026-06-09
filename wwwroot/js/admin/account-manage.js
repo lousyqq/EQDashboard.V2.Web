@@ -42,10 +42,11 @@ export function openAddAccountModal() {
         if (typeof renderAccRoleCheckboxes === 'function') renderAccRoleCheckboxes([]);
         if (typeof renderAccManageMenuCheckboxes === 'function') renderAccManageMenuCheckboxes([]);
         if (typeof renderAccDefaultPagesUI === 'function') renderAccDefaultPagesUI();
-        // 個別覆寫 (新增模式：全空)
-        if (typeof renderAccExtraMenuCheckboxes === 'function') renderAccExtraMenuCheckboxes([]);
-        if (typeof renderAccDenyMenuCheckboxes === 'function') renderAccDenyMenuCheckboxes([]);
-        if (typeof renderAccEffectivePreview === 'function') renderAccEffectivePreview();
+        // 個別覆寫 (per-fab，新增模式：全空)
+        appState.tempExtraMenus = {};
+        appState.tempDenyMenus = {};
+        appState.overrideFab = '';
+        if (typeof window.renderAccOverridePanel === 'function') window.renderAccOverridePanel();
 
         showModalSafely('accModal');
     } catch (e) { console.error("[openAddAccountModal] 錯誤:", e); }
@@ -89,10 +90,11 @@ export async function editAccount(empId) {
         if (typeof renderAccDefaultPagesUI === 'function') renderAccDefaultPagesUI();
         if (typeof renderAccRoleCheckboxes === 'function') renderAccRoleCheckboxes(acc.assignedRoles || []);
         if (typeof renderAccManageMenuCheckboxes === 'function') renderAccManageMenuCheckboxes(acc.manageableMenus || []);
-        // 個別覆寫 (編輯模式：帶入現有值)
-        if (typeof renderAccExtraMenuCheckboxes === 'function') renderAccExtraMenuCheckboxes(acc.extraMenus || []);
-        if (typeof renderAccDenyMenuCheckboxes === 'function') renderAccDenyMenuCheckboxes(acc.denyMenus || []);
-        if (typeof renderAccEffectivePreview === 'function') renderAccEffectivePreview();
+        // 個別覆寫 (per-fab，編輯模式：帶入現有值；後端回傳為 { 廠區名: [menuId] })
+        appState.tempExtraMenus = JSON.parse(JSON.stringify(acc.extraMenus || {}));
+        appState.tempDenyMenus = JSON.parse(JSON.stringify(acc.denyMenus || {}));
+        appState.overrideFab = '';
+        if (typeof window.renderAccOverridePanel === 'function') window.renderAccOverridePanel();
         toggleAccDelegationUI(); toggleDelegationDetails();
 
         showModalSafely('accModal');
@@ -117,9 +119,24 @@ export async function saveAccountItem(e) {
             canEditOthers = document.getElementById('accCanEditOthers').checked;
         }
 
-        // 個別覆寫
-        let extraMenus = Array.from(document.querySelectorAll('.acc-extra-cb:checked')).map(cb => cb.value);
-        let denyMenus = Array.from(document.querySelectorAll('.acc-deny-cb:checked')).map(cb => cb.value);
+        // 個別覆寫 (per-fab)：先把目前畫面廠區的勾選落回 temp，再以「可存取廠區」過濾、剔除空陣列
+        if (typeof window.__persistAccOverrideDom === 'function') window.__persistAccOverrideDom();
+        const accessibleFabs = (typeof window.__getAccessibleOverrideFabs === 'function')
+            ? window.__getAccessibleOverrideFabs().map(window.cleanId)
+            : null;
+        const pruneOverride = (src) => {
+            const out = {};
+            if (!src || typeof src !== 'object') return out;
+            for (const fab in src) {
+                if (!fab) continue;
+                if (accessibleFabs && !accessibleFabs.includes(window.cleanId(fab))) continue; // 廠區已不可存取 → 丟棄
+                const list = Array.from(new Set((src[fab] || []).filter(Boolean)));
+                if (list.length > 0) out[fab] = list;
+            }
+            return out;
+        };
+        let extraMenus = pruneOverride(appState.tempExtraMenus);
+        let denyMenus = pruneOverride(appState.tempDenyMenus);
 
         let isNew = (mode !== 'edit');
         if (isNew) {
@@ -156,6 +173,9 @@ export async function saveAccountItem(e) {
             appState.currentUser.name = name; appState.currentUser.department = dept; appState.currentUser.roleLevel = lvl;
             appState.currentUser.assignedRoles = assigned; appState.currentUser.manageableMenus = manageable;
             appState.currentUser.canEditOthers = canEditOthers; appState.currentUser.defaultPages = JSON.parse(JSON.stringify(appState.tempDefaultPages));
+            // 個別覆寫改到自己 → 同步 currentUser，讓 sidebar 立即套用本廠區的 extra/deny
+            appState.currentUser.extraMenus = JSON.parse(JSON.stringify(extraMenus));
+            appState.currentUser.denyMenus = JSON.parse(JSON.stringify(denyMenus));
             localStorage.setItem('umc_current_user', JSON.stringify(appState.currentUser));
 
             // 修改到自己的可視群組版面時，立即刷新右上角廠區下拉與側邊欄

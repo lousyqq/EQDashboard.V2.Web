@@ -69,7 +69,9 @@ public class MapAccountExtraMenuConfiguration : IEntityTypeConfiguration<MapAcco
 {
     public void Configure(EntityTypeBuilder<MapAccountExtraMenu> builder)
     {
-        builder.HasKey(e => new { e.EmpId, e.MenuId });
+        // per-fab：複合主鍵含 FabId。FabId 刻意不設 FK 到 Fabs
+        // （避免 Account/Menu/Fab 多重 cascade path；舊資料遷移後 FabId='' 也不會卡 FK）。
+        builder.HasKey(e => new { e.EmpId, e.FabId, e.MenuId });
         builder.HasOne(e => e.Account).WithMany(a => a.MapAccountExtraMenus).HasForeignKey(e => e.EmpId);
         builder.HasOne(e => e.Menu).WithMany().HasForeignKey(e => e.MenuId);
     }
@@ -79,7 +81,8 @@ public class MapAccountDenyMenuConfiguration : IEntityTypeConfiguration<MapAccou
 {
     public void Configure(EntityTypeBuilder<MapAccountDenyMenu> builder)
     {
-        builder.HasKey(e => new { e.EmpId, e.MenuId });
+        // per-fab：複合主鍵含 FabId（理由同 ExtraMenu）。
+        builder.HasKey(e => new { e.EmpId, e.FabId, e.MenuId });
         builder.HasOne(e => e.Account).WithMany(a => a.MapAccountDenyMenus).HasForeignKey(e => e.EmpId);
         builder.HasOne(e => e.Menu).WithMany().HasForeignKey(e => e.MenuId);
     }

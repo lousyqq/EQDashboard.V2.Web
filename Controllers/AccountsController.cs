@@ -89,7 +89,9 @@ public class AccountFullDto
     public bool CanEditOthers { get; set; }
     public List<string>? AssignedRoles { get; set; }
     public List<string>? ManageableMenus { get; set; }
-    public List<string>? ExtraMenus { get; set; }
-    public List<string>? DenyMenus { get; set; }
+    // per-fab 個別覆寫：key = FabId、value = 該廠區的 MenuId 清單。
+    // （與 DefaultPages 同樣以「廠區為 key」的字典形狀傳遞。）
+    public Dictionary<string, List<string>>? ExtraMenus { get; set; }
+    public Dictionary<string, List<string>>? DenyMenus { get; set; }
     public Dictionary<string, string>? DefaultPages { get; set; }
 }

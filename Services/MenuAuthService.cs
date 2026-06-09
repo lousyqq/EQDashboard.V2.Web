@@ -179,11 +179,27 @@ public class MenuAuthService : IMenuAuthService
             : await _context.MapRoleMenus.AsNoTracking()
                 .Where(m => roleIds.Contains(m.RoleId)).Select(m => m.MenuId).ToListAsync();
 
-        // ② 帳號層級 extra / deny
-        var extras = await _context.MapAccountExtraMenus.AsNoTracking()
-            .Where(m => m.EmpId == empId).Select(m => m.MenuId).ToListAsync();
-        var accountDeny = await _context.MapAccountDenyMenus.AsNoTracking()
-            .Where(m => m.EmpId == empId).Select(m => m.MenuId).ToListAsync();
+        // ② 帳號層級 per-fab extra / deny（綁定廠區）
+        //    ⚠️ 本方法回傳的是「跨所有可存取廠區的可見聯集」，僅用來過濾 GetInitialData / GetMenus
+        //       要送給前端的『資料列』。必須維持 permissive：
+        //         - extra：任一可存取廠區開放 → 該看板資料就要送（前端再依當前廠區收斂）。
+        //         - deny ：只有當該看板在「所有可存取廠區」都被 deny 時，才從聯集移除；
+        //                  否則它在某廠區仍看得到，藏掉資料會讓那個廠區的看板整個消失。
+        var extraRows = await _context.MapAccountExtraMenus.AsNoTracking()
+            .Where(m => m.EmpId == empId).Select(m => new { m.FabId, m.MenuId }).ToListAsync();
+        var denyRows = await _context.MapAccountDenyMenus.AsNoTracking()
+            .Where(m => m.EmpId == empId).Select(m => new { m.FabId, m.MenuId }).ToListAsync();
+
+        // 此帳號「可存取的廠區」= 其角色 ∩ 各廠區綁定角色 ≠ ∅
+        var accessibleFabs = (await _context.MapFabRoles.AsNoTracking()
+                .Where(fr => roleIds.Contains(fr.RoleId)).Select(fr => fr.FabId).Distinct().ToListAsync())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // extra 聯集：只取「可存取廠區」內的 extra menu
+        var extras = extraRows
+            .Where(r => accessibleFabs.Contains(r.FabId))
+            .Select(r => r.MenuId)
+            .ToList();
 
         // ③ Menu 層級 ACL — 取「會影響 user」的兩種規則
         var menuDeny = await _context.MapMenuDenyAccounts.AsNoTracking()
@@ -203,12 +219,27 @@ public class MenuAuthService : IMenuAuthService
         foreach (var mid in menusWithWhitelist)
             if (!menuForceAllow.Contains(mid)) aclDeny.Add(mid);
 
+        // per-fab deny → 只在「該 menu 於所有可存取廠區皆被 deny」時才視為全域不可見 (fullyDenied)。
+        //   (menu ACL force-allow 蓋過帳號 deny，故 force-allow 的 menu 一律不列入 fullyDenied。)
+        var denyFabsByMenu = denyRows
+            .Where(r => accessibleFabs.Contains(r.FabId))
+            .GroupBy(r => r.MenuId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.FabId).ToHashSet(StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase);
+        var fullyDenied = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (accessibleFabs.Count > 0)
+        {
+            foreach (var kv in denyFabsByMenu)
+            {
+                if (menuForceAllow.Contains(kv.Key)) continue;
+                if (accessibleFabs.All(f => kv.Value.Contains(f))) fullyDenied.Add(kv.Key);
+            }
+        }
+
         // ④ 計算 base set
         var allowed = new HashSet<string>(roleAllowed, StringComparer.OrdinalIgnoreCase);
         foreach (var x in extras) allowed.Add(x);
-        // account.deny 扣除 (menu force-allow 蓋過)
-        foreach (var x in accountDeny)
-            if (!menuForceAllow.Contains(x)) allowed.Remove(x);
+        // per-fab deny：僅扣除「所有可存取廠區都 deny」者
+        foreach (var x in fullyDenied) allowed.Remove(x);
         // menu ACL — force-allow 強加
         foreach (var x in menuForceAllow) allowed.Add(x);
         // menu ACL — deny 強拿
@@ -231,7 +262,8 @@ public class MenuAuthService : IMenuAuthService
                 foreach (var kid in kids)
                 {
                     if (aclDeny.Contains(kid)) continue;
-                    if (accountDeny.Contains(kid) && !menuForceAllow.Contains(kid)) continue;
+                    // per-fab：僅當「所有可存取廠區都 deny」(fullyDenied，已排除 force-allow) 才不展開子節點
+                    if (fullyDenied.Contains(kid)) continue;
                     if (allowed.Add(kid)) added = true;
                 }
             }

@@ -57,16 +57,36 @@ public class AccountService : IAccountService
             canEditOthers = a.CanEditOthers,
             assignedRoles = a.MapAccountRoles?.Select(m => m.RoleId).ToList() ?? new List<string>(),
             manageableMenus = a.MapAccountManageMenus?.Select(m => m.MenuId).ToList() ?? new List<string>(),
-            extraMenus = a.MapAccountExtraMenus?.Select(m => m.MenuId).ToList() ?? new List<string>(),
-            denyMenus = a.MapAccountDenyMenus?.Select(m => m.MenuId).ToList() ?? new List<string>(),
+            // per-fab：以 FabId 分組成 { fabId: [menuId,...] }
+            extraMenus = GroupOverridesByFab(a.MapAccountExtraMenus?.Select(m => (m.FabId, m.MenuId))),
+            denyMenus = GroupOverridesByFab(a.MapAccountDenyMenus?.Select(m => (m.FabId, m.MenuId))),
             defaultPages = a.MapAccountDefaultPages?.ToDictionary(m => m.FabId, m => m.MenuId ?? "") ?? new Dictionary<string, string>()
         };
+    }
+
+    /// <summary>把 per-fab 覆寫關聯列 [(FabId, MenuId)] 分組成 { fabId: [menuId,...] }（前端字典形狀）。</summary>
+    private static Dictionary<string, List<string>> GroupOverridesByFab(IEnumerable<(string FabId, string MenuId)>? rows)
+    {
+        var dict = new Dictionary<string, List<string>>();
+        if (rows == null) return dict;
+        foreach (var (fabId, menuId) in rows)
+        {
+            var key = fabId ?? string.Empty;
+            if (!dict.TryGetValue(key, out var list)) { list = new List<string>(); dict[key] = list; }
+            if (!list.Contains(menuId)) list.Add(menuId);
+        }
+        return dict;
     }
 
     public async Task<(bool success, string errorMessage)> CreateAccountAsync(AccountFullDto dto)
     {
         if (await _context.Accounts.AnyAsync(a => a.EmpId == dto.EmpId))
             return (false, "帳號工號已存在");
+
+        // ⚠️ 資料完整性：先驗證所有要寫入的 RoleId / MenuId 都存在（對齊 Roles/Fabs controller 的 1.3 預檢），
+        //   stale id 直接回 400 + 明確訊息，避免撞 FK 拋 500。
+        var (refsOk, refsErr) = await ValidateMappingRefsAsync(dto);
+        if (!refsOk) return (false, refsErr);
 
         var account = new Account
         {
@@ -80,8 +100,49 @@ public class AccountService : IAccountService
         _context.Accounts.Add(account);
         UpdateAccountMappings(dto);
 
+        // Create 為單一 SaveChanges（本身即原子）；mappings 與 account 同一交易寫入。
         await _context.SaveChangesAsync();
         _settingsService.InvalidateInitialDataCache();
+        return (true, string.Empty);
+    }
+
+    /// <summary>
+    /// 資料完整性預檢：驗證 DTO 內所有 RoleId / MenuId 參照都存在於 DB。
+    ///   Map_Account_Role.RoleId、Map_Account_ManageMenu/DefaultPage/ExtraMenu/DenyMenu.MenuId 皆有 FK，
+    ///   stale id 會在寫入時撞 FK。先在這裡查出來回 400，避免到 SaveChanges 才 500。
+    ///   （DefaultPages 的 FabId 故意不驗——Extra/Deny 的 FabId 無 FK；DefaultPage 的 FabId 雖有 FK，
+    ///     但交給下方 UpdateAccountAsync 的交易保護即可，stale FabId 也只會整批 rollback、不丟資料。）
+    /// </summary>
+    private async Task<(bool ok, string error)> ValidateMappingRefsAsync(AccountFullDto dto)
+    {
+        var roleIds = (dto.AssignedRoles ?? new List<string>())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+        var menuIds = new List<string>();
+        if (dto.ManageableMenus != null) menuIds.AddRange(dto.ManageableMenus);
+        if (dto.DefaultPages != null) menuIds.AddRange(dto.DefaultPages.Values);
+        if (dto.ExtraMenus != null)
+            foreach (var v in dto.ExtraMenus.Values) if (v != null) menuIds.AddRange(v);
+        if (dto.DenyMenus != null)
+            foreach (var v in dto.DenyMenus.Values) if (v != null) menuIds.AddRange(v);
+        menuIds = menuIds.Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+        if (roleIds.Count > 0)
+        {
+            var existing = (await _context.Roles.Where(r => roleIds.Contains(r.RoleId)).Select(r => r.RoleId).ToListAsync())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var missing = roleIds.Where(r => !existing.Contains(r)).ToList();
+            if (missing.Count > 0) return (false, $"下列角色不存在，無法指派：{string.Join(", ", missing)}");
+        }
+        if (menuIds.Count > 0)
+        {
+            var existing = (await _context.Menus.Where(m => menuIds.Contains(m.MenuId)).Select(m => m.MenuId).ToListAsync())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var missing = menuIds.Where(m => !existing.Contains(m)).ToList();
+            if (missing.Count > 0) return (false, $"下列看板不存在，無法指派：{string.Join(", ", missing)}");
+        }
         return (true, string.Empty);
     }
 
@@ -106,28 +167,53 @@ public class AccountService : IAccountService
 
         if (account == null) return (false, "找不到指定的帳號");
 
-        account.Name = dto.Name;
-        account.Department = dto.Department;
-        
         if (string.Equals(empId, "admin", StringComparison.OrdinalIgnoreCase))
         {
             if (!string.Equals(dto.RoleLevel, "admin", StringComparison.OrdinalIgnoreCase))
                 return (false, "系統預設管理員 (admin) 不可被降級");
         }
+
+        // ⚠️ 資料完整性：先驗證所有 RoleId / MenuId 都存在（對齊 Roles/Fabs controller 的 1.3 預檢）。
+        //   下方「刪舊 mappings → 寫新 mappings」必須整批原子，否則 stale id 撞 FK 會在刪除已 commit 後失敗 →
+        //   帳號 mappings 被清空、權限全失且無法回復。先預檢可把常見 stale id 擋成清楚的 400。
+        var (refsOk, refsErr) = await ValidateMappingRefsAsync(dto);
+        if (!refsOk) return (false, refsErr);
+
+        account.Name = dto.Name;
+        account.Department = dto.Department;
         account.RoleLevel = dto.RoleLevel;
         account.CanEditOthers = dto.CanEditOthers;
 
-        if (account.MapAccountRoles != null) _context.MapAccountRoles.RemoveRange(account.MapAccountRoles);
-        if (account.MapAccountManageMenus != null) _context.MapAccountManageMenus.RemoveRange(account.MapAccountManageMenus);
-        if (account.MapAccountDefaultPages != null) _context.MapAccountDefaultPages.RemoveRange(account.MapAccountDefaultPages);
-        if (account.MapAccountExtraMenus != null) _context.MapAccountExtraMenus.RemoveRange(account.MapAccountExtraMenus);
-        if (account.MapAccountDenyMenus != null) _context.MapAccountDenyMenus.RemoveRange(account.MapAccountDenyMenus);
+        // ⚠️ 原子性：原本「刪 mappings→SaveChanges→寫 mappings→SaveChanges」無交易，第二段失敗會留下被清空的帳號。
+        //   改包單一交易：任一步失敗整批 rollback、舊 mappings 完整保留。
+        //   ⚠️ DbContext 已啟用 EnableRetryOnFailure → 手動交易必須透過 ExecutionStrategy 執行
+        //     （同 MenusController.BatchUpdateMenus；否則拋 "does not support user-initiated transactions"）。
+        var strategy = _context.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
+        {
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                if (account.MapAccountRoles != null) _context.MapAccountRoles.RemoveRange(account.MapAccountRoles);
+                if (account.MapAccountManageMenus != null) _context.MapAccountManageMenus.RemoveRange(account.MapAccountManageMenus);
+                if (account.MapAccountDefaultPages != null) _context.MapAccountDefaultPages.RemoveRange(account.MapAccountDefaultPages);
+                if (account.MapAccountExtraMenus != null) _context.MapAccountExtraMenus.RemoveRange(account.MapAccountExtraMenus);
+                if (account.MapAccountDenyMenus != null) _context.MapAccountDenyMenus.RemoveRange(account.MapAccountDenyMenus);
 
-        await _context.SaveChangesAsync(); 
+                await _context.SaveChangesAsync(); // flush DELETE，避免同 PK 的 DELETE+INSERT tracking 衝突
 
-        UpdateAccountMappings(dto);
+                UpdateAccountMappings(dto);
 
-        await _context.SaveChangesAsync();
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        });
+
         _settingsService.InvalidateInitialDataCache();
         return (true, string.Empty);
     }
@@ -209,19 +295,29 @@ public class AccountService : IAccountService
             }
         }
 
+        // per-fab：ExtraMenus/DenyMenus 為 { fabId: [menuId,...] }，逐廠區寫入並帶 FabId。
+        //   略過空 fabId（避免寫出沒有廠區歸屬、永遠失效的孤兒列）。
         if (dto.ExtraMenus != null)
         {
-            foreach (var mId in dto.ExtraMenus.Distinct())
+            foreach (var kvp in dto.ExtraMenus)
             {
-                _context.MapAccountExtraMenus.Add(new MapAccountExtraMenu { EmpId = dto.EmpId, MenuId = mId });
+                if (string.IsNullOrWhiteSpace(kvp.Key) || kvp.Value == null) continue;
+                foreach (var mId in kvp.Value.Distinct())
+                {
+                    _context.MapAccountExtraMenus.Add(new MapAccountExtraMenu { EmpId = dto.EmpId, FabId = kvp.Key, MenuId = mId });
+                }
             }
         }
 
         if (dto.DenyMenus != null)
         {
-            foreach (var mId in dto.DenyMenus.Distinct())
+            foreach (var kvp in dto.DenyMenus)
             {
-                _context.MapAccountDenyMenus.Add(new MapAccountDenyMenu { EmpId = dto.EmpId, MenuId = mId });
+                if (string.IsNullOrWhiteSpace(kvp.Key) || kvp.Value == null) continue;
+                foreach (var mId in kvp.Value.Distinct())
+                {
+                    _context.MapAccountDenyMenus.Add(new MapAccountDenyMenu { EmpId = dto.EmpId, FabId = kvp.Key, MenuId = mId });
+                }
             }
         }
     }

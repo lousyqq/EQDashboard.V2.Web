@@ -294,7 +294,10 @@ export async function completeLoginAfterAuth(empId, source, fallbackAccount) {
         try { await window.refreshCsrfToken(); } catch (e) { /* 失敗有 api.js 自我修復重試兜底 */ }
     }
 
-    if (window.appState.accounts.length === 0 && typeof fetchInitialDataFromDB === 'function') {
+    // ⚠️ appState.accounts 只有在 fetchInitialDataFromDB 成功時才會被賦值；匿名載入頁面時
+    //    GetInitialData 回 401 → 該函式提前 return false、accounts 仍為 undefined。
+    //    這裡若直接讀 .length 會 TypeError 中斷整個登入流程，故須容錯為「未載入」。
+    if ((!window.appState.accounts || window.appState.accounts.length === 0) && typeof fetchInitialDataFromDB === 'function') {
         const ok = await fetchInitialDataFromDB();
         if (!ok) {
             if (typeof customAlert === 'function') customAlert("無法載入資料庫，請重新整理網頁");
