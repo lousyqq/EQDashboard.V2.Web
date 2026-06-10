@@ -5,6 +5,8 @@ VisualStudioVersion = 17.14.37314.3
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EQDashboard.V2.Web", "EQDashboard.V2.Web.csproj", "{610DAD2E-2B4A-D3D3-25E1-D56D33738077}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EQDashboard.V2.Web.Tests", "EQDashboard.V2.Web.Tests\EQDashboard.V2.Web.Tests.csproj", "{938B1546-7825-4E96-B4AC-E71ED1D3745D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +29,18 @@ Global
 		{610DAD2E-2B4A-D3D3-25E1-D56D33738077}.Release|x64.Build.0 = Release|Any CPU
 		{610DAD2E-2B4A-D3D3-25E1-D56D33738077}.Release|x86.ActiveCfg = Release|Any CPU
 		{610DAD2E-2B4A-D3D3-25E1-D56D33738077}.Release|x86.Build.0 = Release|Any CPU
+		{938B1546-7825-4E96-B4AC-E71ED1D3745D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{938B1546-7825-4E96-B4AC-E71ED1D3745D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{938B1546-7825-4E96-B4AC-E71ED1D3745D}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{938B1546-7825-4E96-B4AC-E71ED1D3745D}.Debug|x64.Build.0 = Debug|Any CPU
+		{938B1546-7825-4E96-B4AC-E71ED1D3745D}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{938B1546-7825-4E96-B4AC-E71ED1D3745D}.Debug|x86.Build.0 = Debug|Any CPU
+		{938B1546-7825-4E96-B4AC-E71ED1D3745D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{938B1546-7825-4E96-B4AC-E71ED1D3745D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{938B1546-7825-4E96-B4AC-E71ED1D3745D}.Release|x64.ActiveCfg = Release|Any CPU
+		{938B1546-7825-4E96-B4AC-E71ED1D3745D}.Release|x64.Build.0 = Release|Any CPU
+		{938B1546-7825-4E96-B4AC-E71ED1D3745D}.Release|x86.ActiveCfg = Release|Any CPU
+		{938B1546-7825-4E96-B4AC-E71ED1D3745D}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

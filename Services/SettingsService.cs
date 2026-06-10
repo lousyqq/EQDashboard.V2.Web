@@ -16,10 +16,13 @@ public class SettingsService : ISettingsService
     private readonly ILogger<SettingsService> _logger;
     private readonly Microsoft.Extensions.Caching.Memory.IMemoryCache _cache;
     private readonly EQDashboard.V2.Web.Data.AppDbContext _dbContext;
+    private readonly IInitialDataCacheInvalidator _cacheInvalidator;
     private static readonly SemaphoreSlim _semaphore = new(1, 1);
 
-    private const string InitialDataCacheKey_Global = "InitialData_Global";
-    private const string InitialDataCacheKey_Volatile = "InitialData_Volatile";
+    // 快取 key 與 ETag 已移交 IInitialDataCacheInvalidator（Singleton）統一持有，
+    //   讓 EF SaveChanges 攔截器也能共用同一份；此處以 property 轉接，維持原本讀寫快取的程式碼形狀。
+    private string InitialDataCacheKey_Global => _cacheInvalidator.GlobalCacheKey;
+    private string InitialDataCacheKey_Volatile => _cacheInvalidator.VolatileCacheKey;
 
     private static readonly string[] TableNames = new[]
     {
@@ -36,16 +39,16 @@ public class SettingsService : ISettingsService
         "Map_Menu_AllowAccount", "Map_Menu_DenyAccount"
     };
 
-    private static string _currentETag = Guid.NewGuid().ToString("N");
-    public string GetCurrentETag() => _currentETag;
+    public string GetCurrentETag() => _cacheInvalidator.CurrentETag;
 
-    public SettingsService(IConfiguration config, ILogger<SettingsService> logger, Microsoft.Extensions.Caching.Memory.IMemoryCache cache, EQDashboard.V2.Web.Data.AppDbContext dbContext)
+    public SettingsService(IConfiguration config, ILogger<SettingsService> logger, Microsoft.Extensions.Caching.Memory.IMemoryCache cache, EQDashboard.V2.Web.Data.AppDbContext dbContext, IInitialDataCacheInvalidator cacheInvalidator)
     {
         _connStr = config.GetConnectionString("EQDashboard")
             ?? throw new InvalidOperationException("Missing connection string 'EQDashboard'");
         _logger = logger;
         _cache = cache;
         _dbContext = dbContext;
+        _cacheInvalidator = cacheInvalidator;
     }
 
     public async Task<Dictionary<string, object>> GetInitialDataAsync()
@@ -539,20 +542,11 @@ public class SettingsService : ISettingsService
         return (true, $"全部資料 ({successCount} 筆) 已成功同步至資料庫！");
     }
 
-    public void InvalidateInitialDataCache()
-    {
-        _cache.Remove(InitialDataCacheKey_Global);
-        _cache.Remove(InitialDataCacheKey_Volatile);
-        _currentETag = Guid.NewGuid().ToString("N");
-        _logger.LogInformation("InitialData global and volatile caches invalidated.");
-    }
+    // 委派給 Singleton invalidator（與 EF SaveChanges 攔截器共用同一份快取 key/ETag）。
+    //   raw ADO 的 SaveDataAsync 不經 EF SaveChanges，故仍須在此顯式呼叫（攔截器不會替它作廢）。
+    public void InvalidateInitialDataCache() => _cacheInvalidator.Invalidate();
 
-    public void InvalidateVolatileDataCache()
-    {
-        _cache.Remove(InitialDataCacheKey_Volatile);
-        _currentETag = Guid.NewGuid().ToString("N");
-        _logger.LogInformation("InitialData volatile cache invalidated.");
-    }
+    public void InvalidateVolatileDataCache() => _cacheInvalidator.InvalidateVolatile();
 
     public async Task<(bool success, int loginCount, string? lastLoginTime, string? errorMessage)> UpdateLoginStatsAsync(string empId)
     {

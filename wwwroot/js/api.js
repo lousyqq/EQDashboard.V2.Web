@@ -462,6 +462,8 @@ export async function fetchInitialDataFromDB() {
                 if (myAcc) {
                     myAcc.assignedRoles = myProfile.assignedRoles || [];
                     myAcc.manageableMenus = myProfile.manageableMenus || [];
+                    // canEditOthers 現由 MyProfile 直接帶回（自足來源）；僅在後端有提供時覆寫，否則保留 GetInitialData 解析值（向後相容）。
+                    if (typeof myProfile.canEditOthers === 'boolean') myAcc.canEditOthers = myProfile.canEditOthers;
                     // per-fab 形狀 { fabId: [menuId,...] }
                     myAcc.extraMenus = myProfile.extraMenus || {};
                     myAcc.denyMenus = myProfile.denyMenus || {};

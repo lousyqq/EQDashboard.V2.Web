@@ -89,13 +89,22 @@ builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(dpKeysPath))
     .SetApplicationName("EQDashboard");
 
-// 註冊 AppDbContext
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("EQDashboard"), 
+// === InitialData 快取作廢：Singleton 事實來源 + EF SaveChanges 攔截器 ===
+//   IInitialDataCacheInvalidator 持有 IMemoryCache + ETag（原本散在 SettingsService 的 static 欄位）。
+//   CacheInvalidationInterceptor 在 EF SaveChanges 成功後自動作廢「權限/設定相關」實體的快取，
+//   消除「每個寫入端點都要記得手動 Invalidate」的 double load-bearing 地雷（見 CLAUDE.md §6.2）。
+//   兩者皆為 Singleton，攔截器才能在 AddDbContext（非請求 scope）安全注入。
+builder.Services.AddSingleton<IInitialDataCacheInvalidator, InitialDataCacheInvalidator>();
+builder.Services.AddSingleton<CacheInvalidationInterceptor>();
+
+// 註冊 AppDbContext（掛上快取作廢攔截器）
+builder.Services.AddDbContext<AppDbContext>((sp, options) =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("EQDashboard"),
         sqlOptions => sqlOptions.EnableRetryOnFailure(
             maxRetryCount: 5,
             maxRetryDelay: TimeSpan.FromSeconds(30),
-            errorNumbersToAdd: null)));
+            errorNumbersToAdd: null))
+    .AddInterceptors(sp.GetRequiredService<CacheInvalidationInterceptor>()));
 
 // 註冊 Service 層（DI 依賴注入）
 builder.Services.Configure<AuthSettings>(builder.Configuration.GetSection("Auth"));
@@ -107,6 +116,7 @@ builder.Services.AddScoped<ISettingsService, SettingsService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ISchemaBootstrap, SchemaBootstrap>();
 builder.Services.AddScoped<IAccountService, AccountService>();
+builder.Services.AddScoped<IMenuService, MenuService>();
 builder.Services.AddScoped<IMenuAuthService, MenuAuthService>();
 builder.Services.AddScoped<IIconStorageService, IconStorageService>();
 builder.Services.AddScoped<IActivityLogger, ActivityLogger>();
@@ -478,8 +488,6 @@ static bool IsTrustedHealthClient(IPAddress? ip)
 }
 
 // === Swagger CSRF 標頭自動產生器 ===
-// （備註：原本檔尾的 `public partial class Program {}` 是給 EQDashboard.V2.Tests 的
-//   WebApplicationFactory<Program> 抓進入點用；測試專案移除後已一併刪除。）
 // 這會讓 Swagger UI 的 POST/PUT/DELETE API 自動出現一個必填的 X-Requested-With 欄位
 public class CsrfHeaderFilter : IOperationFilter
 {
@@ -506,3 +514,7 @@ public class CsrfHeaderFilter : IOperationFilter
         }
     }
 }
+
+// ⚠️ 整合測試進入點：WebApplicationFactory<Program> 需要 Program 為 public partial 才抓得到 host 組態。
+//    （EQDashboard.V2.Web.Tests 的 authz 矩陣測試依賴此宣告；勿刪。）
+public partial class Program { }

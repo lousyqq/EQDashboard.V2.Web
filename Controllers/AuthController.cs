@@ -174,6 +174,10 @@ public class AuthController : ControllerBase
         return Ok(new
         {
             empId = a.EmpId,
+            // 自身的 roleLevel / canEditOthers：讓 MyProfile 成為「登入者權限」的自足來源，
+            // 前端 delegated-admin UI 判定不再隱性依賴 GetInitialData 的自身列或 Login 回應（皆為自己的值，無資訊外洩）。
+            roleLevel = a.RoleLevel ?? "user",
+            canEditOthers = a.CanEditOthers,
             assignedRoles = a.MapAccountRoles?.Select(m => m.RoleId).ToList() ?? new List<string>(),
             manageableMenus = a.MapAccountManageMenus?.Select(m => m.MenuId).ToList() ?? new List<string>(),
             // per-fab：以 FabId 分組成 { fabId: [menuId,...] }

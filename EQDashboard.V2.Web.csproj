@@ -27,4 +27,14 @@
     <PackageReference Include="System.DirectoryServices.Protocols" Version="9.0.0" />
   </ItemGroup>
 
+  <!-- 整合測試專案巢狀於本資料夾下（為與 Web 專案留在同一 git repo）。
+       ⚠️ 本 Web 專案 (Microsoft.NET.Sdk.Web) 預設 glob 會吃掉 **/*.cs 與 wwwroot 以外的內容，
+          故須把測試子資料夾排除在預設 glob 外，否則它的 .cs 會被「Web 與 Tests」雙重編譯而衝突。 -->
+  <ItemGroup>
+    <Compile Remove="EQDashboard.V2.Web.Tests\**" />
+    <Content Remove="EQDashboard.V2.Web.Tests\**" />
+    <EmbeddedResource Remove="EQDashboard.V2.Web.Tests\**" />
+    <None Remove="EQDashboard.V2.Web.Tests\**" />
+  </ItemGroup>
+
 </Project>
