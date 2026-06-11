@@ -716,21 +716,26 @@ export async function deleteMenuNodeItem(id) {
 window.toggleMenuEnable = async function (id, isEnabled) {
     let menus = getCustomMenus();
     let m = menus.find(x => window.cleanId(x.id) === window.cleanId(id));
-    if (m) {
-        m.enabled = isEnabled;
-        
-        const result = await saveMenuAPI(false, m);
-        if (!result.success) {
-            customAlert("儲存狀態失敗");
-            return;
-        }
+    if (!m) return;
 
-        await window.fetchInitialDataFromDB();
+    m.enabled = isEnabled;
 
-        if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
-        if (typeof renderWebpageTable === 'function') renderWebpageTable();
+    const result = await saveMenuAPI(false, m);
+    if (!result.success) {
+        customAlert("儲存狀態失敗");
+        // 還原：儲存失敗時把記憶體模型退回原值並重畫，讓開關回到 DB 真實狀態。
+        // （此分支少見，故此處重畫造成的短暫閃爍可接受。）
+        m.enabled = !isEnabled;
         if (typeof renderMenuConfigTable === 'function') renderMenuConfigTable();
+        if (typeof renderWebpageTable === 'function') renderWebpageTable();
+        return;
     }
+
+    // 成功路徑「刻意不」重畫 選單配置管理 / 看板網頁管理 兩張表 —— 避免 DataTable destroy/recreate
+    // 造成整張表閃爍。理由：(1)「狀態」欄就是使用者剛點的那個開關，本就已反映新狀態；該列其餘欄位
+    //  （名稱/類型/內容/操作鈕）皆與 enabled 無關，毋須重建。(2) fetchInitialDataFromDB() 內部已重畫
+    //  側邊欄（啟用/停用會影響上方導覽列與側邊欄可見性），且它「不會」重畫這兩張管理表，故不會引發閃爍。
+    await window.fetchInitialDataFromDB();
 };
 
 // Expose for HTML inline handlers

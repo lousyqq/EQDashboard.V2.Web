@@ -74,6 +74,14 @@ export async function tryAutoLogin() {
     // FORCE_MANUAL_KEY 改用 sessionStorage（不是 localStorage）— 上方變數註解有說明
     //   同時清掉 localStorage 上舊版可能殘留的旗標，避免使用者升級後第一次仍卡 manual
     try { localStorage.removeItem(FORCE_MANUAL_KEY); } catch (e) { }
+    // allowManualLogin=false（純自動偵測模式）時，FORCE_MANUAL_KEY 失去意義：
+    //   它原本是「logout 後本 tab 第一次重整停留在 manual」用的，但無 manual 可停留。
+    //   若不清掉，logout 設下的旗標會永久殘留 → fetchWhoAmI 的 auto-login 閘門
+    //   （要求 FORCE_MANUAL_KEY !== '1'）永遠被擋 → 每次進站都卡在「以此身份進入」需手動點。
+    //   故在此模式下一律先清掉，讓自動登入得以進行（除非帳號無權限，見下方 fetchWhoAmI）。
+    if (!config.allowManualLogin) {
+        try { sessionStorage.removeItem(FORCE_MANUAL_KEY); } catch (e) { }
+    }
     const forceManual = sessionStorage.getItem(FORCE_MANUAL_KEY) === '1';
 
     if (forceManual && config.allowManualLogin) {
@@ -432,6 +440,18 @@ export function showLoginOverlay(defaultTab) {
     if (!ov) return;
     ov.style.setProperty('display', 'flex', 'important');
 
+    // ⭐ 每次顯示登入框都重新套用 Auth 設定，確保「手動輸入」tab 的顯示/隱藏永遠與
+    //    AllowManualLogin 一致 —— 不只初次載入。否則登出後（logout() 直接呼叫本函式、
+    //    未經 tryAutoLogin）手動帳密 tab/輸入頁會殘留可見。
+    const _cfg = window._authConfig || { allowManualLogin: true };
+    try { applyAuthConfigToUI(_cfg); } catch (e) { }
+
+    // ⭐ 停用手動輸入時，任何要求停在 'manual' 的呼叫（含 logout 的硬編碼 'manual'）一律
+    //    強制改回 'windows'，避免切到被隱藏的手動 tab 卻仍顯示其帳號/密碼輸入面板。
+    if (!_cfg.allowManualLogin && defaultTab === 'manual') {
+        defaultTab = 'windows';
+    }
+
     // ⚠️ 帳號已被刪除提示：main.js restoreLoginFromStorage() 若發現本地 user 在 DB 已查無，
     //   會設這個旗標。在這裡彈一次訊息，避免使用者誤以為單純 session 過期 (Round-5)
     try {
@@ -465,7 +485,8 @@ export function hideLoginOverlay() {
 }
 
 // =============================================================
-// 7) 登出 — 設旗標 → 後端清 cookie → 顯示登入框（停在手動 tab）
+// 7) 登出 — 設旗標 → 後端清 cookie → 顯示登入框
+//    （AllowManualLogin=true 時停在手動 tab；停用手動輸入時 showLoginOverlay 會自動改停 Windows 自動偵測 tab）
 // =============================================================
 export async function logout() {
     try {
@@ -502,6 +523,8 @@ export async function logout() {
     appState.currentActiveTopMenuId = null;
     appState.currentActiveSidebarMenuId = null;
 
+    // 傳 'manual' 為「允許手動時」的偏好；若 AllowManualLogin=false，showLoginOverlay 內部
+    //   會強制改回 'windows'（自動偵測），不會顯示帳號/密碼輸入頁。
     showLoginOverlay('manual');
 }
 window.logout = logout;

@@ -175,10 +175,16 @@ window.toggleSubMenu = function (e, targetId, element) {
     }
 };
 
-// 防呆小幫手：安全摧毀 DataTable
+// 管理頁 DataTable 的「目前分頁」短期記憶：safeDestroyDataTable 摧毀前寫入、initDataTable 重建後讀回並清掉。
+// 之所以要記在這裡而非各 render 函式：每個管理表都是「safeDestroyDataTable(同步摧毀) → 重建 tbody → initDataTable(50ms 後重建)」，
+// 摧毀當下分頁資訊就已消失，故必須在摧毀前先擷取。集中於此一處即自動涵蓋所有分頁管理表（dtMenuConfig/dtWebpage/dtAccount/...）。
+const _dtPageMemory = {};
+
+// 防呆小幫手：安全摧毀 DataTable（摧毀前先記住目前所在分頁，供重建後還原，避免狀態啟用/禁用、編輯、刪除後跳回第一頁）
 export function safeDestroyDataTable(tableId) {
     try {
         if (typeof $ !== 'undefined' && $.fn && $.fn.DataTable && $.fn.DataTable.isDataTable('#' + tableId)) {
+            try { _dtPageMemory[tableId] = $('#' + tableId).DataTable().page(); } catch (e) { }
             $('#' + tableId).DataTable().destroy();
         }
     } catch (e) { }
@@ -188,11 +194,26 @@ export function initDataTable(tableId, sortable = true) {
     setTimeout(() => {
         try {
             if (typeof $ === 'undefined' || !$.fn || !$.fn.DataTable) return;
-            if ($.fn.DataTable.isDataTable('#' + tableId)) $('#' + tableId).DataTable().destroy();
-            appState.dtInstances[tableId] = $('#' + tableId).DataTable({
+            if ($.fn.DataTable.isDataTable('#' + tableId)) {
+                // 若 render 函式未先呼叫 safeDestroyDataTable（少數路徑），這裡補擷取一次分頁再摧毀。
+                try { _dtPageMemory[tableId] = $('#' + tableId).DataTable().page(); } catch (e) { }
+                $('#' + tableId).DataTable().destroy();
+            }
+            const dt = $('#' + tableId).DataTable({
                 language: (typeof getDataTableLang === 'function') ? getDataTableLang() : {},
                 pageLength: 10, lengthMenu: [10, 25, 50, 100], ordering: sortable, order: [], autoWidth: false, stateSave: false
             });
+            appState.dtInstances[tableId] = dt;
+            // 還原摧毀前的分頁；資料列變少導致頁數縮減時 clamp 到最後一頁，避免落在空白頁（draw(false) 不重置分頁）。
+            const savedPage = _dtPageMemory[tableId];
+            if (typeof savedPage === 'number' && savedPage > 0) {
+                try {
+                    const info = dt.page.info();
+                    const targetPage = Math.min(savedPage, Math.max(0, info.pages - 1));
+                    if (targetPage > 0) dt.page(targetPage).draw(false);
+                } catch (e) { }
+            }
+            delete _dtPageMemory[tableId];
         } catch (e) { }
     }, 50);
 }
