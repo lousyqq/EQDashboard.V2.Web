@@ -1,6 +1,6 @@
 // === render/tables.js - 管理表格渲染 (Fab, Role, Account, Webpage, MenuConfig, Apply, Audit, AppGrid) ===
 
-import { getAccounts, getCustomMenus, getDataTableLang, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings, t } from '../config.js?v=20260607k';
+import { getCustomMenus, getDataTableLang, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings, t } from '../config.js?v=20260607k';
 
 
 import { deleteAccount, editAccount } from '../admin/account-manage.js?v=20260607k';
@@ -8,7 +8,7 @@ import { deleteFab, editFab } from '../admin/fab-manage.js?v=20260607k';
 import { deleteMenuNodeItem, deleteWebpageItem, editPersonalMenu, openAddMenuNodeModal, openAddWebpageModal } from '../admin/menu-manage.js?v=20260607k';
 import { handleDragLeave, handleDragOver, handleDragStart, handleDrop, openAuditModal, withdrawApply } from '../admin/misc-manage.js?v=20260607k';
 import { deleteRole, editRole } from '../admin/role-manage.js?v=20260607k';
-import { initDataTable, renderSidebarMenus, safeDestroyDataTable } from './sidebar.js?v=20260607k';
+import { getDtPageLen, initDataTable, rememberDtPageLen, renderSidebarMenus, safeDestroyDataTable } from './sidebar.js?v=20260607k';
 import { generateIconHtml } from '../ui/dialogs.js?v=20260607k';
 import { getFullMenuPathStr } from '../ui/navigation.js?v=20260607k';
 import { appState } from '../store.js?v=20260607k';
@@ -33,6 +33,7 @@ window.safeExternalUrl = function(url) {
 export function renderPersonalMenuManage() {
     try {
         if (typeof $ !== 'undefined' && $.fn && $.fn.DataTable && $.fn.DataTable.isDataTable('#dtPersonalMenu')) {
+            rememberDtPageLen('dtPersonalMenu');   // 拖曳/隱藏切換 destroy+rebuild 前先記住筆數
             $('#dtPersonalMenu').DataTable().destroy();
         }
 
@@ -192,7 +193,7 @@ export function renderPersonalMenuManage() {
             try {
                 const dt = $('#dtPersonalMenu').DataTable({
                     language: (typeof getDataTableLang === 'function') ? getDataTableLang() : {},
-                    pageLength: 10, lengthMenu: [10, 25, 50, 100],
+                    pageLength: getDtPageLen('dtPersonalMenu'), lengthMenu: [10, 25, 50, 100],
                     ordering: false, autoWidth: false, stateSave: false
                 });
                 appState.dtInstances['dtPersonalMenu'] = dt;
@@ -304,42 +305,137 @@ export function renderRoleTable() {
     initDataTable('dtRole');
 }
 
-export function renderAccountTable() {
-    safeDestroyDataTable('dtAccount'); const tbody = document.getElementById('accTableBody'); if (!tbody) return; tbody.innerHTML = '';
-    const accs = getAccounts(); const roles = getRoles(); const menus = getCustomMenus(); const fabs = getFabs();
-    let htmlBuffer = [];
-    accs.forEach(a => {
-        const aRoles = a.assignedRoles || a.AssignedRoles || [];
-        let visibleFabs = fabs.filter(f => {
-            const fRoles = f.assignedRoles || f.AssignedRoles || [];
-            return fRoles.some(fr => aRoles.some(ar => window.cleanId(fr) === window.cleanId(ar)));
-        });
-        let fabBadges = visibleFabs.map(f => {
-            const fName = f.displayName || f.DisplayName || f.fabName || f.FabName || f.id || f.FabId;
-            return `<span class="badge badge-flat-list me-1 mb-1">${window.escapeHTML(fName)}</span>`;
-        }).join('');
-        if (!fabBadges) fabBadges = '<span class="text-muted small">無可視廠區</span>';
+// ⚠️ 把 id 內嵌進 inline onclick 字串字面值前的跳脫（見 CLAUDE.md §6.4「反斜線工號」）。
+//   Windows 網域工號含反斜線（SARIEL\yu-tinglin），原樣內嵌時 JS parser 會把 `\y` 當無效跳脫吞掉。
+//   先做 JS 字串跳脫（\ → \\、' → \'、換行），再做 HTML 屬性跳脫（&/"/</>），順序對應「瀏覽器先 HTML-decode 屬性、再 JS-parse」。
+function _jsArg(s) {
+    let v = String(s == null ? '' : s)
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/\r/g, '\\r')
+        .replace(/\n/g, '\\n');
+    return v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 
-
-        const aLevel = a.roleLevel || a.RoleLevel || '';
-        const lvlBadge = aLevel === 'admin' ? '<span class="badge bg-danger">Admin</span>' : '<span class="badge bg-secondary">User</span>';
-
-        const dPages = a.defaultPages || a.DefaultPages || {};
-        let defPagesHtml = '';
-        if (Object.keys(dPages).length > 0) {
-            for (let fab in dPages) {
-                let m = menus.find(x => window.cleanId(x.id || x.MenuId) === window.cleanId(dPages[fab]));
-                let pathStr = m ? getFullMenuPathStr(m.id || m.MenuId, menus) : '找不到看板';
-                defPagesHtml += `<div class="small mb-1"><span class="badge bg-secondary me-1" style="width:40px;">${window.escapeHTML(fab)}</span><span class="text-success fw-bold">${window.escapeHTML(pathStr)}</span></div>`;
-            }
-        } else { defPagesHtml = '<span class="text-muted small">未設定 (自動抓取第一個)</span>'; }
-
-        const aId = a.empId || a.EmpId || ''; const aName = window.escapeHTML(a.name || a.Name || ''); const aDept = window.escapeHTML(a.department || a.Department || '');
-        let actionBtns = `<div class="d-flex flex-nowrap justify-content-center gap-2"><button type="button" class="btn btn-sm btn-outline-primary" style="width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center;" onclick="event.stopPropagation(); editAccount('${aId}');" title="編輯"><i class="fas fa-edit"></i></button><button type="button" class="btn btn-sm btn-outline-danger" style="width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center;" onclick="event.stopPropagation(); deleteAccount('${aId}')" title="刪除"><i class="fas fa-trash-alt"></i></button></div>`;
-        htmlBuffer.push(`<tr><td class="fw-bold align-middle">${aId}</td><td class="align-middle"><div class="fw-bold text-dark">${aName}</div><div class="small text-muted">${aDept}</div></td><td class="align-middle">${lvlBadge}</td><td class="text-start align-middle">${defPagesHtml}</td><td class="text-start align-middle" style="white-space: normal;">${fabBadges}</td><td class="text-center align-middle" style="white-space: nowrap; width: 1%;">${actionBtns}</td></tr>`);
+// 由帳號的 assignedRoles 推算「可視廠區」badge（fabs/roles 為全域表，admin 仍全量載入，O3 不影響）。
+function _accFabBadges(assignedRoles) {
+    const aRoles = assignedRoles || [];
+    const fabs = getFabs();
+    const visibleFabs = fabs.filter(f => {
+        const fRoles = f.assignedRoles || f.AssignedRoles || [];
+        return fRoles.some(fr => aRoles.some(ar => window.cleanId(fr) === window.cleanId(ar)));
     });
-    tbody.innerHTML = htmlBuffer.join('');
-    initDataTable('dtAccount');
+    const badges = visibleFabs.map(f => {
+        const fName = f.displayName || f.DisplayName || f.fabName || f.FabName || f.id || f.FabId;
+        return `<span class="badge badge-flat-list me-1 mb-1">${window.escapeHTML(fName)}</span>`;
+    }).join('');
+    return badges || '<span class="text-muted small">無可視廠區</span>';
+}
+
+// 由帳號的 defaultPages（{廠區:menuId}）渲染「登入預設首頁」欄。
+function _accDefaultPagesHtml(defaultPages) {
+    const dPages = defaultPages || {};
+    const menus = getCustomMenus();
+    if (Object.keys(dPages).length === 0) return '<span class="text-muted small">未設定 (自動抓取第一個)</span>';
+    let html = '';
+    for (let fab in dPages) {
+        const m = menus.find(x => window.cleanId(x.id || x.MenuId) === window.cleanId(dPages[fab]));
+        const pathStr = m ? getFullMenuPathStr(m.id || m.MenuId, menus) : '找不到看板';
+        html += `<div class="small mb-1"><span class="badge bg-secondary me-1" style="width:40px;">${window.escapeHTML(fab)}</span><span class="text-success fw-bold">${window.escapeHTML(pathStr)}</span></div>`;
+    }
+    return html;
+}
+
+// 把一筆 /api/Accounts 列轉成 DataTable 的一列陣列（對齊 index.html 6 欄 thead）。
+function _accRowData(a) {
+    const aId = a.empId || a.EmpId || '';
+    const aName = window.escapeHTML(a.name || a.Name || '');
+    const aDept = window.escapeHTML(a.department || a.Department || '');
+    const aLevel = a.roleLevel || a.RoleLevel || '';
+    const lvlBadge = aLevel === 'admin' ? '<span class="badge bg-danger">Admin</span>' : '<span class="badge bg-secondary">User</span>';
+    const fabBadges = _accFabBadges(a.assignedRoles || a.AssignedRoles || []);
+    const defPagesHtml = _accDefaultPagesHtml(a.defaultPages || a.DefaultPages || {});
+    const jsId = _jsArg(aId);
+    const idCell = window.escapeHTML(aId);
+    const actionBtns = `<div class="d-flex flex-nowrap justify-content-center gap-2"><button type="button" class="btn btn-sm btn-outline-primary" style="width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center;" onclick="event.stopPropagation(); editAccount('${jsId}');" title="編輯"><i class="fas fa-edit"></i></button><button type="button" class="btn btn-sm btn-outline-danger" style="width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center;" onclick="event.stopPropagation(); deleteAccount('${jsId}')" title="刪除"><i class="fas fa-trash-alt"></i></button></div>`;
+    return [
+        `<span class="fw-bold">${idCell}</span>`,
+        `<div class="fw-bold text-dark">${aName}</div><div class="small text-muted">${aDept}</div>`,
+        lvlBadge,
+        defPagesHtml,
+        `<div style="white-space: normal;">${fabBadges}</div>`,
+        actionBtns
+    ];
+}
+
+// 記住建立 serverSide DataTable 時用的語言；語言切換時須重建才能換掉 DataTable 自身 chrome 文字。
+let _accTableLang = null;
+
+// 帳號管理表（serverSide DataTable）。
+//   O3 重構後 getAccounts()（appState.accounts）只回呼叫者自己一列，故清單一律走 server-side 分頁端點
+//   GET /api/Accounts?page=&pageSize=&q=（admin-only），不可再用 getAccounts() 在前端組整表。
+export function renderAccountTable() {
+    const tbody = document.getElementById('accTableBody');
+    if (!tbody) return;
+
+    // 帳號管理為 admin-only：非 admin 不初始化 serverSide DataTable（否則會對 /api/Accounts 連發 403）。
+    const isAdmin = !!(appState.currentUser && String(appState.currentUser.roleLevel || '').toLowerCase() === 'admin');
+    if (!isAdmin) {
+        try { if (typeof $ !== 'undefined' && $.fn && $.fn.DataTable && $.fn.DataTable.isDataTable('#dtAccount')) $('#dtAccount').DataTable().destroy(); } catch (e) { }
+        tbody.innerHTML = '';
+        _accTableLang = null;
+        return;
+    }
+
+    const curLang = appState.currentLang || null;
+    const exists = (typeof $ !== 'undefined' && $.fn && $.fn.DataTable && $.fn.DataTable.isDataTable('#dtAccount'));
+
+    // 已存在且語言未變 → 僅重新抓取（保留當前分頁/搜尋字串），不重建。
+    if (exists && _accTableLang === curLang) {
+        try { $('#dtAccount').DataTable().ajax.reload(null, false); return; } catch (e) { }
+    }
+    // 語言已變 → 摧毀重建以套用新的 DataTable chrome 文字（重建前先記住筆數，避免換語言後跳回預設 10）。
+    if (exists) { try { rememberDtPageLen('dtAccount'); $('#dtAccount').DataTable().destroy(); } catch (e) { } }
+
+    setTimeout(() => {
+        try {
+            if (typeof $ === 'undefined' || !$.fn || !$.fn.DataTable) return;
+            if ($.fn.DataTable.isDataTable('#dtAccount')) {
+                try { $('#dtAccount').DataTable().ajax.reload(null, false); return; } catch (e) { }
+            }
+            const dt = $('#dtAccount').DataTable({
+                language: (typeof getDataTableLang === 'function') ? getDataTableLang() : {},
+                serverSide: true,
+                processing: true,
+                searching: true,
+                pageLength: getDtPageLen('dtAccount'), lengthMenu: [10, 25, 50, 100],
+                ordering: false, order: [], autoWidth: false, stateSave: false,
+                columns: [{ data: 0 }, { data: 1 }, { data: 2 }, { data: 3 }, { data: 4 }, { data: 5 }],
+                columnDefs: [{ targets: 5, className: 'text-center align-middle', width: '90px' }, { targets: [3, 4], className: 'text-start align-middle' }, { targets: [0, 1, 2], className: 'align-middle' }],
+                ajax: function (data, callback) {
+                    const pageSize = data.length > 0 ? data.length : 10;
+                    const page = Math.floor((data.start || 0) / pageSize) + 1;
+                    const q = (data.search && data.search.value) ? data.search.value : '';
+                    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+                    if (q) params.set('q', q);
+                    fetch('/api/Accounts?' + params.toString(), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                        .then(r => r.ok ? r.json() : Promise.reject(r.status))
+                        .then(json => {
+                            const items = (json && json.items) ? json.items : [];
+                            const rows = items.map(a => _accRowData(a));
+                            const total = (json && typeof json.total === 'number') ? json.total : 0;
+                            callback({ draw: data.draw, recordsTotal: total, recordsFiltered: total, data: rows });
+                        })
+                        .catch(err => {
+                            console.error('[renderAccountTable] 載入帳號清單失敗:', err);
+                            callback({ draw: data.draw, recordsTotal: 0, recordsFiltered: 0, data: [] });
+                        });
+                }
+            });
+            appState.dtInstances['dtAccount'] = dt;
+            _accTableLang = curLang;
+        } catch (e) { console.error('[renderAccountTable] 初始化失敗:', e); }
+    }, 50);
 }
 
 export function renderWebpageTable() {

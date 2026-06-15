@@ -180,11 +180,28 @@ window.toggleSubMenu = function (e, targetId, element) {
 // 摧毀當下分頁資訊就已消失，故必須在摧毀前先擷取。集中於此一處即自動涵蓋所有分頁管理表（dtMenuConfig/dtWebpage/dtAccount/...）。
 const _dtPageMemory = {};
 
-// 防呆小幫手：安全摧毀 DataTable（摧毀前先記住目前所在分頁，供重建後還原，避免狀態啟用/禁用、編輯、刪除後跳回第一頁）
+// 管理頁 DataTable 的「每頁筆數 (pageLength)」session 記憶（存在 appState.dtPageLenMemory，整頁重整才會清空）。
+//   rememberDtPageLen：摧毀前擷取使用者當下選的筆數；getDtPageLen：重建時讀回（無記錄則回預設）。
+//   ⭐️ UX：使用者改筆數或整頁重整才回預設；拖曳/編輯儲存等 destroy+rebuild 應保留筆數，不可硬跳回 10。
+export function rememberDtPageLen(tableId) {
+    try {
+        if (typeof $ !== 'undefined' && $.fn && $.fn.DataTable && $.fn.DataTable.isDataTable('#' + tableId)) {
+            const len = $('#' + tableId).DataTable().page.len();
+            if (typeof len === 'number' && len > 0) appState.dtPageLenMemory[tableId] = len;
+        }
+    } catch (e) { }
+}
+export function getDtPageLen(tableId, fallback = 10) {
+    const len = appState.dtPageLenMemory ? appState.dtPageLenMemory[tableId] : undefined;
+    return (typeof len === 'number' && len > 0) ? len : fallback;
+}
+
+// 防呆小幫手：安全摧毀 DataTable（摧毀前先記住目前所在分頁＋每頁筆數，供重建後還原，避免狀態啟用/禁用、編輯、刪除後跳回第一頁/預設筆數）
 export function safeDestroyDataTable(tableId) {
     try {
         if (typeof $ !== 'undefined' && $.fn && $.fn.DataTable && $.fn.DataTable.isDataTable('#' + tableId)) {
             try { _dtPageMemory[tableId] = $('#' + tableId).DataTable().page(); } catch (e) { }
+            rememberDtPageLen(tableId);
             $('#' + tableId).DataTable().destroy();
         }
     } catch (e) { }
@@ -195,13 +212,14 @@ export function initDataTable(tableId, sortable = true) {
         try {
             if (typeof $ === 'undefined' || !$.fn || !$.fn.DataTable) return;
             if ($.fn.DataTable.isDataTable('#' + tableId)) {
-                // 若 render 函式未先呼叫 safeDestroyDataTable（少數路徑），這裡補擷取一次分頁再摧毀。
+                // 若 render 函式未先呼叫 safeDestroyDataTable（少數路徑），這裡補擷取一次分頁＋筆數再摧毀。
                 try { _dtPageMemory[tableId] = $('#' + tableId).DataTable().page(); } catch (e) { }
+                rememberDtPageLen(tableId);
                 $('#' + tableId).DataTable().destroy();
             }
             const dt = $('#' + tableId).DataTable({
                 language: (typeof getDataTableLang === 'function') ? getDataTableLang() : {},
-                pageLength: 10, lengthMenu: [10, 25, 50, 100], ordering: sortable, order: [], autoWidth: false, stateSave: false
+                pageLength: getDtPageLen(tableId), lengthMenu: [10, 25, 50, 100], ordering: sortable, order: [], autoWidth: false, stateSave: false
             });
             appState.dtInstances[tableId] = dt;
             // 還原摧毀前的分頁；資料列變少導致頁數縮減時 clamp 到最後一頁，避免落在空白頁（draw(false) 不重置分頁）。
@@ -424,14 +442,22 @@ export function renderSidebarMenus() {
             return !hasValidParent;
         });
 
-        // ⭐️ 核心修復：獨立針對 rootMenus 依 allowedMenuIds 的順序進行嚴格排序，避免與 order 混用導致非遞移性排序崩潰
-        if (!inPersonalMode) {
-            rootMenus.sort((a, b) => {
-                const idxA = dedupedInitIds.indexOf(window.cleanId(a.id));
-                const idxB = dedupedInitIds.indexOf(window.cleanId(b.id));
-                return (idxA === -1 ? 9999 : idxA) - (idxB === -1 ? 9999 : idxB);
-            });
-        }
+        // ⭐️ 核心修復：rootMenus（上方導覽列）一律依「allowedMenuIds 串接順序 (dedupedInitIds)」排，
+        //   避免與全域 m.order 混用導致非遞移性排序崩潰。
+        //   個人模式下若該 root 有「個人拖曳順序」(pSets[id].order) 則優先採用；無（如「還原預設版面」後）
+        //   則 fallback 到 dedupedInitIds → 自訂版面的上方導覽列與系統版面完全相同。
+        //   （此與 render/tables.js renderPersonalMenuManage 的 root order 邏輯一致，三處 nav/table/system 同序。）
+        rootMenus.sort((a, b) => {
+            const keyOf = (m) => {
+                if (inPersonalMode) {
+                    const po = pSets[m.id] ? pSets[m.id].order : undefined;
+                    if (po != null) return po;                          // 個人拖曳順序優先
+                }
+                const idx = dedupedInitIds.indexOf(window.cleanId(m.id));
+                return idx === -1 ? 9999 : idx;                         // 無個人順序 → 與系統版面同序
+            };
+            return keyOf(a) - keyOf(b);
+        });
 
         if (rootMenus.length === 0 && menus.length > 0) rootMenus = menus.slice(0, 5);
         if ((!appState.currentActiveTopMenuId || appState.currentActiveTopMenuId !== 'system_settings' && !rootMenus.find(m => window.cleanId(m.id) === window.cleanId(appState.currentActiveTopMenuId))) && rootMenus.length > 0) {

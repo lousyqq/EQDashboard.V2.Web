@@ -28,10 +28,13 @@ public class MenuService : IMenuService
 
     public async Task<List<object>> GetMenusAsync(string empId, bool isAdmin)
     {
+        // AsSplitQuery：載入全部 Menus × 3 個 collection（結構父子 + 白/黑名單 ACL），
+        //   單一 JOIN 查詢會 cartesian 相乘（menus×parents×allow×deny）。拆成多查詢避免列數爆炸。
         var menus = await _context.Menus
             .Include(m => m.MapMenuStructuresChild)
             .Include(m => m.MapMenuAllowAccounts)
             .Include(m => m.MapMenuDenyAccounts)
+            .AsSplitQuery()
             .ToListAsync();
 
         // P1 過濾：非 admin 只回他真的看得到的 menus，避免洩漏全部看板 URL / icon
@@ -472,7 +475,8 @@ public class MenuService : IMenuService
     {
         if (dto.ParentIds != null)
         {
-            foreach (var pId in dto.ParentIds.Where(x => !string.IsNullOrWhiteSpace(x) && x.Length <= 50))
+            // 複合 PK (ParentMenuId+ChildMenuId)：payload 內重複 parentId 會撞 EF identity map「same key already tracked」→ 500。
+            foreach (var pId in dto.ParentIds.Where(x => !string.IsNullOrWhiteSpace(x) && x.Length <= 50).Distinct())
             {
                 int order = 0;
                 if (dto.ParentOrders != null && dto.ParentOrders.ContainsKey(pId))

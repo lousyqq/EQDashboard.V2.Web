@@ -228,4 +228,45 @@ public class AuthzMatrixTests : IClassFixture<EqDashboardWebAppFactory>
         var resp = await subadmin.SendAsync(req);
         Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
     }
+
+    /// <summary>
+    /// ETag 身分綁定回歸：GetInitialData 的回應 body 對非 admin 做列級過濾＝同一 URL 不同使用者內容不同，
+    /// 故 ETag 必須摻入身分（admin 與 normal 必不相同）。否則共用瀏覽器 profile 換帳號時，瀏覽器帶上前一位
+    /// 使用者的 If-None-Match → 伺服器只比字串 → 304 → 回放前一位的快取 body（admin 全量資料外洩給非 admin）。
+    /// 驗三件事：①admin/normal 的 ETag 不相等；②normal 帶 admin 的 ETag 不得 304（強制 200 重抓）；
+    /// ③normal 帶自己的 ETag 照常 304（同一使用者的快取優化仍生效）。
+    /// 安全性：GET 不會 bump 全域 ETag；背景稽核寫的是 UserActivityLog（不在 InitialData 快取/interceptor 範圍）；
+    /// xUnit 同 class 測試循序執行 → 兩次取自己 ETag 之間不會被其他測試的寫入插隊改變版本。
+    /// </summary>
+    [Fact]
+    public async Task GetInitialData_ETagIdentityBound_NoCrossUser304()
+    {
+        var admin = await _factory.GetAuthedClientAsync(AdminId, AdminPw);
+        var normal = await _factory.GetAuthedClientAsync(NormalId, NormalPw);
+
+        var adminResp = await admin.GetAsync("/Settings/GetInitialData");
+        adminResp.EnsureSuccessStatusCode();
+        var adminETag = adminResp.Headers.TryGetValues("ETag", out var av) ? av.First() : "";
+        Assert.False(string.IsNullOrEmpty(adminETag));
+
+        var normalResp = await normal.GetAsync("/Settings/GetInitialData");
+        normalResp.EnsureSuccessStatusCode();
+        var normalETag = normalResp.Headers.TryGetValues("ETag", out var nv) ? nv.First() : "";
+        Assert.False(string.IsNullOrEmpty(normalETag));
+
+        // ① 身分不同 → ETag 不同
+        Assert.NotEqual(adminETag, normalETag);
+
+        // ② normal 帶 admin 的 ETag → 不得命中 304（防跨使用者快取回放）
+        var crossReq = new HttpRequestMessage(HttpMethod.Get, "/Settings/GetInitialData");
+        crossReq.Headers.TryAddWithoutValidation("If-None-Match", adminETag);
+        var crossResp = await normal.SendAsync(crossReq);
+        Assert.Equal(HttpStatusCode.OK, crossResp.StatusCode);
+
+        // ③ normal 帶自己的 ETag → 照常 304
+        var selfReq = new HttpRequestMessage(HttpMethod.Get, "/Settings/GetInitialData");
+        selfReq.Headers.TryAddWithoutValidation("If-None-Match", normalETag);
+        var selfResp = await normal.SendAsync(selfReq);
+        Assert.Equal(HttpStatusCode.NotModified, selfResp.StatusCode);
+    }
 }

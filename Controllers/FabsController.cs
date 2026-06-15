@@ -44,6 +44,9 @@ public class FabsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CreateFab([FromBody] FabDto dto)
     {
+        // 先查 PK（FabId）再查業務鍵（FabName）— 重複 FabId 若不先擋會直接撞 PK violation 500。
+        if (await _context.Fabs.AnyAsync(f => f.FabId == dto.Id))
+            return BadRequest("廠區 ID 已存在");
         if (await _context.Fabs.AnyAsync(f => f.FabName == dto.FabName))
             return BadRequest("廠區已存在");
 
@@ -97,17 +100,27 @@ public class FabsController : ControllerBase
         fab.DisplayName = dto.DisplayName;
         fab.DefaultLang = dto.DefaultLang;
 
-        // 更新 Roles
-        if (fab.MapFabRoles != null)
+        // §6.2：「刪舊 mappings → 寫新 mappings」跨兩次 SaveChanges，必須整批原子 —
+        //   無交易時第二段失敗會留下被清空的 Map_Fab_Role（廠區對所有人隱藏）。
+        //   DbContext 啟用 EnableRetryOnFailure → 手動交易一律包在 ExecutionStrategy 內
+        //   （直接 BeginTransactionAsync 會拋「不支援 user-initiated transactions」）。
+        var strategy = _context.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
         {
-            _context.MapFabRoles.RemoveRange(fab.MapFabRoles);
-            await _context.SaveChangesAsync(); // 強制執行刪除以避免 PK tracking 衝突
-        }
+            await using var trans = await _context.Database.BeginTransactionAsync();
 
-        foreach (var roleId in roleIds)
-            _context.MapFabRoles.Add(new MapFabRole { FabId = id, RoleId = roleId });
+            if (fab.MapFabRoles != null && fab.MapFabRoles.Count > 0)
+            {
+                _context.MapFabRoles.RemoveRange(fab.MapFabRoles);
+                await _context.SaveChangesAsync(); // 先執行刪除以避免複合 PK tracking 衝突
+            }
 
-        await _context.SaveChangesAsync();
+            foreach (var roleId in roleIds)
+                _context.MapFabRoles.Add(new MapFabRole { FabId = id, RoleId = roleId });
+
+            await _context.SaveChangesAsync();
+            await trans.CommitAsync();
+        });
         _settingsService.InvalidateInitialDataCache();
         return Ok(new { success = true });
     }

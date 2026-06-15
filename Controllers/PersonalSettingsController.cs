@@ -44,24 +44,18 @@ public class PersonalSettingsController : ControllerBase
         var isAdmin = User.IsInRole("admin");
         var visibleSet = await _menuAuthService.GetVisibleMenuIdsAsync(currentUserId, isAdmin);
 
-        // 1. 為了確保資料乾淨，先刪除該使用者的舊有設定
-        var existingSettings = await _context.PersonalSettings
-            .Where(p => p.EmpId == currentUserId)
-            .ToListAsync();
-
-        if (existingSettings.Any())
-        {
-            _context.PersonalSettings.RemoveRange(existingSettings);
-        }
-
-        // 2. 寫入新設定 (強制 EmpId 為當前使用者，防禦 IDOR 越權竄改)
+        // 1. 先把通過可見性檢查的新列在記憶體中備妥（尚未 Add 進 context、不佔 tracking）。
+        //    同步以 HashSet 去重：payload 內重複 MenuId 會在 Add 階段撞「Added 同鍵」追蹤衝突。
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var toInsert = new List<PersonalSetting>();
         foreach (var dto in settings)
         {
             if (string.IsNullOrEmpty(dto.MenuId)) continue;
             // 🛡️ 跳過不可見的 MenuId — admin (visibleSet==null) 全放行
             if (visibleSet != null && !visibleSet.Contains(dto.MenuId)) continue;
+            if (!seen.Add(dto.MenuId)) continue; // 同一批重複 MenuId 只留第一筆
 
-            _context.PersonalSettings.Add(new PersonalSetting
+            toInsert.Add(new PersonalSetting
             {
                 EmpId = currentUserId, // 🛡️ 強制綁定，不信任前端傳來的 EmpId
                 MenuId = dto.MenuId,
@@ -72,7 +66,34 @@ public class PersonalSettingsController : ControllerBase
             });
         }
 
-        await _context.SaveChangesAsync();
+        var existingSettings = await _context.PersonalSettings
+            .Where(p => p.EmpId == currentUserId)
+            .ToListAsync();
+
+        // 2. 「刪舊→寫新」：PersonalSetting 為複合 PK (EmpId+MenuId)，與 Map_Role_Menu 同類。
+        //    若在單次 SaveChanges 內 RemoveRange 既有(tracking) 後又 Add 同鍵新列，EF identity map
+        //    會丟「another instance with the same key value is already being tracked」(reorder/隱藏
+        //    切換因 MenuId 不變必中)。故先 SaveChanges 落實刪除清掉 tracking，再寫新列 → 跨兩次
+        //    SaveChanges 須整批原子，包進 ExecutionStrategy 交易（EnableRetryOnFailure 下不可直接
+        //    BeginTransaction）。對齊 RolesController.UpdateRole / FabsController.UpdateFab。
+        var strategy = _context.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
+        {
+            await using var trans = await _context.Database.BeginTransactionAsync();
+
+            if (existingSettings.Count > 0)
+            {
+                _context.PersonalSettings.RemoveRange(existingSettings);
+                await _context.SaveChangesAsync(); // 先執行刪除以清掉 tracking，避免複合 PK 衝突
+            }
+
+            if (toInsert.Count > 0)
+                _context.PersonalSettings.AddRange(toInsert);
+
+            await _context.SaveChangesAsync();
+            await trans.CommitAsync();
+        });
+
         // ⚠️ 呼叫 InvalidateVolatileDataCache 僅清除個人相關快取，不影響全域設定快取，降低 DB 負載
         _settingsService.InvalidateVolatileDataCache();
         return Ok(new { success = true, message = "個人設定已儲存" });

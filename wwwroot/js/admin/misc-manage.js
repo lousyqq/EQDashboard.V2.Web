@@ -1,6 +1,6 @@
 // === admin/misc-manage.js - AppGrid + 需求申請 + 審核 + Excel 匯出 + 圖示工具 ===
 
-import { getAccounts, getAppItems, getCustomMenus, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings } from '../config.js?v=20260607k';
+import { getAppItems, getCustomMenus, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings } from '../config.js?v=20260607k';
 
 
 import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260607k';
@@ -536,7 +536,9 @@ export async function saveAuditItem(e) {
 }
 
 // === Excel 匯出備份（對齊 TEST_20260429.html:2186-2259）===
-export function createWorkbookData() {
+// ⚠️ O3 重構後 getAccounts()（appState.accounts）只回呼叫者自己一列，無法用來匯出全部帳號。
+//    故帳號相關 sheet 一律改打 admin-only 的 GET /api/Accounts/export 取完整明細（async）。
+export async function createWorkbookData() {
     if (typeof XLSX === 'undefined') { customAlert('SheetJS 套件未載入'); return null; }
     const wb = XLSX.utils.book_new();
 
@@ -564,7 +566,18 @@ export function createWorkbookData() {
     const menus = getCustomMenus();
     const fabs = getFabs();
     const roles = getRoles();
-    const accs = getAccounts();
+    // 帳號清單走 server-side 全量匯出端點（admin-only）；含 assignedRoles/manageableMenus/defaultPages/canEditOthers。
+    let accs = [];
+    try {
+        const resp = await fetch('/api/Accounts/export', { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        accs = await resp.json();
+        if (!Array.isArray(accs)) accs = [];
+    } catch (e) {
+        console.error('[createWorkbookData] 取得帳號匯出資料失敗:', e);
+        if (typeof customAlert === 'function') customAlert('取得帳號清單失敗，匯出已取消：' + (e.message || e));
+        return null;
+    }
     const apps = getAppItems();
     const reqs = getRequests();
 
@@ -634,9 +647,9 @@ export async function refreshServerCache() {
 }
 window.refreshServerCache = refreshServerCache;
 
-export function exportConfig() {
+export async function exportConfig() {
     try {
-        const wb = createWorkbookData();
+        const wb = await createWorkbookData();
         if (!wb) return;
         XLSX.writeFile(wb, "EQDashboard_Setting.xlsx");
     } catch (e) {

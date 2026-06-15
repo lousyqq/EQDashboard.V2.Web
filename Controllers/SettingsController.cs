@@ -20,22 +20,33 @@ public class SettingsController : Controller
 {
     private readonly ISettingsService _settingsService;
     private readonly IMenuAuthService _menuAuthService;
+    private readonly ILogger<SettingsController> _logger;
 
-    public SettingsController(ISettingsService settingsService, IMenuAuthService menuAuthService)
+    public SettingsController(ISettingsService settingsService, IMenuAuthService menuAuthService, ILogger<SettingsController> logger)
     {
         _settingsService = settingsService;
         _menuAuthService = menuAuthService;
+        _logger = logger;
     }
 
     [HttpGet]
     public async Task<IActionResult> GetInitialData()
     {
-        var eTag = $"\"{_settingsService.GetCurrentETag()}\"";
+        // ⚠️ ETag 必須摻入「身分」（empId + isAdmin），不可只用全域版本號：
+        //    本端點的回應 body 對非 admin 做列級過濾＝同一 URL 不同使用者拿到不同內容。
+        //    若 ETag 只含全域值，共用瀏覽器 profile 的機台換帳號登入時，瀏覽器會自動帶上
+        //    「前一位使用者」的 If-None-Match → 伺服器只比字串 → 304 → 瀏覽器把前一位
+        //    使用者的快取 body 端給現任使用者（admin 全量資料外洩給非 admin、或反向拿到殘缺資料）。
+        //    摻入身分後跨使用者必不相符（強制重抓 200），同一使用者的 304 優化照常生效。
+        var isAdmin = User.IsInRole("admin");
+        var empIdForETag = (User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "").Replace("\"", "");
+        var eTag = $"\"{_settingsService.GetCurrentETag()}:{empIdForETag}:{(isAdmin ? 1 : 0)}\"";
 
         if (Request.Headers.TryGetValue("If-None-Match", out var incomingETag))
         {
             if (incomingETag == eTag)
             {
+                Response.Headers["ETag"] = eTag; // HTTP 規範：304 也須帶 ETag
                 return StatusCode(StatusCodes.Status304NotModified);
             }
         }
@@ -48,7 +59,7 @@ public class SettingsController : Controller
         {
             var data = await _settingsService.GetInitialDataAsync();
 
-            if (!User.IsInRole("admin"))
+            if (!isAdmin)
             {
                 var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
                 var visibleMenuIds = await _menuAuthService.GetVisibleMenuIdsAsync(empId, false)
@@ -87,11 +98,25 @@ public class SettingsController : Controller
                 return Json(filteredData);
             }
 
-            return Json(data);
+            // admin：全域表（Menus/Fabs/Roles/Apps/Map_Menu_*/Map_Role_Menu/Map_Fab_Role）仍回全量，
+            //   但「隨帳號數成長」的帳號權限表只回自己這一列 —— 帳號清單改由 GET /api/Accounts 分頁端點按需提供。
+            //   目的：admin 每次 GetInitialData 的回應不再夾帶全部帳號（10 萬帳號時前端不致崩潰），
+            //         同時保留自己這一列供登入者解析（restoreLoginFromStorage 找不到自己會誤判帳號被刪）與 MyProfile 覆寫。
+            //   Requests 刻意「不」收斂（admin 需在「撤回申請」頁看到所有人的申請）。
+            var adminEmpId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+            var adminScoped = new Dictionary<string, object>();
+            foreach (var kvp in data)
+            {
+                if (kvp.Value is List<Dictionary<string, object>> list && IsOwnAccountScopedTable(kvp.Key))
+                    adminScoped[kvp.Key] = list.Where(r => RowMatchesEmpId(r, adminEmpId)).ToList();
+                else
+                    adminScoped[kvp.Key] = kvp.Value;
+            }
+            return Json(adminScoped);
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"GetInitialData 錯誤: {ex}");
+            _logger.LogError(ex, "GetInitialData 錯誤");
             // D3：改回正確的 HTTP 5xx（原本回 200 + {error:true} 是反模式，靠前端自檢旗標）。
             //   前端 fetchInitialDataFromDB 已用 `if (!response.ok)` 處理非 2xx，故安全；
             //   保留 body 的 {error,message} 供除錯，但狀態碼語意正確 → 監控/代理也看得懂。
@@ -128,7 +153,7 @@ public class SettingsController : Controller
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"SaveData 錯誤: {ex}");
+            _logger.LogError(ex, "SaveData 錯誤");
             return Json(new { success = false, message = "伺服器寫入發生錯誤，請聯繫系統管理員。" });
         }
     }
@@ -159,9 +184,23 @@ public class SettingsController : Controller
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"UpdateLoginStats 錯誤: {ex}");
+            _logger.LogError(ex, "UpdateLoginStats 錯誤");
             return Json(new { success = false, message = "更新登入紀錄失敗，請聯繫系統管理員。" });
         }
+    }
+
+    // ===== admin 帳號權限表收斂判定 =====
+    // 「隨帳號數成長」且 admin 不需在 GetInitialData 拿全量的表：Accounts、PersonalSettings、所有 Map_Account_*。
+    //   （帳號清單→分頁端點；自己的權限→MyProfile；個人版面→只快取自己。Requests 不在此列，admin 需看全部。）
+    private static bool IsOwnAccountScopedTable(string tableName)
+        => string.Equals(tableName, "Accounts", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(tableName, "PersonalSettings", StringComparison.OrdinalIgnoreCase)
+        || tableName.StartsWith("Map_Account_", StringComparison.OrdinalIgnoreCase);
+
+    private static bool RowMatchesEmpId(Dictionary<string, object> row, string empId)
+    {
+        var k = row.Keys.FirstOrDefault(x => string.Equals(x, "EmpId", StringComparison.OrdinalIgnoreCase));
+        return k != null && string.Equals(row[k]?.ToString(), empId, StringComparison.OrdinalIgnoreCase);
     }
 
     // ===== 非 admin 過濾邏輯 =====

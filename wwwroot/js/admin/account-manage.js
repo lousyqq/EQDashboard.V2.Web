@@ -1,8 +1,5 @@
 // === admin/account-manage.js - 帳號管理 CRUD ===
 
-import { getAccounts } from '../config.js?v=20260607k';
-
-
 import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260607k';
 import { deleteAccountAPI, fetchInitialDataFromDB, saveAccountAPI } from '../api.js?v=20260607k';
 import { renderAccDefaultPagesUI, renderAccManageMenuCheckboxes, renderAccRoleCheckboxes } from '../render/account-ui.js?v=20260607k';
@@ -54,22 +51,22 @@ export function openAddAccountModal() {
 
 export async function editAccount(empId) {
     try {
-        let acc = getAccounts().find(a => window.cleanId(a.empId) === window.cleanId(empId));
-        if (!acc) { console.error("找不到對應的帳號資料 (工號: " + empId + ")"); return; }
-
-        // 🛡️ Lazy Loading：向後端取得此帳號的詳細權限設定
+        // 🛡️ Lazy Loading：帳號清單（getAccounts）O3 重構後只剩「呼叫者自己一列」，
+        //   故編輯任何帳號（含自己）一律向後端 GET /api/Accounts/{id} 取單帳號完整明細
+        //   （含 manageableMenus / extraMenus / denyMenus / defaultPages），不可再依賴 getAccounts()。
+        //   ⚠️ empId 必須 encodeURIComponent：Windows 網域工號含反斜線（SARIEL\yu-tinglin），
+        //      未編碼時瀏覽器會把路徑中的「\」正規化成「/」→ 變成兩段路徑 → 路由不匹配 404
+        //      → 整個編輯/儲存流程拿到殘缺資料。/api/Accounts/{id} 為 admin-only，與本頁 authz 一致。
+        let acc;
         try {
-            const res = await fetch(`/api/Accounts/${acc.empId}`);
-            if (res.ok) {
-                const details = await res.json();
-                // 將詳細設定合併回記憶體中的 acc 物件
-                Object.assign(acc, details);
-            } else {
-                console.warn(`無法取得帳號 ${empId} 的詳細權限`);
-            }
+            const res = await fetch(`/api/Accounts/${encodeURIComponent(empId)}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            if (!res.ok) { console.error(`無法取得帳號 ${empId} 的明細 (HTTP ${res.status})`); return; }
+            acc = await res.json();
         } catch (err) {
             console.error("Fetch account details failed:", err);
+            return;
         }
+        if (!acc || !acc.empId) { console.error("帳號明細回傳格式異常 (工號: " + empId + ")"); return; }
 
         document.getElementById('editAccMode').value = 'edit';
         document.getElementById('accEmpId').value = acc.empId; document.getElementById('accEmpId').disabled = true;
@@ -138,11 +135,9 @@ export async function saveAccountItem(e) {
         let extraMenus = pruneOverride(appState.tempExtraMenus);
         let denyMenus = pruneOverride(appState.tempDenyMenus);
 
+        // 工號唯一性改由後端 CreateAccountAsync 把關（回 400「帳號工號已存在」）：
+        //   帳號清單 O3 後只剩自己一列、無法本地查重，故移除舊的 getAccounts().some() 前端查重。
         let isNew = (mode !== 'edit');
-        if (isNew) {
-            let accs = getAccounts();
-            if (accs.some(a => window.cleanId(a.empId) === window.cleanId(empId))) { customAlert('工號已存在！'); return false; }
-        }
 
         const payload = {
             empId: empId,

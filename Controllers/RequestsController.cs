@@ -76,7 +76,9 @@ public class RequestsController : ControllerBase
         }
 
         await _context.SaveChangesAsync();
-        _settingsService.InvalidateInitialDataCache(); // 確保下次快取更新
+        // Requests 表只在 Volatile(10s) bucket → 用 volatile 失效即可，不必連帶清掉 Global(60s) 9 張權限表快取。
+        // (兩變體都會 bump ETag，故 visibleMenus 與 HTTP-304 正確性不受影響。)
+        _settingsService.InvalidateVolatileDataCache();
 
         return Ok(new { success = true, message = "申請已送出" });
     }
@@ -98,7 +100,7 @@ public class RequestsController : ControllerBase
         // Timestamp 保留原始時間或更新皆可，原邏輯未改 Timestamp
 
         await _context.SaveChangesAsync();
-        _settingsService.InvalidateInitialDataCache();
+        _settingsService.InvalidateVolatileDataCache(); // Requests 僅在 Volatile bucket，免清 Global 權限快取
 
         return Ok(new { success = true, message = "申請已撤回" });
     }
@@ -121,8 +123,8 @@ public class RequestsController : ControllerBase
         await _context.SaveChangesAsync();
         
         await _activityLogger.LogAuditAsync(HttpContext, "Requests", "Delete", id, "Soft Delete Backup", backupJson);
-        
-        _settingsService.InvalidateInitialDataCache();
+
+        _settingsService.InvalidateVolatileDataCache(); // Requests 僅在 Volatile bucket，免清 Global 權限快取
 
         return Ok(new { success = true, message = "紀錄已刪除" });
     }
@@ -139,7 +141,7 @@ public class RequestsController : ControllerBase
         req.Reply = dto.Reply;
 
         await _context.SaveChangesAsync();
-        _settingsService.InvalidateInitialDataCache();
+        _settingsService.InvalidateVolatileDataCache(); // Requests 僅在 Volatile bucket，免清 Global 權限快取
 
         return Ok(new { success = true, message = "審核已儲存" });
     }

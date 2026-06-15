@@ -167,6 +167,7 @@ public class AuthController : ControllerBase
             .Include(x => x.MapAccountDefaultPages)
             .Include(x => x.MapAccountExtraMenus)
             .Include(x => x.MapAccountDenyMenus)
+            .AsSplitQuery() // 5 個 collection-Include 避免 cartesian 相乘
             .FirstOrDefaultAsync(x => x.EmpId == empId);
 
         if (a == null) return NotFound();

@@ -19,10 +19,21 @@ public class AccountsController : ControllerBase
         _activityLogger = activityLogger;
     }
 
+    // 帳號清單 server-side 分頁端點：帳號管理表格按需向這裡取「單頁」基本資料，
+    //   不再隨 GetInitialData 把全部帳號一次塞給 admin（10 萬帳號也只回一頁，前端不致崩潰）。
     [HttpGet]
-    public async Task<IActionResult> GetAccounts()
+    public async Task<IActionResult> GetAccounts([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] string? q = null)
     {
-        var result = await _accountService.GetAccountsAsync();
+        var (items, total) = await _accountService.GetAccountsPagedAsync(page, pageSize, q);
+        return Ok(new { items, total, page, pageSize });
+    }
+
+    // Excel 匯出備份：一次性回全部帳號的完整明細（admin 明確觸發、非熱路徑）。
+    //   ⚠️ 路由 literal "export" 在 ASP.NET 路由優先序高於 "{id}"，不會被當成 id。
+    [HttpGet("export")]
+    public async Task<IActionResult> GetAccountsForExport()
+    {
+        var result = await _accountService.GetAccountsForExportAsync();
         return Ok(result);
     }
 
@@ -45,8 +56,10 @@ public class AccountsController : ControllerBase
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateAccount(string id, [FromBody] AccountFullDto dto)
     {
-        var (success, errorMessage) = await _accountService.UpdateAccountAsync(id, dto);
-        if (!success) return NotFound(errorMessage);
+        var (success, errorMessage, notFound) = await _accountService.UpdateAccountAsync(id, dto);
+        // notFound=true（帳號真的不存在）才回 404；策略/驗證拒絕（super-admin 防降級、stale mapping id）回 400
+        //   ——對齊 DeleteAccount「NotFound 只適用真的找不到」的語意。
+        if (!success) return notFound ? NotFound(errorMessage) : BadRequest(errorMessage);
         return Ok(new { success = true });
     }
 

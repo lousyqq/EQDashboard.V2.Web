@@ -17,10 +17,65 @@ public class AccountService : IAccountService
         _settingsService = settingsService;
     }
 
-    public async Task<List<object>> GetAccountsAsync()
+    public async Task<(List<object> items, int total)> GetAccountsPagedAsync(int page, int pageSize, string? q)
     {
-        var accounts = await _context.Accounts
+        // 分頁/搜尋一律下推 DB（WHERE + Skip/Take），不再把全表撈進記憶體再過濾。
+        if (page < 1) page = 1;
+        if (pageSize < 1) pageSize = 10;
+        if (pageSize > 100) pageSize = 100; // 上限保護：避免惡意 pageSize 把全表一次撈出
+
+        var query = _context.Accounts.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            var term = q.Trim();
+            // 搜尋字串長度上限保護：被比對的欄位最長為 Name/Department=nvarchar(100)，
+            //   超過 100 字的 term 不可能是任何欄位的子字串（搜不到東西），故截斷無功能損失；
+            //   同時避免過長 term 讓 EF 的 LIKE '%'+@p+'%' 參數超過 nvarchar(4000) → SqlException 8152「字串會被截斷」(500)。
+            if (term.Length > 100) term = term.Substring(0, 100);
+            // EF 會參數化（無 SQL 注入風險）；EmpId/Name/Department 模糊比對。
+            query = query.Where(a =>
+                a.EmpId.Contains(term) ||
+                (a.Name != null && a.Name.Contains(term)) ||
+                (a.Department != null && a.Department.Contains(term)));
+        }
+
+        var total = await query.CountAsync();
+
+        // 先用穩定排序 + Skip/Take 取「本頁的 root 帳號」，再 Include 兩個一對多 collection。
+        //   2 個 collection-Include → AsSplitQuery 避免 cartesian 相乘（對齊 §6.2 規範）。
+        var pageAccounts = await query
+            .OrderBy(a => a.EmpId)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Include(a => a.MapAccountRoles)
+            .Include(a => a.MapAccountDefaultPages)
+            .AsSplitQuery()
+            .ToListAsync();
+
+        var items = pageAccounts.Select(a => new
+        {
+            empId = a.EmpId,
+            name = a.Name,
+            department = a.Department,
+            roleLevel = a.RoleLevel,
+            assignedRoles = a.MapAccountRoles?.Select(m => m.RoleId).ToList() ?? new List<string>(),
+            // 帳號管理列表只顯示「登入預設首頁」與「可視群組版面」→ 需 defaultPages + assignedRoles 即可
+            defaultPages = a.MapAccountDefaultPages?.ToDictionary(m => m.FabId, m => m.MenuId ?? "") ?? new Dictionary<string, string>()
+        }).Cast<object>().ToList();
+
+        return (items, total);
+    }
+
+    public async Task<List<object>> GetAccountsForExportAsync()
+    {
+        // Excel 匯出（全量備份）：admin 明確觸發、非熱路徑，故可一次撈全部帳號的完整明細。
+        //   3 個 collection-Include → AsSplitQuery 避免 cartesian 相乘。
+        var accounts = await _context.Accounts.AsNoTracking()
+            .Include(a => a.MapAccountRoles)
+            .Include(a => a.MapAccountManageMenus)
+            .Include(a => a.MapAccountDefaultPages)
+            .AsSplitQuery()
+            .OrderBy(a => a.EmpId)
             .ToListAsync();
 
         return accounts.Select(a => new
@@ -30,9 +85,9 @@ public class AccountService : IAccountService
             department = a.Department,
             roleLevel = a.RoleLevel,
             canEditOthers = a.CanEditOthers,
-            loginCount = a.LoginCount,
-            lastLoginTime = a.LastLoginTime,
-            assignedRoles = a.MapAccountRoles?.Select(m => m.RoleId).ToList() ?? new List<string>()
+            assignedRoles = a.MapAccountRoles?.Select(m => m.RoleId).ToList() ?? new List<string>(),
+            manageableMenus = a.MapAccountManageMenus?.Select(m => m.MenuId).ToList() ?? new List<string>(),
+            defaultPages = a.MapAccountDefaultPages?.ToDictionary(m => m.FabId, m => m.MenuId ?? "") ?? new Dictionary<string, string>()
         }).Cast<object>().ToList();
     }
 
@@ -44,6 +99,7 @@ public class AccountService : IAccountService
             .Include(x => x.MapAccountDefaultPages)
             .Include(x => x.MapAccountExtraMenus)
             .Include(x => x.MapAccountDenyMenus)
+            .AsSplitQuery() // 5 個 collection-Include 避免 cartesian 相乘
             .FirstOrDefaultAsync(x => x.EmpId == empId);
 
         if (a == null) return null;
@@ -146,7 +202,7 @@ public class AccountService : IAccountService
         return (true, string.Empty);
     }
 
-    public async Task<(bool success, string errorMessage)> UpdateAccountAsync(string empId, AccountFullDto dto)
+    public async Task<(bool success, string errorMessage, bool notFound)> UpdateAccountAsync(string empId, AccountFullDto dto)
     {
         // ⚠️ 強制 dto.EmpId = path 的 empId。
         //   原本 bug：UpdateAccountMappings 用 dto.EmpId 寫到 Map_Account_*，但找 account 用 path 的 empId。
@@ -163,21 +219,22 @@ public class AccountService : IAccountService
             .Include(a => a.MapAccountDefaultPages)
             .Include(a => a.MapAccountExtraMenus)
             .Include(a => a.MapAccountDenyMenus)
+            .AsSplitQuery() // 5 個 collection-Include 避免 cartesian 相乘
             .FirstOrDefaultAsync(a => a.EmpId == empId);
 
-        if (account == null) return (false, "找不到指定的帳號");
+        if (account == null) return (false, "找不到指定的帳號", true); // 真的不存在 → 404
 
         if (string.Equals(empId, "admin", StringComparison.OrdinalIgnoreCase))
         {
             if (!string.Equals(dto.RoleLevel, "admin", StringComparison.OrdinalIgnoreCase))
-                return (false, "系統預設管理員 (admin) 不可被降級");
+                return (false, "系統預設管理員 (admin) 不可被降級", false); // 策略拒絕、帳號存在 → 400
         }
 
         // ⚠️ 資料完整性：先驗證所有 RoleId / MenuId 都存在（對齊 Roles/Fabs controller 的 1.3 預檢）。
         //   下方「刪舊 mappings → 寫新 mappings」必須整批原子，否則 stale id 撞 FK 會在刪除已 commit 後失敗 →
         //   帳號 mappings 被清空、權限全失且無法回復。先預檢可把常見 stale id 擋成清楚的 400。
         var (refsOk, refsErr) = await ValidateMappingRefsAsync(dto);
-        if (!refsOk) return (false, refsErr);
+        if (!refsOk) return (false, refsErr, false); // 驗證失敗（stale id）、帳號存在 → 400
 
         account.Name = dto.Name;
         account.Department = dto.Department;
@@ -215,7 +272,7 @@ public class AccountService : IAccountService
         });
 
         _settingsService.InvalidateInitialDataCache();
-        return (true, string.Empty);
+        return (true, string.Empty, false);
     }
 
     public async Task<(bool success, string errorMessage, string? backupJson)> DeleteAccountAsync(string empId, string? currentEmpId = null)
@@ -226,8 +283,9 @@ public class AccountService : IAccountService
             .Include(a => a.MapAccountDefaultPages)
             .Include(a => a.MapAccountExtraMenus)
             .Include(a => a.MapAccountDenyMenus)
+            .AsSplitQuery() // 5 個 collection-Include 避免 cartesian 相乘
             .FirstOrDefaultAsync(a => a.EmpId == empId);
-            
+
         if (account == null) return (false, "找不到該帳號", null);
 
         if (string.Equals(empId, "admin", StringComparison.OrdinalIgnoreCase))
@@ -273,7 +331,8 @@ public class AccountService : IAccountService
     {
         if (dto.AssignedRoles != null)
         {
-            foreach (var rId in dto.AssignedRoles)
+            // 複合 PK (EmpId+RoleId)：payload 內重複 roleId 會撞 EF identity map「same key already tracked」→ 500。
+            foreach (var rId in dto.AssignedRoles.Distinct())
             {
                 _context.MapAccountRoles.Add(new MapAccountRole { EmpId = dto.EmpId, RoleId = rId });
             }
@@ -281,7 +340,8 @@ public class AccountService : IAccountService
 
         if (dto.ManageableMenus != null)
         {
-            foreach (var mId in dto.ManageableMenus)
+            // 複合 PK (EmpId+MenuId)：同上，Add 前去重。
+            foreach (var mId in dto.ManageableMenus.Distinct())
             {
                 _context.MapAccountManageMenus.Add(new MapAccountManageMenu { EmpId = dto.EmpId, MenuId = mId });
             }

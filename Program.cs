@@ -19,6 +19,12 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSerilog((context, services, configuration) => configuration
     .ReadFrom.Configuration(context.Configuration)
     .Enrich.FromLogContext()
+    // ⚠️ Serilog 只讀「Serilog」組態區段（本專案 appsettings 沒有），Logging:LogLevel 那段對它無效 —
+    //    不壓低 Microsoft.* 的話，每個 request（Microsoft.AspNetCore）與每條 EF SQL
+    //    （Microsoft.EntityFrameworkCore）都會以 INF 寫進 logs/log-*.txt（純噪音＋磁碟 I/O）。
+    //    app 自己的 log（EQDashboard.*、Program）維持 Information 不受影響。
+    .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore", Serilog.Events.LogEventLevel.Warning)
     .WriteTo.Console()
     .WriteTo.File("logs/log-.txt", rollingInterval: RollingInterval.Day));
 
@@ -98,7 +104,16 @@ builder.Services.AddSingleton<IInitialDataCacheInvalidator, InitialDataCacheInva
 builder.Services.AddSingleton<CacheInvalidationInterceptor>();
 
 // 註冊 AppDbContext（掛上快取作廢攔截器）
-builder.Services.AddDbContext<AppDbContext>((sp, options) =>
+// ⚡ P3 優化：改用 AddDbContextPool — 重用 DbContext 實例（歸還時 EF 自動重設 ChangeTracker），
+//    降低高併發下「每請求 new 一個 context」的配置/GC 壓力。
+//    相容性已逐項驗證：
+//      ① AppDbContext 建構子只吃 DbContextOptions<AppDbContext>、無注入 scoped 服務、無可變實例狀態（僅 DbSets）。
+//      ② CacheInvalidationInterceptor 為 Singleton（依賴亦 Singleton）→ pool 一次性建好 options 即可安全共用；
+//         其 ConditionalWeakTable 以 context 實例為 key，且每次 SaveChanges 內「Mark→Flush/Discard」成對完成、
+//         不跨請求殘留，故對「實例被 pool 重用」安全。
+//      ③ 全程無 SetCommandTimeout / ChangeTracker / QueryTrackingBehavior 等 per-instance 設定變動（pooling 不會重設這些）。
+//    poolSize 用預設（1024）。
+builder.Services.AddDbContextPool<AppDbContext>((sp, options) =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("EQDashboard"),
         sqlOptions => sqlOptions.EnableRetryOnFailure(
             maxRetryCount: 5,
@@ -122,6 +137,8 @@ builder.Services.AddScoped<IIconStorageService, IconStorageService>();
 builder.Services.AddScoped<IActivityLogger, ActivityLogger>();
 builder.Services.AddSingleton<IActivityLogQueue, ActivityLogQueue>();
 builder.Services.AddHostedService<ActivityLogProcessor>();
+// UserActivityLogs 每日自動清理（保留天數讀 ActivityLog:RetentionDays，<=0 停用）。
+builder.Services.AddHostedService<ActivityLogPurgeService>();
 // === 身份驗證：Cookies (主) + Negotiate (Windows 自動偵測) ===
 // 預設 scheme 仍是 Cookies — 一般 API/頁面靠它識別；
 // Negotiate 只在 /api/Auth/WhoAmI 時被瀏覽器以 401 → WWW-Authenticate: Negotiate 觸發。
@@ -326,12 +343,17 @@ app.UseStaticFiles(new StaticFileOptions
     OnPrepareResponse = ctx =>
     {
         var name = ctx.File.Name;
-        // .js / .css 採 no-cache：瀏覽器每次帶 If-None-Match / If-Modified-Since 重新驗證，
+        // .js / .css / .html 採 no-cache：瀏覽器每次帶 If-None-Match / If-Modified-Since 重新驗證，
         // 未變更回 304（幾乎零成本）、一變更立即拿到新檔。
         // 根治「改完子模組仍需 Ctrl+F5」—— main.js 的 ES import 不帶版號，
         // 長快取會讓子模組最多卡 7 天才更新到使用者端。
+        // ⚠️ .html 必須包含在 no-cache 清單：index.html 是整套 cache-bust 機制的「載體」
+        //    （__APP_VER__ 與所有 ?v= 版本碼都寫在它裡面），若落入下方 7 天長快取，
+        //    部署新版後使用者一般導航（非 F5）最多 7 天拿不到新版本碼 → ?v= 機制整個被架空
+        //    （partials/modals.html 雖有 ?v= 救援，但 ?v= 的值同樣來自舊的 index.html）。
         if (name.EndsWith(".js", StringComparison.OrdinalIgnoreCase) ||
-            name.EndsWith(".css", StringComparison.OrdinalIgnoreCase))
+            name.EndsWith(".css", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith(".html", StringComparison.OrdinalIgnoreCase))
         {
             ctx.Context.Response.Headers.Append("Cache-Control", "no-cache");
         }

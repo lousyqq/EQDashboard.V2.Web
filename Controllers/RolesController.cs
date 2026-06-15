@@ -96,21 +96,31 @@ public class RolesController : ControllerBase
 
         role.GroupName = dto.GroupName;
 
-        // 更新 MapRoleMenus
-        if (role.MapRoleMenus != null)
+        // §6.2：「刪舊 mappings → 寫新 mappings」跨兩次 SaveChanges，必須整批原子 —
+        //   無交易時第二段失敗會留下被清空的 Map_Role_Menu（整個群組的看板授權消失）。
+        //   DbContext 啟用 EnableRetryOnFailure → 手動交易一律包在 ExecutionStrategy 內
+        //   （直接 BeginTransactionAsync 會拋「不支援 user-initiated transactions」）。
+        var strategy = _context.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
         {
-            _context.MapRoleMenus.RemoveRange(role.MapRoleMenus);
-            await _context.SaveChangesAsync(); // 強制執行刪除以避免 PK tracking 衝突
-        }
+            await using var trans = await _context.Database.BeginTransactionAsync();
 
-        int sortOrder = 0;
-        foreach (var menuId in menuIds)
-        {
-            _context.MapRoleMenus.Add(new MapRoleMenu { RoleId = id, MenuId = menuId, SortOrder = sortOrder });
-            sortOrder += 10;
-        }
+            if (role.MapRoleMenus != null && role.MapRoleMenus.Count > 0)
+            {
+                _context.MapRoleMenus.RemoveRange(role.MapRoleMenus);
+                await _context.SaveChangesAsync(); // 先執行刪除以避免複合 PK tracking 衝突
+            }
 
-        await _context.SaveChangesAsync();
+            int sortOrder = 0;
+            foreach (var menuId in menuIds)
+            {
+                _context.MapRoleMenus.Add(new MapRoleMenu { RoleId = id, MenuId = menuId, SortOrder = sortOrder });
+                sortOrder += 10;
+            }
+
+            await _context.SaveChangesAsync();
+            await trans.CommitAsync();
+        });
         _settingsService.InvalidateInitialDataCache();
         return Ok(new { success = true });
     }

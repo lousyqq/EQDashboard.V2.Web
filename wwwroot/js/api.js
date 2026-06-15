@@ -731,7 +731,7 @@ export async function deleteRoleAPI(id) {
 window.deleteRoleAPI = deleteRoleAPI;
 
 export async function saveAccountAPI(isNew, accountData) {
-    const url = isNew ? '/api/Accounts' : `/api/Accounts/${accountData.empId}`;
+    const url = isNew ? '/api/Accounts' : `/api/Accounts/${encodeURIComponent(accountData.empId)}`;
     const method = isNew ? 'POST' : 'PUT';
 
     try {
@@ -756,7 +756,7 @@ window.saveAccountAPI = saveAccountAPI;
 
 export async function deleteAccountAPI(id) {
     try {
-        const res = await fetch(`/api/Accounts/${id}`, { method: 'DELETE' });
+        const res = await fetch(`/api/Accounts/${encodeURIComponent(id)}`, { method: 'DELETE' });
         if (!res.ok) {
             const err = await res.text();
             throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
