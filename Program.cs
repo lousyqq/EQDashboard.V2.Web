@@ -331,6 +331,24 @@ app.Use(async (context, next) =>
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
     context.Response.Headers["X-Frame-Options"] = "DENY";
     context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+
+    // Content-Security-Policy：本專案 CDN（Bootstrap/FontAwesome/DataTables/jQuery/SheetJS）+ 大量
+    //   inline onclick / style → script-src、style-src 必含 'unsafe-inline'；看板以 iframe 載入任意外部
+    //   menu.url → frame-src 放寬 http:/https:；menu/app 圖示可為 data: 或外部 https 圖檔 → img-src 含
+    //   data: https:。即使有 'unsafe-inline'，CSP 仍藉 source allowlist + object-src 'none' +
+    //   base-uri 'self' + frame-ancestors 'none' + form-action 'self' 顯著縮小攻擊面。
+    context.Response.Headers["Content-Security-Policy"] =
+        "default-src 'self'; " +
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net https://code.jquery.com; " +
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net; " +
+        "img-src 'self' data: https:; " +
+        "font-src 'self' data: https://cdnjs.cloudflare.com; " +
+        "connect-src 'self'; " +
+        "frame-src 'self' http: https:; " +
+        "object-src 'none'; " +
+        "base-uri 'self'; " +
+        "frame-ancestors 'none'; " +
+        "form-action 'self'";
     await next();
 });
 

@@ -39,7 +39,8 @@ public class SettingsController : Controller
         //    使用者的快取 body 端給現任使用者（admin 全量資料外洩給非 admin、或反向拿到殘缺資料）。
         //    摻入身分後跨使用者必不相符（強制重抓 200），同一使用者的 304 優化照常生效。
         var isAdmin = User.IsInRole("admin");
-        var empIdForETag = (User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "").Replace("\"", "");
+        var callerEmpId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+        var empIdForETag = callerEmpId.Replace("\"", "");
         var eTag = $"\"{_settingsService.GetCurrentETag()}:{empIdForETag}:{(isAdmin ? 1 : 0)}\"";
 
         if (Request.Headers.TryGetValue("If-None-Match", out var incomingETag))
@@ -57,7 +58,10 @@ public class SettingsController : Controller
 
         try
         {
-            var data = await _settingsService.GetInitialDataAsync();
+            // ⭐️ P1：帳號相關表 (Accounts/PersonalSettings/Map_Account_*) 已由 service 以 callerEmpId 點查、
+            //    只回呼叫者自己這列（不再整包載入共享快取）。下方 admin 收斂 / 非 admin FilterTable 對這些表
+            //    因此已是 no-op（仍保留作為防禦縱深、且全域表的真正過濾仍需 FilterTable）。
+            var data = await _settingsService.GetInitialDataAsync(callerEmpId);
 
             if (!isAdmin)
             {

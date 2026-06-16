@@ -162,6 +162,7 @@ public class AuthController : ControllerBase
         if (string.IsNullOrEmpty(empId)) return Unauthorized();
 
         var a = await _context.Accounts
+            .AsNoTracking()
             .Include(x => x.MapAccountRoles)
             .Include(x => x.MapAccountManageMenus)
             .Include(x => x.MapAccountDefaultPages)

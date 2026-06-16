@@ -201,6 +201,12 @@ public class SchemaBootstrap : ISchemaBootstrap
         var indexes = new (string Name, string Table, string Cols)[]
         {
             ("IX_Accounts_RoleLevel",                "Accounts",         "RoleLevel"),
+            // P2：帳號清單搜尋 (AccountService.GetAccountsPagedAsync) 對 EmpId/Name/Department 做子字串
+            //     `Contains` → SQL `LIKE '%term%'`（前置萬用字元，本質 non-sargable、無法 B-tree seek，必掃描）。
+            //     以「窄覆蓋索引 (Name, Department)」讓不可避免的掃描改讀這條瘦索引（葉層自動含 clustered key
+            //     EmpId 作 row locator）而非整個寬 Accounts 表 —— 尤其 COUNT(*) 的三欄 OR-of-LIKE 完全被涵蓋、
+            //     免回主表。子字串 UX 維持不變（真正子線性需 full-text，屬過度設計、不在本次範圍）。
+            ("IX_Accounts_Search",                   "Accounts",         "Name, Department"),
             ("IX_Requests_Status",                   "Requests",         "Status"),
             ("IX_UserActivityLogs_EmpId_Timestamp",  "UserActivityLogs", "EmpId, Timestamp DESC"),
             ("IX_UserActivityLogs_Timestamp",        "UserActivityLogs", "Timestamp DESC"),

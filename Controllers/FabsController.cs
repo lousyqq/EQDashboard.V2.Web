@@ -26,6 +26,7 @@ public class FabsController : ControllerBase
     public async Task<IActionResult> GetFabs()
     {
         var fabs = await _context.Fabs
+            .AsNoTracking()
             .Include(f => f.MapFabRoles)
             .ToListAsync();
 

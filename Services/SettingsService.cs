@@ -51,7 +51,7 @@ public class SettingsService : ISettingsService
         _cacheInvalidator = cacheInvalidator;
     }
 
-    public async Task<Dictionary<string, object>> GetInitialDataAsync()
+    public async Task<Dictionary<string, object>> GetInitialDataAsync(string empId)
     {
         var dbData = new Dictionary<string, object>();
 
@@ -110,7 +110,13 @@ public class SettingsService : ISettingsService
             }
         }
 
-        // 2. 取得易變動資料 (Accounts, PersonalSettings, Requests 等使用者操作會頻繁更新的表)
+        // 2. 取得「共享」易變動資料 (10 秒快取) —— ⭐️ P1 後僅剩 Requests。
+        //    Requests 不隨「帳號數」成長（隨申請筆數），admin 需全量、非 admin 由 Controller 過濾自己，
+        //    故仍以跨使用者共享快取持有。
+        //    ⚠️ P1：原本一起被整包載入此共享快取的 Accounts / PersonalSettings / 5 張 Map_Account_*，
+        //         皆「隨帳號數成長」—— 10 萬帳號時整包常駐 6GB Sariel 會脹爆；且它們在回應中（admin 與
+        //         非 admin 皆然）只需「呼叫者自己這列」。故已移出共享快取，改為下方步驟 3 的 per-caller
+        //         點查（EmpId 為各表 PK 前導欄 → index seek）。徹底解 CLAUDE.md §8 的 P1 剩餘項。
         if (!_cache.TryGetValue(InitialDataCacheKey_Volatile, out Dictionary<string, object>? volatileData))
         {
             await _semaphore.WaitAsync();
@@ -121,20 +127,13 @@ public class SettingsService : ISettingsService
                     volatileData = new Dictionary<string, object>();
                     try
                     {
-                        volatileData["Accounts"] = ConvertToList(await _dbContext.Accounts.AsNoTracking().ToListAsync());
                         volatileData["Requests"] = ConvertToList(await _dbContext.Requests.AsNoTracking().ToListAsync());
-                        volatileData["PersonalSettings"] = ConvertToList(await _dbContext.PersonalSettings.AsNoTracking().ToListAsync());
-                        volatileData["Map_Account_Role"] = ConvertToList(await _dbContext.MapAccountRoles.AsNoTracking().ToListAsync());
-                        volatileData["Map_Account_ManageMenu"] = ConvertToList(await _dbContext.MapAccountManageMenus.AsNoTracking().ToListAsync());
-                        volatileData["Map_Account_DefaultPage"] = ConvertToList(await _dbContext.MapAccountDefaultPages.AsNoTracking().ToListAsync());
-                        volatileData["Map_Account_ExtraMenu"] = ConvertToList(await _dbContext.MapAccountExtraMenus.AsNoTracking().ToListAsync());
-                        volatileData["Map_Account_DenyMenu"] = ConvertToList(await _dbContext.MapAccountDenyMenus.AsNoTracking().ToListAsync());
 
                         _cache.Set(InitialDataCacheKey_Volatile, volatileData, TimeSpan.FromSeconds(10));
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Failed to load volatile data via EF Core.");
+                        _logger.LogError(ex, "Failed to load volatile (shared) data via EF Core.");
                     }
                 }
             }
@@ -147,7 +146,22 @@ public class SettingsService : ISettingsService
         if (globalData != null) foreach (var kvp in globalData) dbData[kvp.Key] = kvp.Value;
         if (volatileData != null) foreach (var kvp in volatileData) dbData[kvp.Key] = kvp.Value;
 
-        // 若載入不全 (某部分 DB 斷線)，直接丟出例外，避免前端拿到殘缺快取
+        // 3. ⭐️ P1：呼叫者「自己這列」的帳號相關表 —— per-caller 點查、不快取（always-fresh）。
+        //    EmpId 為 Accounts(PK) / PersonalSettings(PK 前導) / 各 Map_Account_*(複合 PK 前導) 的索引前導欄
+        //    → 全為 index seek、不全表掃描。取代「整包載入共享快取再由 Controller 過濾成自身列」。
+        //    無 10 秒過時窗；個人版面/登入計數更新後仍靠 InvalidateVolatile() 的 ETag bump 觸發客戶端重抓。
+        //    empId 為空字串（理論上不會，class-level [Authorize] 擋住）時各點查回空集合，安全。
+        //    回應對 admin/非 admin 皆「只含自己這列」，與 P1 前的行為（Controller 收斂後）逐位元相同。
+        dbData["Accounts"] = ConvertToList(await _dbContext.Accounts.AsNoTracking().Where(a => a.EmpId == empId).ToListAsync());
+        dbData["PersonalSettings"] = ConvertToList(await _dbContext.PersonalSettings.AsNoTracking().Where(p => p.EmpId == empId).ToListAsync());
+        dbData["Map_Account_Role"] = ConvertToList(await _dbContext.MapAccountRoles.AsNoTracking().Where(m => m.EmpId == empId).ToListAsync());
+        dbData["Map_Account_ManageMenu"] = ConvertToList(await _dbContext.MapAccountManageMenus.AsNoTracking().Where(m => m.EmpId == empId).ToListAsync());
+        dbData["Map_Account_DefaultPage"] = ConvertToList(await _dbContext.MapAccountDefaultPages.AsNoTracking().Where(m => m.EmpId == empId).ToListAsync());
+        dbData["Map_Account_ExtraMenu"] = ConvertToList(await _dbContext.MapAccountExtraMenus.AsNoTracking().Where(m => m.EmpId == empId).ToListAsync());
+        dbData["Map_Account_DenyMenu"] = ConvertToList(await _dbContext.MapAccountDenyMenus.AsNoTracking().Where(m => m.EmpId == empId).ToListAsync());
+
+        // 若載入不全 (某部分 DB 斷線)，直接丟出例外，避免前端拿到殘缺快取。
+        //   9 (global 共享快取) + 1 (Requests 共享快取) + 7 (per-caller 帳號相關表) = 17。
         if (dbData.Count < 17)
         {
             throw new Exception("部分資料表載入失敗，無法回傳完整的 InitialData");
@@ -559,28 +573,20 @@ public class SettingsService : ISettingsService
         // O4：LoginCount / LastLoginTime 欄位已由 SchemaBootstrap.EnsureAccountStatsColumnsAsync 在啟動時補齊，
         //     此處不再每次登入跑一次 IF COL_LENGTH ... ALTER 探測（DDL 探測對每次登入是多餘負擔）。
 
-        // UPDATE 累計 +1
-        int affected;
-        using (var updateCmd = new SqlCommand(@"
+        // ⭐️ P4：UPDATE 累計 +1 與「取回最新值」合併為「單一語句 + OUTPUT」一次往返
+        //     （原本 UPDATE 之後再 SELECT＝兩次 round trip）。
+        //     OUTPUT INSERTED.* 回傳 SET 之後的新值；單語句天然原子 —— 消除「UPDATE 成功後、SELECT 前
+        //     被其他並行登入再加一」而讀到非自己這次寫入值的窗（雖罕見、語意上更正確）。
+        //     reader 無列 ⟹ WHERE 未命中任何帳號 ⟹ 帳號不存在。
+        using var cmd = new SqlCommand(@"
             UPDATE Accounts
             SET LoginCount = ISNULL(LoginCount, 0) + 1,
                 LastLoginTime = GETDATE()
-            WHERE EmpId = @EmpId;", conn))
-        {
-            updateCmd.Parameters.AddWithValue("@EmpId", empId);
-            affected = await updateCmd.ExecuteNonQueryAsync();
-        }
+            OUTPUT ISNULL(INSERTED.LoginCount, 0), INSERTED.LastLoginTime
+            WHERE EmpId = @EmpId;", conn);
+        cmd.Parameters.AddWithValue("@EmpId", empId);
 
-        if (affected == 0)
-            return (false, 0, null, "找不到帳號 " + empId);
-
-        // SELECT 取回最新值
-        using var selectCmd = new SqlCommand(@"
-            SELECT ISNULL(LoginCount, 0), LastLoginTime
-            FROM Accounts WHERE EmpId = @EmpId;", conn);
-        selectCmd.Parameters.AddWithValue("@EmpId", empId);
-
-        using var r = await selectCmd.ExecuteReaderAsync();
+        using var r = await cmd.ExecuteReaderAsync();
         if (await r.ReadAsync())
         {
             int loginCount = Convert.ToInt32(r.GetValue(0));

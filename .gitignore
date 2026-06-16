@@ -25,6 +25,9 @@ App_Data/
 # 真實值由本機 appsettings.json / 環境變數 / user-secrets 提供。
 appsettings.json
 
+# --- Node 套件（puppeteer 等本機測試工具，非執行期相依，不入版控）---
+node_modules/
+
 # --- 暫時 / 拋棄式腳本 ---
 scratch/
 

@@ -32,7 +32,7 @@ public class RequestsController : ControllerBase
         var isAdmin = User.IsInRole("admin");
 
         // 🛡️ 權限隔離：Admin 可以看全部，一般 User 只能看自己的
-        var query = _context.Requests.AsQueryable();
+        var query = _context.Requests.AsNoTracking().AsQueryable();
         if (!isAdmin)
         {
             query = query.Where(r => r.EmpId == currentUserId);

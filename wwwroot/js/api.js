@@ -147,6 +147,8 @@ const getVal = (obj, key) => {
 // ⭐️ 核心：從後端 API 獲取資料，並將 SQL 關聯表「組裝」回前端 UI 預期的結構
 export async function fetchInitialDataFromDB() {
     try {
+        // 🚀 並行：MyProfile 與 GetInitialData 互不相依（皆僅需 auth cookie），同時發出省 1 個 RTT；MyProfile 結果在 accounts 填好後才 await。
+        const myProfilePromise = fetch('/api/Auth/MyProfile');
         const response = await fetch('/Settings/GetInitialData', { cache: 'no-store' });
 
         // 先擋掉非 200
@@ -454,7 +456,7 @@ export async function fetchInitialDataFromDB() {
         // 🛡️ Lazy Loading：向後端取得登入者自身的詳細權限 (因為 InitialData 已剔除全量權限)
         let myEmpId = '';
         try {
-            const myProfileRes = await fetch('/api/Auth/MyProfile');
+            const myProfileRes = await myProfilePromise;
             if (myProfileRes.ok) {
                 const myProfile = await myProfileRes.json();
                 myEmpId = String(myProfile.empId || '');

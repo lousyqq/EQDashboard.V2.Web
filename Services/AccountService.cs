@@ -33,6 +33,11 @@ public class AccountService : IAccountService
             //   同時避免過長 term 讓 EF 的 LIKE '%'+@p+'%' 參數超過 nvarchar(4000) → SqlException 8152「字串會被截斷」(500)。
             if (term.Length > 100) term = term.Substring(0, 100);
             // EF 會參數化（無 SQL 注入風險）；EmpId/Name/Department 模糊比對。
+            // ⭐️ P2 效能註記：子字串 `Contains` → `LIKE '%term%'`（前置萬用字元）本質 non-sargable，
+            //     無法用 B-tree seek、只能掃描（O(N)）。維持子字串 UX 的前提下，已在 SchemaBootstrap
+            //     建窄覆蓋索引 IX_Accounts_Search(Name, Department)（葉層自動含 clustered key EmpId）：
+            //     不可避免的掃描改讀這條瘦索引而非整個寬 Accounts 表，COUNT(*) 的三欄 OR-of-LIKE 全被涵蓋、免回主表。
+            //     若改成 StartsWith/前綴比對才能 index seek（會改變子字串搜尋語意）；真正子線性需 full-text（過度設計、不在範圍）。
             query = query.Where(a =>
                 a.EmpId.Contains(term) ||
                 (a.Name != null && a.Name.Contains(term)) ||
@@ -94,6 +99,7 @@ public class AccountService : IAccountService
     public async Task<object?> GetAccountDetailsAsync(string empId)
     {
         var a = await _context.Accounts
+            .AsNoTracking()
             .Include(x => x.MapAccountRoles)
             .Include(x => x.MapAccountManageMenus)
             .Include(x => x.MapAccountDefaultPages)

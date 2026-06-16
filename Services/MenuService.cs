@@ -31,6 +31,7 @@ public class MenuService : IMenuService
         // AsSplitQuery：載入全部 Menus × 3 個 collection（結構父子 + 白/黑名單 ACL），
         //   單一 JOIN 查詢會 cartesian 相乘（menus×parents×allow×deny）。拆成多查詢避免列數爆炸。
         var menus = await _context.Menus
+            .AsNoTracking()
             .Include(m => m.MapMenuStructuresChild)
             .Include(m => m.MapMenuAllowAccounts)
             .Include(m => m.MapMenuDenyAccounts)

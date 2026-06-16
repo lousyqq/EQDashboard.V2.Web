@@ -10,8 +10,13 @@ public interface ISettingsService
     /// <summary>取得目前的 ETag 值</summary>
     string GetCurrentETag();
 
-    /// <summary>讀取所有資料表並回傳為字典結構</summary>
-    Task<Dictionary<string, object>> GetInitialDataAsync();
+    /// <summary>
+    /// 讀取所有資料表並回傳為字典結構。
+    /// 全域表（不隨帳號數成長）走共享快取；「帳號相關表」(Accounts / PersonalSettings / Map_Account_*)
+    /// 改以 <paramref name="empId"/> 做 per-caller 點查（只回呼叫者自己這列、不快取），避免 10 萬帳號時整包常駐記憶體 (P1)。
+    /// </summary>
+    /// <param name="empId">呼叫者工號（取自 ClaimTypes.NameIdentifier）；帳號相關表只回此工號的列。</param>
+    Task<Dictionary<string, object>> GetInitialDataAsync(string empId);
 
     /// <summary>將前端傳來的 JSON payload 寫入資料庫（含批次防呆）</summary>
     Task<(bool success, string message)> SaveDataAsync(Dictionary<string, List<Dictionary<string, JsonElement>>> payload);

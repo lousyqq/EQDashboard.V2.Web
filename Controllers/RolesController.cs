@@ -26,6 +26,7 @@ public class RolesController : ControllerBase
     public async Task<IActionResult> GetRoles()
     {
         var roles = await _context.Roles
+            .AsNoTracking()
             .Include(r => r.MapRoleMenus)
             .ToListAsync();
 
