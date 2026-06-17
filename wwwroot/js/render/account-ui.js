@@ -473,15 +473,22 @@ window.openMenuSelector = function (fabName) {
     const allMenus = getCustomMenus();
     let allowedIds = new Set(initialMenuIds.map(id => window.cleanId(id)));
 
-    // 由已允許的資料夾往下展開子節點（含 app_grid 等），確保資料夾底下的看板也可被選為預設頁
+    // 由已允許的資料夾往下展開子節點（含 app_grid 等），確保資料夾底下的看板也可被選為預設頁。
+    // ⚠️ 必須檢查「全部 parentIds」（一個看板可同時掛在多個群組底下，見 api.js:252），不可只看
+    //    parentId / parentIds[0]（兩者都只是第一個父節點）——否則該看板的「被允許群組」若不是其 parentIds
+    //    的第一個元素就會被漏掉，導致挑選器只跑出群組底下的第一個看板（與 sidebar.js
+    //    getAllowedIdsWithHierarchy 的多父展開邏輯對齊）。
     let added = true;
     while (added) {
         added = false;
         allMenus.forEach(m => {
             let mId = window.cleanId(m.id || m.MenuId);
             if (!allowedIds.has(mId)) {
-                let pId = window.cleanId(m.parentId || m.ParentMenuId || (m.parentIds && m.parentIds[0]));
-                if (allowedIds.has(pId)) { allowedIds.add(mId); added = true; }
+                const parents = [];
+                if (m.parentId) parents.push(m.parentId);
+                if (m.ParentMenuId) parents.push(m.ParentMenuId);
+                if (Array.isArray(m.parentIds)) parents.push(...m.parentIds);
+                if (parents.some(p => allowedIds.has(window.cleanId(p)))) { allowedIds.add(mId); added = true; }
             }
         });
     }

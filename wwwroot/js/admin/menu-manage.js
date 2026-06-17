@@ -325,6 +325,9 @@ window.tbAddFolder = function (container, folderName = '', folderId = '', opts) 
     const removeBtnHtml = removable
         ? '<button type="button" class="btn btn-sm btn-outline-danger border-0 ms-2" onclick="this.closest(\'.tb-item\').remove()"><i class="fas fa-trash-alt me-1"></i>移除群組</button>'
         : '';
+    const addChildBtnHtml = canAddChild
+        ? `<div class="ps-4 ms-2 mt-1"><button type="button" class="btn btn-sm btn-link text-decoration-none fw-bold p-0" onclick="window.tbAddLink(this.closest('.tb-folder').querySelector('.tb-children'))"><i class="fas fa-plus me-1"></i>加入看板</button></div>`
+        : '';
     div.innerHTML = `
         <div class="d-flex align-items-center mb-2">
             ${handleHtml}
