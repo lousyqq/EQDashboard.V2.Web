@@ -154,6 +154,11 @@ public class ActivityLogger : IActivityLogger
         if (!string.IsNullOrWhiteSpace(keyword))
         {
             var kw = keyword.Trim();
+            // ⚠️ cap 長度（同 AccountService.GetAccountsPagedAsync 的 8152 教訓）：
+            //   Contains 翻成 LIKE '%'+@p+'%'、@p 為 nvarchar(4000)，超長 keyword 會溢出
+            //   → SqlException 8152「字串會被截斷」500。被比對欄位最長 Path=nvarchar(500)，
+            //   截在 500 字零功能損失。
+            if (kw.Length > 500) kw = kw.Substring(0, 500);
             q = q.Where(l =>
                 (l.Path != null && l.Path.Contains(kw)) ||
                 (l.Action != null && l.Action.Contains(kw)) ||

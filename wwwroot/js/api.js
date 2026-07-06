@@ -91,7 +91,12 @@ window.fetch = async function (...args) {
 
     const urlStr = isString ? args[0] : '';
     // 如果後端回傳 401 (未登入或 Cookie 失效)，自動觸發登出 (排除允許 401 的 API)
-    if (response.status === 401 && !urlStr.includes('/api/Auth/Login') && !urlStr.includes('/Settings/GetInitialData') && !urlStr.includes('/api/Auth/WhoAmI')) {
+    //   ⚠️ /api/Auth/MyProfile 必須在排除清單內：它與 GetInitialData 在初載時「並行」發出
+    //   （fetchInitialDataFromDB 頂部），未登入/cookie 過期時兩者都會 401 —— GetInitialData
+    //   已排除、MyProfile 若不排除會在每次冷開頁觸發 logout()（連發 Logout 請求＋設
+    //   umc_force_manual_login 旗標卡住 Windows 自動登入）＋彈「登入時效已過期」擾民視窗
+    //   （2026-07-03 修正）。其 401 由呼叫端 `if (myProfileRes.ok)` 靜默處理即可。
+    if (response.status === 401 && !urlStr.includes('/api/Auth/Login') && !urlStr.includes('/Settings/GetInitialData') && !urlStr.includes('/api/Auth/WhoAmI') && !urlStr.includes('/api/Auth/MyProfile')) {
         if (typeof logout === 'function') {
             logout();
         }
@@ -148,7 +153,9 @@ const getVal = (obj, key) => {
 export async function fetchInitialDataFromDB() {
     try {
         // 🚀 並行：MyProfile 與 GetInitialData 互不相依（皆僅需 auth cookie），同時發出省 1 個 RTT；MyProfile 結果在 accounts 填好後才 await。
-        const myProfilePromise = fetch('/api/Auth/MyProfile');
+        //    ⚠️ .catch(() => null) 必留：GetInitialData 網路層失敗會先 throw 早退，此 promise 若同樣 reject
+        //    且從未被 await → unhandled rejection console 噪音。消費端以 `myProfileRes && myProfileRes.ok` 判空。
+        const myProfilePromise = fetch('/api/Auth/MyProfile').catch(() => null);
         const response = await fetch('/Settings/GetInitialData', { cache: 'no-store' });
 
         // 先擋掉非 200
@@ -457,7 +464,7 @@ export async function fetchInitialDataFromDB() {
         let myEmpId = '';
         try {
             const myProfileRes = await myProfilePromise;
-            if (myProfileRes.ok) {
+            if (myProfileRes && myProfileRes.ok) {
                 const myProfile = await myProfileRes.json();
                 myEmpId = String(myProfile.empId || '');
                 let myAcc = window.appState.accounts.find(a => String(a.empId) === String(myProfile.empId));
@@ -655,7 +662,7 @@ window.syncDataToDB = syncDataToDB;
 // ==========================================
 
 export async function saveFabAPI(isNew, fabData) {
-    const url = isNew ? '/api/Fabs' : `/api/Fabs/${fabData.id}`;
+    const url = isNew ? '/api/Fabs' : `/api/Fabs/${encodeURIComponent(fabData.id)}`;
     const method = isNew ? 'POST' : 'PUT';
 
     try {
@@ -680,7 +687,7 @@ window.saveFabAPI = saveFabAPI;
 
 export async function deleteFabAPI(id) {
     try {
-        const res = await fetch(`/api/Fabs/${id}`, { method: 'DELETE' });
+        const res = await fetch(`/api/Fabs/${encodeURIComponent(id)}`, { method: 'DELETE' });
         if (!res.ok) {
             const err = await res.text();
             throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
@@ -694,7 +701,7 @@ export async function deleteFabAPI(id) {
 window.deleteFabAPI = deleteFabAPI;
 
 export async function saveRoleAPI(isNew, roleData) {
-    const url = isNew ? '/api/Roles' : `/api/Roles/${roleData.id}`;
+    const url = isNew ? '/api/Roles' : `/api/Roles/${encodeURIComponent(roleData.id)}`;
     const method = isNew ? 'POST' : 'PUT';
 
     try {
@@ -719,7 +726,7 @@ window.saveRoleAPI = saveRoleAPI;
 
 export async function deleteRoleAPI(id) {
     try {
-        const res = await fetch(`/api/Roles/${id}`, { method: 'DELETE' });
+        const res = await fetch(`/api/Roles/${encodeURIComponent(id)}`, { method: 'DELETE' });
         if (!res.ok) {
             const err = await res.text();
             throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
@@ -772,7 +779,7 @@ export async function deleteAccountAPI(id) {
 window.deleteAccountAPI = deleteAccountAPI;
 
 export async function saveMenuAPI(isNew, menuData) {
-    const url = isNew ? '/api/Menus' : `/api/Menus/${menuData.id}`;
+    const url = isNew ? '/api/Menus' : `/api/Menus/${encodeURIComponent(menuData.id)}`;
     const method = isNew ? 'POST' : 'PUT';
 
     try {
@@ -797,7 +804,7 @@ window.saveMenuAPI = saveMenuAPI;
 
 export async function deleteMenuAPI(id) {
     try {
-        const res = await fetch(`/api/Menus/${id}`, { method: 'DELETE' });
+        const res = await fetch(`/api/Menus/${encodeURIComponent(id)}`, { method: 'DELETE' });
         if (!res.ok) {
             const err = await res.text();
             throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
@@ -851,7 +858,7 @@ export async function batchDeleteMenusAPI(ids) {
 window.batchDeleteMenusAPI = batchDeleteMenusAPI;
 
 export async function saveAppAPI(isNew, appData) {
-    const url = isNew ? '/api/Apps' : `/api/Apps/${appData.id}`;
+    const url = isNew ? '/api/Apps' : `/api/Apps/${encodeURIComponent(appData.id)}`;
     const method = isNew ? 'POST' : 'PUT';
 
     try {
@@ -876,7 +883,7 @@ window.saveAppAPI = saveAppAPI;
 
 export async function deleteAppAPI(id) {
     try {
-        const res = await fetch(`/api/Apps/${id}`, { method: 'DELETE' });
+        const res = await fetch(`/api/Apps/${encodeURIComponent(id)}`, { method: 'DELETE' });
         if (!res.ok) {
             const err = await res.text();
             throw new Error(err || `伺服器回傳錯誤: ${res.status}`);

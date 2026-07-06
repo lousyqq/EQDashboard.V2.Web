@@ -216,6 +216,7 @@ export function selectTopMenu(menuId) {
                     const safeUrl = (typeof window.safeExternalUrl === 'function') ? window.safeExternalUrl(mUrl) : mUrl;
                     if (safeUrl !== '#') {
                         if (mTarget === 'blank') window.open(safeUrl, '_blank', 'noopener,noreferrer');
+                        else if (mTarget === 'ie') openInIE(safeUrl);
                         else if (mTarget === 'fullscreen') openDynamicIframe(safeUrl, dName, null, true);
                         else openDynamicIframe(safeUrl, dName, null, false);
                     }
@@ -305,6 +306,8 @@ export function activateMenu(menuId) {
             if (safeUrl !== '#') {
                 if (mTarget === 'blank') {
                     window.open(safeUrl, '_blank', 'noopener,noreferrer');
+                } else if (mTarget === 'ie') {
+                    openInIE(safeUrl);
                 } else if (mTarget === 'fullscreen') {
                     openDynamicIframe(safeUrl, dName, targetEl, true);
                 } else {
@@ -334,6 +337,24 @@ export function activateMenu(menuId) {
         console.error("🚨 啟動看板時發生錯誤:", error);
     }
 }
+
+// ⭐ 以 IE 開啟網址（開啟方式 target === 'ie'）：供含 ActiveX 等舊元件、Edge/Chrome 無法正常顯示的老網頁。
+//   實作：導向自訂協定「ie:<完整URL>」交給本機協定處理器啟動 iexplore ——
+//   客戶端需「一次性」匯入 /tools/install-ie-protocol.reg 註冊協定（企業可用 GPO 派送整批安裝）。
+//   未註冊協定時瀏覽器會靜默忽略（不導航、不報錯），頁面停在原地不受影響。
+//   ⚠️ 呼叫端必須先過 safeExternalUrl（與 blank 分支同層防護），本函式不重複驗證。
+export function openInIE(url) {
+    try {
+        // 相對路徑／無 scheme 網址先絕對化（協定處理器收到的必須是完整 URL；
+        //   解析行為與 blank 分支的 window.open 相對解析一致）
+        let abs = url;
+        try { abs = new URL(url, window.location.href).href; } catch (e) { /* 解析失敗保留原值 */ }
+        window.location.href = 'ie:' + abs;
+    } catch (e) {
+        console.error('IE 協定呼叫失敗:', e);
+    }
+}
+window.openInIE = openInIE;
 
 // ⭐️ 對齊 TEST_20260429.html:3496 的預設首頁跳轉（含廠區過濾、folder 自動取第一個子節點）
 export function goDefaultHome() {

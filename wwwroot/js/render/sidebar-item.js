@@ -34,6 +34,7 @@ export function generateSidebarMenuItem(menu, allMenus, level, forceExpand = tru
     else if (menu.menuMode === 'app_grid') actionAttr = `data-action="activate-menu" data-id="${window.escapeHTML(menu.id)}"`;
     else if (menu.url) {
         if (menu.target === 'blank') actionAttr = `data-action="open-url" data-url="${window.escapeHTML(menu.url)}"`;
+        else if (menu.target === 'ie') actionAttr = `data-action="open-ie" data-url="${window.escapeHTML(menu.url)}"`;
         else actionAttr = `data-action="activate-menu" data-id="${window.escapeHTML(menu.id)}"`;
     }
     else if (menu.targetPage) actionAttr = `data-action="activate-menu" data-id="${window.escapeHTML(menu.id)}"`;

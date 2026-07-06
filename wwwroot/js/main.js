@@ -79,9 +79,12 @@ export function restoreLoginFromStorage() {
         if (typeof getAccounts === 'function') {
             let freshAcc = getAccounts().find(a => String(a.empId).toLowerCase() === String(storedEmpId).toLowerCase());
             if (!freshAcc) {
-                // Account 已被刪除 → 強制重新登入，並設旗標讓登入框跳出明確訊息
-                //   (Round-5: 原本靜默 clear localStorage 跳登入框，使用者會誤以為單純 session 過期)
-                try { sessionStorage.setItem('umc_account_deleted_hint', '1'); } catch (e) {}
+                // 本地 user 在 DB 查無（帳號被刪、或 cookie 身分與 localStorage 身分不一致）
+                //   → 靜默清掉 localStorage、return false 交給 tryAutoLogin 走 Windows 自動偵測重登。
+                //   ⚠️ 刻意「不」彈任何提示視窗（曾設 umc_account_deleted_hint 讓登入框彈
+                //   「帳號已被移除」警告，但企業內部員工桌機開頁時會被誤傷、純屬擾民，
+                //   2026-07-03 依使用者要求移除）——有權限者由 tryAutoLogin 靜默重新登入
+                //   直達預設首頁；無權限者自然停在登入框，兩者皆不需要彈窗。
                 localStorage.removeItem('umc_current_user');
                 return false;
             }
@@ -136,6 +139,16 @@ document.addEventListener('click', function(e) {
         const safe = (typeof window.safeExternalUrl === 'function') ? window.safeExternalUrl(url) : url;
         if (safe && safe !== '#') {
             window.open(safe, '_blank', 'noopener,noreferrer');
+        }
+        return;
+    }
+    const openIeBtn = e.target.closest('[data-action="open-ie"]');
+    if (openIeBtn) {
+        let url = openIeBtn.getAttribute('data-url');
+        // 與 open-url 同層 XSS 防護：先過 safeExternalUrl 再交給 IE 協定
+        const safeIe = (typeof window.safeExternalUrl === 'function') ? window.safeExternalUrl(url) : url;
+        if (safeIe && safeIe !== '#' && typeof window.openInIE === 'function') {
+            window.openInIE(safeIe);
         }
         return;
     }

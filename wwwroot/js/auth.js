@@ -452,16 +452,9 @@ export function showLoginOverlay(defaultTab) {
         defaultTab = 'windows';
     }
 
-    // ⚠️ 帳號已被刪除提示：main.js restoreLoginFromStorage() 若發現本地 user 在 DB 已查無，
-    //   會設這個旗標。在這裡彈一次訊息，避免使用者誤以為單純 session 過期 (Round-5)
-    try {
-        if (sessionStorage.getItem('umc_account_deleted_hint') === '1') {
-            sessionStorage.removeItem('umc_account_deleted_hint');
-            if (typeof customAlert === 'function') {
-                customAlert('您的帳號已被系統管理員移除，請重新登入或聯絡管理員確認。');
-            }
-        }
-    } catch (e) {}
+    // （2026-07-03 移除「帳號已被系統管理員移除」彈窗：main.js restoreLoginFromStorage
+    //   查無帳號時已改為靜默清 localStorage → tryAutoLogin 重登，不再設 hint 旗標。
+    //   企業內部員工桌機開頁不應被提示視窗打斷 —— 勿再加回。）
 
     // 切到指定 tab
     try {

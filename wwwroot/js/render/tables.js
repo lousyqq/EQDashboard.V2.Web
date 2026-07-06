@@ -122,6 +122,7 @@ export function renderPersonalMenuManage() {
             const targetTextMap = {
                 'iframe': '<span class="text-primary fw-bold small">畫面內嵌</span>',
                 'blank': '<span class="text-info fw-bold small">另開新分頁</span>',
+                'ie': '<span class="text-info fw-bold small">另開分頁 (IE)</span>',
                 'fullscreen': '<span class="text-success fw-bold small">全螢幕</span>'
             };
             const targetSelectHtml = hasChildren
@@ -470,6 +471,7 @@ export function renderWebpageTable() {
         const targetMap = {
             'iframe': '<span class="text-secondary fw-bold small"><i class="fas fa-columns me-1"></i> 畫面內嵌</span>',
             'blank': '<span class="text-primary fw-bold small"><i class="fas fa-external-link-alt me-1"></i> 另開新分頁</span>',
+            'ie': '<span class="text-info fw-bold small"><i class="fab fa-internet-explorer me-1"></i> 另開分頁 (IE)</span>',
             'fullscreen': '<span class="text-success fw-bold small"><i class="fas fa-expand me-1"></i> 全螢幕</span>'
         };
         const targetHtml = mMode === 'app_grid' ? '<span class="text-muted small">-</span>' : (targetMap[mTarget] || targetMap['iframe']);
@@ -669,10 +671,12 @@ export function renderAppGrid(containerId, appList) {
         const aName = window.escapeHTML(app.name || app.AppName);
         const aUrl = window.escapeHTML(app.url || app.Url);
         let imgHtml = (app.iconBase64 || app.IconBase64) ? `<img src="${window.escapeHTML(app.iconBase64 || app.IconBase64)}" class="app-icon-img" alt="${aName}">` : `<i class="fas fa-cube text-muted" style="font-size:2rem;"></i>`;
-        let isIframe = (app.target || app.Target) === 'iframe';
-        let actionAttr = isIframe 
-            ? `data-action="open-iframe" data-url="${aUrl}" data-name="${aName}"` 
-            : `data-action="open-url" data-url="${aUrl}"`;
+        let aTargetVal = (app.target || app.Target);
+        let actionAttr = aTargetVal === 'iframe'
+            ? `data-action="open-iframe" data-url="${aUrl}" data-name="${aName}"`
+            : (aTargetVal === 'ie'
+                ? `data-action="open-ie" data-url="${aUrl}"`
+                : `data-action="open-url" data-url="${aUrl}"`);
         html += `<div class="app-card" title="${aName}"><div class="app-actions d-flex flex-nowrap justify-content-center gap-2"><button class="app-btn-action app-btn-edit" data-action="edit-app" data-id="${window.escapeHTML(app.id || app.AppId)}"><i class="fas fa-pencil-alt"></i></button><button class="app-btn-action app-btn-delete" data-action="delete-app" data-id="${window.escapeHTML(app.id || app.AppId)}"><i class="fas fa-times"></i></button></div><div class="app-icon-box" ${actionAttr}>${imgHtml}</div><div class="app-name" ${actionAttr}>${aName}</div></div>`;
     });
     html += `<div class="app-card app-add" title="新增 APP"><div class="app-icon-box app-add-box" data-action="add-app"><i class="fas fa-plus"></i></div><div class="app-name text-muted">新增 APP</div></div>`;

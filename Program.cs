@@ -356,8 +356,13 @@ app.Use(async (context, next) =>
 app.UseDefaultFiles();
 
 // ⭐️ 關鍵 2：啟用靜態檔案 (依資產型別設定 Cache-Control)
+// .reg（IE 協定客戶端安裝檔 /tools/install-ie-protocol.reg）不在預設 MIME 對照表 → 直接 404；
+//   註冊為 text/plain 供下載。僅顯式加這一個副檔名、不開放 ServeUnknownFileTypes（避免誤伺服未知型別）。
+var staticContentTypes = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
+staticContentTypes.Mappings[".reg"] = "text/plain";
 app.UseStaticFiles(new StaticFileOptions
 {
+    ContentTypeProvider = staticContentTypes,
     OnPrepareResponse = ctx =>
     {
         var name = ctx.File.Name;
