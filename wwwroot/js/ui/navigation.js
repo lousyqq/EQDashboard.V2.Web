@@ -215,10 +215,25 @@ export function selectTopMenu(menuId) {
                     //   先過 safeExternalUrl 把非 http(s)/相對路徑的危險 URL 全部阻斷
                     const safeUrl = (typeof window.safeExternalUrl === 'function') ? window.safeExternalUrl(mUrl) : mUrl;
                     if (safeUrl !== '#') {
-                        if (mTarget === 'blank') window.open(safeUrl, '_blank', 'noopener,noreferrer');
-                        else if (mTarget === 'ie') openInIE(safeUrl);
-                        else if (mTarget === 'fullscreen') openDynamicIframe(safeUrl, dName, null, true);
-                        else openDynamicIframe(safeUrl, dName, null, false);
+                        if (mTarget === 'blank') {
+                            window.open(safeUrl, '_blank', 'noopener,noreferrer');
+                        } else if (mTarget === 'ie') {
+                            openInIE(safeUrl);
+                        } else if (mTarget === 'fullscreen') {
+                            const w = screen.availWidth || window.screen.width || 1920;
+                            const h = screen.availHeight || window.screen.height || 1080;
+                            window.open(safeUrl, '_blank', `width=${w},height=${h},top=0,left=0,resizable=yes,scrollbars=yes,status=yes`);
+                        } else if (mTarget === 'popup') {
+                            const w = Math.min(1024, (screen.availWidth || 1280) - 100);
+                            const h = Math.min(768, (screen.availHeight || 800) - 100);
+                            const left = Math.round(((screen.availWidth || 1280) - w) / 2);
+                            const top = Math.round(((screen.availHeight || 800) - h) / 2);
+                            window.open(safeUrl, '_blank', `width=${w},height=${h},top=${top},left=${left},resizable=yes,scrollbars=yes,status=yes`);
+                        } else if (mTarget === 'iframe_fullscreen') {
+                            openDynamicIframe(safeUrl, dName, null, true);
+                        } else {
+                            openDynamicIframe(safeUrl, dName, null, false);
+                        }
                     }
                 }
                 else if (mTargetPage) navTo(mTargetPage, null, dName);
@@ -309,6 +324,16 @@ export function activateMenu(menuId) {
                 } else if (mTarget === 'ie') {
                     openInIE(safeUrl);
                 } else if (mTarget === 'fullscreen') {
+                    const w = screen.availWidth || window.screen.width || 1920;
+                    const h = screen.availHeight || window.screen.height || 1080;
+                    window.open(safeUrl, '_blank', `width=${w},height=${h},top=0,left=0,resizable=yes,scrollbars=yes,status=yes`);
+                } else if (mTarget === 'popup') {
+                    const w = Math.min(1024, (screen.availWidth || 1280) - 100);
+                    const h = Math.min(768, (screen.availHeight || 800) - 100);
+                    const left = Math.round(((screen.availWidth || 1280) - w) / 2);
+                    const top = Math.round(((screen.availHeight || 800) - h) / 2);
+                    window.open(safeUrl, '_blank', `width=${w},height=${h},top=${top},left=${left},resizable=yes,scrollbars=yes,status=yes`);
+                } else if (mTarget === 'iframe_fullscreen') {
                     openDynamicIframe(safeUrl, dName, targetEl, true);
                 } else {
                     openDynamicIframe(safeUrl, dName, targetEl, false);

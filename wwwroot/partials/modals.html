@@ -233,11 +233,13 @@
                             <div class="col-md-12" id="wpTargetGroup">
                                 <label class="form-label fw-bold text-muted small mb-1" data-i18n="open_target">開啟方式</label>
                                 <select id="wpTarget" class="form-select form-select-sm">
-                                    <option value="iframe" data-i18n="iframe">嵌入網頁 (Iframe)</option>
-                                    <option value="blank" data-i18n="blank">新分頁 (Blank)</option>
-                                    <option value="ie" data-i18n="blank_ie">另開分頁 (IE)</option>
-                                    <option value="fullscreen" class="text-primary fw-bold" data-i18n="fullscreen">全螢幕</option>
+                                    <option value="iframe">內部嵌入 (Iframe)</option>
+                                    <option value="iframe_fullscreen">內部嵌入 (全螢幕/沉浸模式)</option>
+                                    <option value="blank">新分頁 (Blank)</option>
+                                    <option value="fullscreen" class="text-success fw-bold">新視窗開啟 (全螢幕)</option>
+                                    <option value="popup">新視窗開啟 (彈出小視窗)</option>
                                 </select>
+                                <div class="form-text text-muted small mt-1"><i class="fas fa-info-circle me-1 text-primary"></i>提示：若目標網站設有防嵌入規範（如 X-Frame-Options 導致畫面空白），請改選「新分頁」或「新視窗開啟」。</div>
                             </div>
 
                             <!-- 存取控制 (白名單 / 黑名單)，折疊起來避免 modal 變太長 -->
@@ -328,7 +330,7 @@
                         </div>
 
                         <div class="mb-3" id="nodeUrlGroup" style="display:none;"><label class="form-label fw-bold small text-muted mb-1">連結網址</label><input type="text" id="nodeUrl" class="form-control" placeholder="請輸入網址或 page-id"></div>
-                        <div class="mb-3" id="nodeTargetGroup" style="display:none;"><label class="form-label fw-bold small text-muted mb-1" data-i18n="open_target">開啟方式</label><select id="nodeTarget" class="form-select"><option value="iframe">內部嵌入</option><option value="blank">另開分頁</option><option value="ie" data-i18n="blank_ie">另開分頁 (IE)</option><option value="fullscreen" data-i18n="fullscreen">全螢幕</option></select></div>
+                        <div class="mb-3" id="nodeTargetGroup" style="display:none;"><label class="form-label fw-bold small text-muted mb-1" data-i18n="open_target">開啟方式</label><select id="nodeTarget" class="form-select"><option value="iframe">內部嵌入 (Iframe)</option><option value="iframe_fullscreen">內部嵌入 (全螢幕/沉浸模式)</option><option value="blank">新分頁 (Blank)</option><option value="fullscreen" class="text-success fw-bold">新視窗開啟 (全螢幕)</option><option value="popup">新視窗開啟 (彈出小視窗)</option></select><div class="form-text text-muted small mt-1"><i class="fas fa-info-circle me-1 text-primary"></i>提示：若目標網站設有防嵌入規範（如 X-Frame-Options 導致畫面空白），請改選「新分頁」或「新視窗開啟」。</div></div>
 
                         <div id="treeBuilderSection" class="mt-4 pt-3 border-top">
                             <div class="mb-2 text-primary fw-bold"><i class="fas fa-list-ul me-1"></i> 底下包含的看板與群組配置 <small class="text-muted fw-normal">(拖曳左側圖示可排序)</small></div>
@@ -388,7 +390,7 @@
                         <input type="hidden" id="appIdInput">
                         <div class="mb-3"><label class="form-label fw-bold small">APP 名稱</label><input type="text" id="appName" class="form-control" required></div>
                         <div class="mb-3"><label class="form-label fw-bold small">連結網址</label><input type="text" id="appUrl" class="form-control" required></div>
-                        <div class="mb-3"><label class="form-label fw-bold small" data-i18n="open_target">開啟方式</label><select id="appTarget" class="form-select"><option value="_blank">新分頁 (_blank)</option><option value="ie" data-i18n="blank_ie">另開分頁 (IE)</option><option value="iframe">內部嵌入</option></select></div>
+                        <div class="mb-3"><label class="form-label fw-bold small" data-i18n="open_target">開啟方式</label><select id="appTarget" class="form-select"><option value="iframe">內部嵌入 (Iframe)</option><option value="iframe_fullscreen">內部嵌入 (全螢幕/沉浸模式)</option><option value="blank">新分頁 (Blank)</option><option value="fullscreen" class="text-success fw-bold">新視窗開啟 (全螢幕)</option><option value="popup">新視窗開啟 (彈出小視窗)</option></select><div class="form-text text-muted small mt-1"><i class="fas fa-info-circle me-1 text-primary"></i>提示：若目標網站設有防嵌入規範（如 X-Frame-Options 導致畫面空白），請改選「新分頁」或「新視窗開啟」。</div></div>
                         <div class="mb-4">
                             <label class="form-label fw-bold small">APP 圖示 (支援上傳圖檔)</label>
                             <input type="file" id="appIconFile" class="form-control form-control-sm mb-2" accept="image/*" onchange="handleAppIconUpload(event)">
@@ -443,10 +445,11 @@
                             <label class="form-label fw-bold text-muted small mb-1">開啟偏好</label>
                             <select id="personalMenuTarget" class="form-select form-select-sm">
                                 <option value="">(系統預設)</option>
-                                <option value="iframe">內嵌 (Iframe)</option>
-                                <option value="blank" data-i18n="blank">新分頁 (Blank)</option>
-                                <option value="ie" data-i18n="blank_ie">另開分頁 (IE)</option>
-                                <option value="fullscreen" class="text-primary fw-bold" data-i18n="fullscreen">全螢幕</option>
+                                <option value="iframe">內部嵌入 (Iframe)</option>
+                                <option value="iframe_fullscreen">內部嵌入 (全螢幕/沉浸模式)</option>
+                                <option value="blank">新分頁 (Blank)</option>
+                                <option value="fullscreen" class="text-success fw-bold">新視窗開啟 (全螢幕)</option>
+                                <option value="popup">新視窗開啟 (彈出小視窗)</option>
                             </select>
                         </div>
                         <div class="d-flex justify-content-end gap-2 mt-3 pt-2 border-top">

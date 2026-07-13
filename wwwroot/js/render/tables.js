@@ -121,9 +121,11 @@ export function renderPersonalMenuManage() {
             // 實際變更走右側「編輯」按鈕 → 個人選單設定 Modal 內的「開啟偏好」下拉
             const targetTextMap = {
                 'iframe': '<span class="text-primary fw-bold small">畫面內嵌</span>',
+                'iframe_fullscreen': '<span class="text-purple fw-bold small" style="color:#6f42c1;">內嵌全螢幕</span>',
                 'blank': '<span class="text-info fw-bold small">另開新分頁</span>',
                 'ie': '<span class="text-info fw-bold small">另開分頁 (IE)</span>',
-                'fullscreen': '<span class="text-success fw-bold small">全螢幕</span>'
+                'fullscreen': '<span class="text-success fw-bold small">新視窗開啟(全螢幕)</span>',
+                'popup': '<span class="text-warning fw-bold small">彈出小視窗</span>'
             };
             const targetSelectHtml = hasChildren
                 ? '<span class="text-muted">-</span>'
@@ -470,9 +472,11 @@ export function renderWebpageTable() {
         // 開啟模式（第一行）
         const targetMap = {
             'iframe': '<span class="text-secondary fw-bold small"><i class="fas fa-columns me-1"></i> 畫面內嵌</span>',
+            'iframe_fullscreen': '<span class="fw-bold small" style="color:#6f42c1;"><i class="fas fa-tv me-1"></i> 內嵌全螢幕</span>',
             'blank': '<span class="text-primary fw-bold small"><i class="fas fa-external-link-alt me-1"></i> 另開新分頁</span>',
             'ie': '<span class="text-info fw-bold small"><i class="fab fa-internet-explorer me-1"></i> 另開分頁 (IE)</span>',
-            'fullscreen': '<span class="text-success fw-bold small"><i class="fas fa-expand me-1"></i> 全螢幕</span>'
+            'fullscreen': '<span class="text-success fw-bold small"><i class="fas fa-expand me-1"></i> 新視窗開啟(全螢幕)</span>',
+            'popup': '<span class="text-warning fw-bold small"><i class="fas fa-window-restore me-1"></i> 彈出小視窗</span>'
         };
         const targetHtml = mMode === 'app_grid' ? '<span class="text-muted small">-</span>' : (targetMap[mTarget] || targetMap['iframe']);
 
@@ -554,6 +558,17 @@ export function renderMenuConfigTable() {
         let statusSwitch = `<div class="form-check form-switch d-flex justify-content-center"><input class="form-check-input cursor-pointer" type="checkbox" ${m.enabled ? 'checked' : ''} onchange="window.toggleMenuEnable('${m.id}', this.checked)"></div>`;
         let typeBadge = m.menuMode === 'folder' ? '<span class="badge bg-warning text-dark border"><i class="fas fa-folder me-1"></i>主選單</span>' : (m.menuMode === 'app_grid' ? '<span class="badge bg-success text-white border"><i class="fas fa-th-large me-1"></i>應用集合</span>' : '<span class="badge border border-primary text-primary bg-white"><i class="fas fa-link me-1"></i>獨立網頁</span>');
 
+        const tMap = {
+            'iframe': '<span class="text-secondary fw-bold small"><i class="fas fa-columns me-1"></i> 內部嵌入</span>',
+            'iframe_fullscreen': '<span class="fw-bold small" style="color:#6f42c1;"><i class="fas fa-tv me-1"></i> 內嵌全螢幕</span>',
+            'blank': '<span class="text-primary fw-bold small"><i class="fas fa-external-link-alt me-1"></i> 另開分頁</span>',
+            'ie': '<span class="text-info fw-bold small"><i class="fab fa-internet-explorer me-1"></i> 另開分頁 (IE)</span>',
+            'fullscreen': '<span class="text-success fw-bold small"><i class="fas fa-expand me-1"></i> 新視窗開啟(全螢幕)</span>',
+            'popup': '<span class="text-warning fw-bold small"><i class="fas fa-window-restore me-1"></i> 彈出小視窗</span>'
+        };
+        const currentT = m.target || m.Target || m.openTarget || 'iframe';
+        let targetBadge = (m.menuMode === 'folder' || m.menuMode === 'app_grid') ? '<span class="text-muted small">-</span>' : (tMap[currentT] || tMap['iframe']);
+
         let contentTxt = '';
         if (m.menuMode === 'folder') {
             contentTxt = getDescendantBadges(m.id, menus);
@@ -561,7 +576,6 @@ export function renderMenuConfigTable() {
         } else if (m.menuMode === 'app_grid') {
             contentTxt = `<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 me-1"><i class="fas fa-th-large me-1"></i>內部應用集合區</span>`;
         } else {
-            let targetTxt = m.target === 'iframe' ? '嵌入網頁' : (m.target === 'fullscreen' ? '全螢幕' : '另開分頁');
             contentTxt = `<span class="text-muted small"><i class="fas fa-link me-1"></i>${window.escapeHTML(m.url || m.targetPage)}</span>`;
         }
 
@@ -593,6 +607,7 @@ export function renderMenuConfigTable() {
             <tr class="draggable-row" draggable="true" ondragstart="handleDragStart(event, '${m.id}', null)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, '${m.id}', null, 'system')">
                 <td class="text-start ps-3 align-middle">${sysNameHtml}</td>
                 <td class="align-middle">${typeBadge}</td>
+                <td class="align-middle">${targetBadge}</td>
                 <td class="align-middle">${statusSwitch}</td>
                 <td class="text-start align-middle" style="max-width: 400px; white-space: normal;">${contentTxt}</td>
                 <td class="text-center align-middle" style="white-space: nowrap; width: 1%;">${actionBtns}</td>
