@@ -164,8 +164,19 @@ window.renderFabSwitcher = function () {
         window.cleanId(f.fabName || f.FabName || f.id || f.fabId || f.FabId) === window.cleanId(appState.currentFab)
     );
     if (!appState.currentFab || !isCurrentVisible) {
-        const first = fabs[0];
-        appState.currentFab = first.fabName || first.FabName || first.id || first.fabId || first.FabId;
+        const defPages = appState.currentUser?.defaultPages || {};
+        let preferredFab = null;
+        if (defPages['12A']) preferredFab = fabs.find(f => String(f.fabName || f.id || '').toLowerCase() === '12a');
+        if (!preferredFab && Object.keys(defPages).length > 0) {
+            const firstKey = Object.keys(defPages)[0];
+            preferredFab = fabs.find(f => String(f.fabName || f.id || '').toLowerCase() === String(firstKey).toLowerCase());
+        }
+        const isOpenAccess = appState.openAccessMode === true || (window._authConfig && window._authConfig.openAccessMode === true);
+        if (!preferredFab && isOpenAccess) {
+            preferredFab = fabs.find(f => String(f.fabName || f.id || '').toLowerCase() === '12a');
+        }
+        const first = preferredFab || fabs[0];
+        appState.currentFab = first ? (first.fabName || first.FabName || first.id || first.fabId || first.FabId) : '';
         try { appState.currentFab = appState.currentFab; } catch (e) { }
     }
 

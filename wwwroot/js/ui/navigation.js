@@ -442,9 +442,13 @@ export function goDefaultHome() {
                     }
                 });
 
-                const allowedIds = typeof window.getAllowedIdsWithHierarchy === 'function'
-                    ? window.getAllowedIdsWithHierarchy(menus, initialMenuIds)
-                    : new Set(initialMenuIds);
+                const isOpenAccess = appState.openAccessMode === true || (window._authConfig && window._authConfig.openAccessMode === true);
+                const isAdmin = appState.currentUser && appState.currentUser.roleLevel === 'admin';
+                const allowedIds = (isAdmin || isOpenAccess)
+                    ? new Set(menus.map(m => m.id))
+                    : (typeof window.getAllowedIdsWithHierarchy === 'function'
+                        ? window.getAllowedIdsWithHierarchy(menus, initialMenuIds)
+                        : new Set(initialMenuIds));
 
                 // 找出第一層 root（非 pool、無父節點、啟用、且在 allowedIds 中）
                 let validRoots = menus.filter(m =>

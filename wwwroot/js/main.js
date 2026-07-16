@@ -31,7 +31,23 @@ export function initDashboardUI(stayOnCurrentPage = false) {
                 String(f.id || '').toLowerCase() === String(currentFabVal).toLowerCase() ||
                 String(f.fabName || '').toLowerCase() === String(currentFabVal).toLowerCase()
             );
-            appState.currentFab = exists ? exists.fabName : fabs[0].fabName;
+            if (!exists) {
+                const defPages = appState.currentUser?.defaultPages || {};
+                let preferredFab = null;
+                if (defPages['12A']) preferredFab = fabs.find(f => String(f.fabName || f.id || '').toLowerCase() === '12a');
+                if (!preferredFab && Object.keys(defPages).length > 0) {
+                    const firstKey = Object.keys(defPages)[0];
+                    preferredFab = fabs.find(f => String(f.fabName || f.id || '').toLowerCase() === String(firstKey).toLowerCase());
+                }
+                const isOpenAccess = appState.openAccessMode === true || (window._authConfig && window._authConfig.openAccessMode === true);
+                if (!preferredFab && isOpenAccess) {
+                    preferredFab = fabs.find(f => String(f.fabName || f.id || '').toLowerCase() === '12a');
+                }
+                const chosen = preferredFab || fabs[0];
+                appState.currentFab = chosen ? chosen.fabName : '';
+            } else {
+                appState.currentFab = exists.fabName;
+            }
 
             const fabObj = exists || fabs[0];
             if (fabObj && fabObj.defaultLang && typeof changeLanguage === 'function') {

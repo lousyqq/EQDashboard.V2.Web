@@ -123,7 +123,7 @@ public class AuthController : ControllerBase
                 {
                     EmpId = empId,
                     Name = empId,
-                    Department = "自動加入",
+                    Department = "一般使用者",
                     RoleLevel = "user",
                     CanEditOthers = false,
                     LoginCount = 0,
@@ -131,7 +131,60 @@ public class AuthController : ControllerBase
                 };
                 _context.Accounts.Add(account);
                 await _context.SaveChangesAsync();
-                _logger.LogInformation("✅ WhoAmI (OpenAccessMode=true) 自動加入新帳號為 user：{EmpId}", empId);
+
+                // 預設顯示為 12A 廠區第一個選單的第一個頁面
+                var targetFabName = "12A";
+                var fabExists = await _context.Fabs.AnyAsync(f => f.FabName == targetFabName || f.FabId == targetFabName);
+                if (!fabExists)
+                {
+                    var firstFab = await _context.Fabs.OrderBy(f => f.SortOrder).FirstOrDefaultAsync();
+                    if (firstFab != null) targetFabName = firstFab.FabName ?? firstFab.FabId ?? "12A";
+                }
+
+                if (!string.IsNullOrEmpty(targetFabName))
+                {
+                    var fabRoles = await _context.MapFabRoles.Where(m => m.FabId == targetFabName).Select(m => m.RoleId).ToListAsync();
+                    var fabMenuIds = await _context.MapRoleMenus.Where(m => fabRoles.Contains(m.RoleId)).Select(m => m.MenuId).ToListAsync();
+
+                    var allMenus = await _context.Menus.Where(m => m.Enabled != false && !m.IsPoolItem).ToListAsync();
+                    var menuStructs = await _context.MapMenuStructures.ToListAsync();
+
+                    var candidateRoots = allMenus.Where(m => fabMenuIds.Contains(m.MenuId) && !menuStructs.Any(ms => ms.ChildMenuId == m.MenuId)).OrderBy(m => fabMenuIds.IndexOf(m.MenuId)).ToList();
+                    if (candidateRoots.Count == 0)
+                        candidateRoots = allMenus.Where(m => !menuStructs.Any(ms => ms.ChildMenuId == m.MenuId)).OrderBy(m => m.GlobalOrder).ToList();
+
+                    string? targetMenuId = null;
+                    if (candidateRoots.Count > 0)
+                    {
+                        var firstRoot = candidateRoots[0];
+                        if (string.Equals(firstRoot.MenuMode, "folder", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var childIds = menuStructs.Where(ms => ms.ParentMenuId == firstRoot.MenuId).OrderBy(ms => ms.SortOrder).Select(ms => ms.ChildMenuId).ToList();
+                            var firstChild = allMenus.FirstOrDefault(m => childIds.Contains(m.MenuId) && (!string.IsNullOrEmpty(m.Url) || !string.IsNullOrEmpty(m.TargetPage) || string.Equals(m.MenuMode, "app_grid", StringComparison.OrdinalIgnoreCase)));
+                            if (firstChild == null && childIds.Count > 0)
+                                firstChild = allMenus.FirstOrDefault(m => childIds.Contains(m.MenuId));
+                            if (firstChild != null) targetMenuId = firstChild.MenuId;
+                            else targetMenuId = firstRoot.MenuId;
+                        }
+                        else
+                        {
+                            targetMenuId = firstRoot.MenuId;
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(targetMenuId))
+                    {
+                        _context.MapAccountDefaultPages.Add(new MapAccountDefaultPage
+                        {
+                            EmpId = empId,
+                            FabId = targetFabName,
+                            MenuId = targetMenuId
+                        });
+                        await _context.SaveChangesAsync();
+                    }
+                }
+
+                _logger.LogInformation("✅ WhoAmI (OpenAccessMode=true) 自動加入新帳號為 user，預設首頁設為 12A ({MenuId})：{EmpId}", targetFabName, empId);
             }
             else
             {

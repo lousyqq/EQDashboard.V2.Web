@@ -310,13 +310,23 @@ export function renderSidebarMenus() {
         const extraMenus = _ovForCurrentFab(appState.currentUser.extraMenus || appState.currentUser.ExtraMenus);
         if (extraMenus.length > 0) initialMenuIds.push(...extraMenus);
 
-        let allowedSet = new Set(initialMenuIds.map(window.cleanId).filter(id => id !== ''));
+        const isOpenAccess = appState.openAccessMode === true || (window._authConfig && window._authConfig.openAccessMode === true);
+        const isAdmin = appState.currentUser.roleLevel === 'admin';
+
+        let allowedSet;
+        if (isAdmin || isOpenAccess) {
+            allowedSet = new Set(menus.map(m => window.cleanId(m.id)).filter(id => id !== ''));
+        } else {
+            allowedSet = new Set(initialMenuIds.map(window.cleanId).filter(id => id !== ''));
+        }
 
         // 帳號層級 deny — 但若該 menu 被 Menu ACL force-allow，仍視為允許 (Menu 優先)。只扣「當前廠區」這份。
         const accountDenySet = new Set(_ovForCurrentFab(appState.currentUser.denyMenus || appState.currentUser.DenyMenus).map(window.cleanId).filter(id => id !== ''));
-        accountDenySet.forEach(id => {
-            if (!menuAclForceAllow.has(id)) allowedSet.delete(id);
-        });
+        if (!isAdmin && !isOpenAccess) {
+            accountDenySet.forEach(id => {
+                if (!menuAclForceAllow.has(id)) allowedSet.delete(id);
+            });
+        }
 
         // Menu ACL 套用 (最高優先) — force-allow 強加進來、deny 強拿掉
         menuAclForceAllow.forEach(id => allowedSet.add(id));
