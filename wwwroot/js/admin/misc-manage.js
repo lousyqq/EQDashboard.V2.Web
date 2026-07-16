@@ -261,6 +261,36 @@ export async function reorderWebpageMenu(srcId, targetId) {
 }
 
 // === App Grid ===
+export function canManageCurrentAppGrid() {
+    if (!appState.currentUser) return false;
+    if (String(appState.currentUser.roleLevel || '').toLowerCase() === 'admin') return true;
+    const menuId = appState.currentAppGridMenuId;
+    if (!menuId) return false;
+
+    let menus = [];
+    if (typeof getCustomMenus === 'function') menus = getCustomMenus();
+    else if (appState.customMenus) menus = appState.customMenus;
+
+    const menuNode = menus.find(m => window.cleanId(m.id) === window.cleanId(menuId));
+    if (menuNode && window.cleanId(menuNode.createdBy) === window.cleanId(appState.currentUser.id)) {
+        return true;
+    }
+
+    if (typeof window.getMenuPermissions === 'function') {
+        const perms = window.getMenuPermissions(menuId, menuNode?.createdBy);
+        if (perms && (perms.canEdit || perms.canManageStructure || perms.canDelete)) {
+            return true;
+        }
+    }
+    if (typeof window.canManageFolderStructure === 'function') {
+        if (window.canManageFolderStructure(menuId)) {
+            return true;
+        }
+    }
+    return false;
+}
+window.canManageCurrentAppGrid = canManageCurrentAppGrid;
+
 export function openAppGridPage(menuId, title, element) {
     appState.currentAppGridMenuId = menuId;
     document.getElementById('app-grid-title').innerText = title || '應用集合';
@@ -270,6 +300,10 @@ export function openAppGridPage(menuId, title, element) {
 }
 
 export function openAppGridModal(id = null) {
+    if (!canManageCurrentAppGrid()) {
+        if (typeof customAlert === 'function') customAlert("您沒有管理此應用集合的權限");
+        return;
+    }
     try {
         document.getElementById('appForm').reset();
         document.getElementById('appIdInput').value = id || '';
@@ -296,6 +330,11 @@ export async function saveAppItem(e) {
     // ⭐️ 核心防重整
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     else if (window.event && typeof window.event.preventDefault === 'function') window.event.preventDefault();
+
+    if (!canManageCurrentAppGrid()) {
+        if (typeof customAlert === 'function') customAlert("您沒有管理此應用集合的權限");
+        return false;
+    }
 
     try {
         const id = document.getElementById('appIdInput').value;
@@ -340,6 +379,10 @@ export async function saveAppItem(e) {
 }
 
 export function deleteAppItem(id) {
+    if (!canManageCurrentAppGrid()) {
+        if (typeof customAlert === 'function') customAlert("您沒有管理此應用集合的權限");
+        return;
+    }
     try {
         customConfirm('確定要刪除此 APP 嗎？', async () => {
             let apps = getAppItems().filter(a => window.cleanId(a.id) !== window.cleanId(id));

@@ -25,8 +25,16 @@ window.safeExternalUrl = function(url) {
     if (!url) return '#';
     const cleaned = String(url).replace(/[\s\u0000-\u001f]/g, '').toLowerCase();
     if (cleaned === '') return '#';
-    if (cleaned.startsWith('http://') || cleaned.startsWith('https://') || cleaned.startsWith('/')) {
-        return String(url); // 通過驗證，回原值 (保留大小寫 query string 等)
+    if (cleaned.startsWith('http://') || cleaned.startsWith('https://') || cleaned.startsWith('/') || cleaned.startsWith('./') || cleaned.startsWith('../') || cleaned.startsWith('page-')) {
+        return String(url);
+    }
+    if (cleaned.startsWith('localhost') || cleaned.startsWith('127.0.0.1') || /^10\.|^172\.(1[6-9]|2[0-9]|3[0-1])\.|^192\.168\./.test(cleaned)) {
+        return String(url);
+    }
+    const colonIdx = cleaned.indexOf(':');
+    const slashIdx = cleaned.indexOf('/');
+    if (colonIdx === -1 || (slashIdx !== -1 && colonIdx > slashIdx)) {
+        return String(url);
     }
     return '#';
 };
@@ -682,6 +690,10 @@ export function renderAuditTable() {
 
 export function renderAppGrid(containerId, appList) {
     const container = document.getElementById(containerId); if (!container) return; let html = '';
+    const canManage = (typeof window.canManageCurrentAppGrid === 'function')
+        ? window.canManageCurrentAppGrid()
+        : (appState.currentUser && String(appState.currentUser.roleLevel || '').toLowerCase() === 'admin');
+
     appList.forEach(app => {
         const aName = window.escapeHTML(app.name || app.AppName);
         const aUrl = window.escapeHTML(app.url || app.Url);
@@ -692,9 +704,14 @@ export function renderAppGrid(containerId, appList) {
             : (aTargetVal === 'ie'
                 ? `data-action="open-ie" data-url="${aUrl}"`
                 : `data-action="open-url" data-url="${aUrl}"`);
-        html += `<div class="app-card" title="${aName}"><div class="app-actions d-flex flex-nowrap justify-content-center gap-2"><button class="app-btn-action app-btn-edit" data-action="edit-app" data-id="${window.escapeHTML(app.id || app.AppId)}"><i class="fas fa-pencil-alt"></i></button><button class="app-btn-action app-btn-delete" data-action="delete-app" data-id="${window.escapeHTML(app.id || app.AppId)}"><i class="fas fa-times"></i></button></div><div class="app-icon-box" ${actionAttr}>${imgHtml}</div><div class="app-name" ${actionAttr}>${aName}</div></div>`;
+        const actionsHtml = canManage
+            ? `<div class="app-actions d-flex flex-nowrap justify-content-center gap-2"><button class="app-btn-action app-btn-edit" data-action="edit-app" data-id="${window.escapeHTML(app.id || app.AppId)}"><i class="fas fa-pencil-alt"></i></button><button class="app-btn-action app-btn-delete" data-action="delete-app" data-id="${window.escapeHTML(app.id || app.AppId)}"><i class="fas fa-times"></i></button></div>`
+            : '';
+        html += `<div class="app-card" title="${aName}">${actionsHtml}<div class="app-icon-box" ${actionAttr}>${imgHtml}</div><div class="app-name" ${actionAttr}>${aName}</div></div>`;
     });
-    html += `<div class="app-card app-add" title="新增 APP"><div class="app-icon-box app-add-box" data-action="add-app"><i class="fas fa-plus"></i></div><div class="app-name text-muted">新增 APP</div></div>`;
+    if (canManage) {
+        html += `<div class="app-card app-add" title="新增 APP"><div class="app-icon-box app-add-box" data-action="add-app"><i class="fas fa-plus"></i></div><div class="app-name text-muted">新增 APP</div></div>`;
+    }
     container.innerHTML = html;
 }
 

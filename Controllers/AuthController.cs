@@ -6,10 +6,11 @@ using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using EQDashboard.V2.Web.Models;
+using EQDashboard.V2.Web.Models.Settings;
 using EQDashboard.V2.Web.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using EQDashboard.V2.Web.Models.Settings;
 
 namespace EQDashboard.V2.Web.Controllers;
 
@@ -44,42 +45,46 @@ public class AuthController : ControllerBase
     [AllowAnonymous]
     public IActionResult GetConfig()
     {
-        var allowManual = _authSettings.AllowManualLogin;
         return Ok(new
         {
-            allowManualLogin = allowManual,
-            // 之後若要再加「強制 Windows 自動 / 開啟測試帳號提示」之類也都掛在這
+            allowManualLogin = _authSettings.AllowManualLogin,
+            openAccessMode = _authSettings.OpenAccessMode,
+            simulatedAccount = _authSettings.SimulatedAccount
         });
     }
 
     /// <summary>
-    /// 取得桌機目前 Windows 登入者的工號。
-    ///
-    /// 與舊版差別：改成 [Authorize(AuthenticationSchemes = Negotiate)] — 沒帶 Windows 認證票證的請求
-    /// 會收到 401 + WWW-Authenticate: Negotiate，瀏覽器若在網域、會自動補上認證；非網域機則直接 401，
-    /// 前端 catch 401 就改顯示手動登入框。
-    ///
-    /// 萃取工號用使用者測試過可行的最簡 pattern：
-    ///     var empId = (User?.Identity?.Name ?? "").Replace("UMC\\", "");
-    /// 但 "UMC" 改用 appsettings.Auth.WindowsDomainStripPrefix 控制，部署到不同網域時不必改 code。
+    /// 取得桌機目前 Windows 登入者的工號。支援 OpenAccessMode 自動加入與 SimulatedAccount 模擬帳號。
     /// </summary>
     [HttpGet("WhoAmI")]
     [Authorize(AuthenticationSchemes = NegotiateDefaults.AuthenticationScheme)]
     public async Task<IActionResult> WhoAmI()
     {
-        var stripPrefix = _authSettings.WindowsDomainStripPrefix ?? "UMC";
-        var rawName = User?.Identity?.Name ?? "";
+        string empId;
+        string rawName;
+        string loginSource = "windows";
 
-        // 跟你測過的範例一致：先剝 DOMAIN\、再剝 @domain.com (Kerberos UPN 形態的保險)
-        var empId = rawName
-            .Replace($"{stripPrefix}\\", "", StringComparison.OrdinalIgnoreCase)
-            .Trim();
-        var atIdx = empId.IndexOf('@');
-        if (atIdx > 0) empId = empId[..atIdx];
+        if (!string.IsNullOrWhiteSpace(_authSettings.SimulatedAccount))
+        {
+            empId = _authSettings.SimulatedAccount.Trim();
+            rawName = empId;
+            loginSource = "simulated";
+            _logger.LogInformation("WhoAmI: 啟用模擬帳號 (SimulatedAccount) = {EmpId}", empId);
+        }
+        else
+        {
+            var stripPrefix = _authSettings.WindowsDomainStripPrefix ?? "UMC";
+            rawName = User?.Identity?.Name ?? "";
+            empId = rawName
+                .Replace($"{stripPrefix}\\", "", StringComparison.OrdinalIgnoreCase)
+                .Trim();
+            var atIdx = empId.IndexOf('@');
+            if (atIdx > 0) empId = empId[..atIdx];
+        }
 
         if (string.IsNullOrWhiteSpace(empId))
         {
-            await _activityLogger.LogLoginAsync(HttpContext, "(unknown)", null, "windows", false,
+            await _activityLogger.LogLoginAsync(HttpContext, "(unknown)", null, loginSource, false,
                 errorMessage: "未偵測到 Windows 登入身份", detail: $"{{\"rawName\":\"{rawName}\"}}");
             return Ok(new
             {
@@ -91,22 +96,65 @@ public class AuthController : ControllerBase
             });
         }
 
-        // 檢查 Accounts 表 — 無此工號就回「無瀏覽權限」訊息給前端，由前端顯示在登入框上
+        var isDefaultAdmin = _authSettings.DefaultAdmins?.Any(x => string.Equals(x, empId, StringComparison.OrdinalIgnoreCase)) == true;
         var account = await _authService.FindAccountAsync(empId);
+
         if (account == null)
         {
-            _logger.LogWarning("WhoAmI: Windows 帳號 {EmpId} 不存在於 Accounts 表", empId);
-            await _activityLogger.LogLoginAsync(HttpContext, empId, null, "windows", false,
-                errorMessage: "工號不存在於 Accounts 表", detail: $"{{\"rawName\":\"{rawName}\"}}");
-            return Ok(new
+            if (isDefaultAdmin)
             {
-                success = false,
-                authenticated = true,
-                empId,
-                rawName,
-                source = "windows",
-                message = $"[{empId}] 無瀏覽此網頁的權限"
-            });
+                account = new Account
+                {
+                    EmpId = empId,
+                    Name = empId,
+                    Department = "系統管理員",
+                    RoleLevel = "admin",
+                    CanEditOthers = true,
+                    LoginCount = 0,
+                    LastLoginTime = DateTime.UtcNow
+                };
+                _context.Accounts.Add(account);
+                await _context.SaveChangesAsync();
+                _logger.LogInformation("✅ WhoAmI 自動建立預設 Admin 帳號：{EmpId}", empId);
+            }
+            else if (_authSettings.OpenAccessMode)
+            {
+                account = new Account
+                {
+                    EmpId = empId,
+                    Name = empId,
+                    Department = "自動加入",
+                    RoleLevel = "user",
+                    CanEditOthers = false,
+                    LoginCount = 0,
+                    LastLoginTime = DateTime.UtcNow
+                };
+                _context.Accounts.Add(account);
+                await _context.SaveChangesAsync();
+                _logger.LogInformation("✅ WhoAmI (OpenAccessMode=true) 自動加入新帳號為 user：{EmpId}", empId);
+            }
+            else
+            {
+                _logger.LogWarning("WhoAmI: Windows 帳號 {EmpId} 不存在於 Accounts 表且 OpenAccessMode=false", empId);
+                await _activityLogger.LogLoginAsync(HttpContext, empId, null, loginSource, false,
+                    errorMessage: "工號不存在於 Accounts 表且未開啟 OpenAccessMode", detail: $"{{\"rawName\":\"{rawName}\"}}");
+                return Ok(new
+                {
+                    success = false,
+                    authenticated = true,
+                    empId,
+                    rawName,
+                    source = loginSource,
+                    message = $"[{empId}] 無瀏覽此網頁的權限"
+                });
+            }
+        }
+        else if (isDefaultAdmin && !string.Equals(account.RoleLevel, "admin", StringComparison.OrdinalIgnoreCase))
+        {
+            account.RoleLevel = "admin";
+            account.CanEditOthers = true;
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("✅ WhoAmI 自動升級預設 Admin 帳號為 admin：{EmpId}", empId);
         }
 
         // 找到帳號 — 也順手發一張 Cookie，這樣 [Authorize] 的 API (例如 PersonalSettings) 後續才能用
@@ -115,7 +163,7 @@ public class AuthController : ControllerBase
             new(ClaimTypes.NameIdentifier, account.EmpId),
             new(ClaimTypes.Name, account.Name ?? account.EmpId),
             new(ClaimTypes.Role, (account.RoleLevel ?? "user").ToLower()),
-            new("LoginSource", "windows")
+            new("LoginSource", loginSource)
         };
         var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
         await HttpContext.SignInAsync(
@@ -127,8 +175,7 @@ public class AuthController : ControllerBase
                 ExpiresUtc = DateTimeOffset.UtcNow.AddHours(12)
             });
 
-        // 紀錄 Windows 自動登入成功 — middleware 預設不記 Login 類別，這裡明確補
-        await _activityLogger.LogLoginAsync(HttpContext, account.EmpId, account.Name, "windows", true,
+        await _activityLogger.LogLoginAsync(HttpContext, account.EmpId, account.Name, loginSource, true,
             detail: $"{{\"rawName\":\"{rawName}\"}}");
 
         return Ok(new
@@ -137,7 +184,7 @@ public class AuthController : ControllerBase
             authenticated = true,
             empId = account.EmpId,
             rawName,
-            source = "windows",
+            source = loginSource,
             roleLevel = account.RoleLevel,
             account = new
             {

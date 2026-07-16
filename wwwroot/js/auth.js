@@ -44,7 +44,14 @@ export async function fetchAuthConfig() {
         const resp = await fetch('/api/Auth/Config', { credentials: 'include' });
         if (resp.ok) {
             const c = await resp.json();
-            if (c) window._authConfig = { allowManualLogin: c.allowManualLogin !== false };
+            if (c) {
+                window._authConfig = {
+                    allowManualLogin: c.allowManualLogin !== false,
+                    openAccessMode: c.openAccessMode === true,
+                    simulatedAccount: c.simulatedAccount || ''
+                };
+                if (window.appState) window.appState.openAccessMode = window._authConfig.openAccessMode;
+            }
         }
     } catch (e) { console.warn('Auth/Config 失敗:', e); }
     applyAuthConfigToUI(window._authConfig);

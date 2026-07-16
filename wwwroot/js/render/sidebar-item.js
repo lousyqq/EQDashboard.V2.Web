@@ -96,7 +96,7 @@ window.renderUserDropdown = function () {
     let srcBadge = '';
     if (src === 'windows') srcBadge = ' <span class="badge bg-info text-white ms-1" style="font-size:0.6rem; vertical-align:middle;"><i class="fab fa-windows me-1"></i>' + t('login_src_windows', 'Windows') + '</span>';
     else if (src === 'manual') srcBadge = ' <span class="badge bg-secondary text-white ms-1" style="font-size:0.6rem; vertical-align:middle;"><i class="fas fa-key me-1"></i>' + t('login_src_manual', '手動') + '</span>';
-    else if (src === 'test') srcBadge = ' <span class="badge bg-warning text-dark ms-1" style="font-size:0.6rem; vertical-align:middle;"><i class="fas fa-vial me-1"></i>' + t('login_src_test', '測試') + '</span>';
+    else if (src === 'test' || src === 'simulated') srcBadge = ' <span class="badge bg-warning text-dark ms-1" style="font-size:0.6rem; vertical-align:middle;"><i class="fas fa-vial me-1"></i>' + t('login_src_test', '模擬') + '</span>';
     else if (src === 'emergency') srcBadge = ' <span class="badge bg-danger text-white ms-1" style="font-size:0.6rem; vertical-align:middle;"><i class="fas fa-shield-alt me-1"></i>' + t('login_src_emergency', '緊急') + '</span>';
 
     setText('user-name', appState.currentUser.id || '');
@@ -142,6 +142,8 @@ window.renderFabSwitcher = function () {
     const userRoleIds = (appState.currentUser && (appState.currentUser.assignedRoles || appState.currentUser.AssignedRoles) || [])
         .map(window.cleanId);
     const fabs = !appState.currentUser ? allFabs : allFabs.filter(f => {
+        if (appState.currentUser.roleLevel === 'admin') return true;
+        if (appState.openAccessMode === true || (window._authConfig && window._authConfig.openAccessMode === true)) return true;
         const fabRoles = (f.assignedRoles || f.AssignedRoles || []).map(window.cleanId);
         // 若該廠區沒設任何 role，視為「無人可見」（與舊版單檔的隱含規則一致）
         if (fabRoles.length === 0) return false;

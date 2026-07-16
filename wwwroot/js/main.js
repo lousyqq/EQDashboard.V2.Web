@@ -136,7 +136,8 @@ document.addEventListener('click', function(e) {
     if (openUrlBtn) {
         let url = openUrlBtn.getAttribute('data-url');
         // ⚠️ 改用 safeExternalUrl：舊版只擋 startsWith('javascript:')，會被 `\tjavascript:` / `data:text/html` 等繞過
-        const safe = (typeof window.safeExternalUrl === 'function') ? window.safeExternalUrl(url) : url;
+        let safe = (typeof window.safeExternalUrl === 'function') ? window.safeExternalUrl(url) : url;
+        if (typeof window.normalizeTargetUrl === 'function') safe = window.normalizeTargetUrl(safe);
         if (safe && safe !== '#') {
             window.open(safe, '_blank', 'noopener,noreferrer');
         }
@@ -146,7 +147,8 @@ document.addEventListener('click', function(e) {
     if (openIeBtn) {
         let url = openIeBtn.getAttribute('data-url');
         // 與 open-url 同層 XSS 防護：先過 safeExternalUrl 再交給 IE 協定
-        const safeIe = (typeof window.safeExternalUrl === 'function') ? window.safeExternalUrl(url) : url;
+        let safeIe = (typeof window.safeExternalUrl === 'function') ? window.safeExternalUrl(url) : url;
+        if (typeof window.normalizeTargetUrl === 'function') safeIe = window.normalizeTargetUrl(safeIe);
         if (safeIe && safeIe !== '#' && typeof window.openInIE === 'function') {
             window.openInIE(safeIe);
         }
@@ -156,7 +158,8 @@ document.addEventListener('click', function(e) {
     if (openIframeBtn) {
         let url = openIframeBtn.getAttribute('data-url');
         let name = openIframeBtn.getAttribute('data-name');
-        const safeIfr = (typeof window.safeExternalUrl === 'function') ? window.safeExternalUrl(url) : url;
+        let safeIfr = (typeof window.safeExternalUrl === 'function') ? window.safeExternalUrl(url) : url;
+        if (typeof window.normalizeTargetUrl === 'function') safeIfr = window.normalizeTargetUrl(safeIfr);
         if (safeIfr && safeIfr !== '#') {
             if (typeof window.openDynamicIframe === 'function') window.openDynamicIframe(safeIfr, name, null, false);
         }
@@ -165,17 +168,20 @@ document.addEventListener('click', function(e) {
     const editAppBtn = e.target.closest('[data-action="edit-app"]');
     if (editAppBtn) {
         e.stopPropagation();
+        if (typeof window.canManageCurrentAppGrid === 'function' && !window.canManageCurrentAppGrid()) return;
         if (typeof window.openAppGridModal === 'function') window.openAppGridModal(editAppBtn.getAttribute('data-id'));
         return;
     }
     const deleteAppBtn = e.target.closest('[data-action="delete-app"]');
     if (deleteAppBtn) {
         e.stopPropagation();
+        if (typeof window.canManageCurrentAppGrid === 'function' && !window.canManageCurrentAppGrid()) return;
         if (typeof window.deleteAppItem === 'function') window.deleteAppItem(deleteAppBtn.getAttribute('data-id'));
         return;
     }
     const addAppBtn = e.target.closest('[data-action="add-app"]');
     if (addAppBtn) {
+        if (typeof window.canManageCurrentAppGrid === 'function' && !window.canManageCurrentAppGrid()) return;
         if (typeof window.openAppGridModal === 'function') window.openAppGridModal();
         return;
     }

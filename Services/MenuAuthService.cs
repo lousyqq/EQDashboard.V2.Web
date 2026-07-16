@@ -1,7 +1,9 @@
 using EQDashboard.V2.Web.Data;
+using EQDashboard.V2.Web.Models.Settings;
 using EQDashboard.V2.Web.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 
 namespace EQDashboard.V2.Web.Services;
 
@@ -21,6 +23,7 @@ public class MenuAuthService : IMenuAuthService
     private readonly AppDbContext _context;
     private readonly IMemoryCache _cache;
     private readonly ISettingsService _settingsService;
+    private readonly AuthSettings _authSettings;
 
     // === 跨請求快取：可見看板集合（E2 優化）===
     // GetVisibleMenuIdsAsync 在每個「非 admin」的 GetInitialData / GetMenus / PersonalSettings 請求都會跑，
@@ -40,11 +43,12 @@ public class MenuAuthService : IMenuAuthService
     private readonly Dictionary<string, bool> _canEditOthersCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, List<string>> _manageSetCache = new(StringComparer.OrdinalIgnoreCase);
 
-    public MenuAuthService(AppDbContext context, IMemoryCache cache, ISettingsService settingsService)
+    public MenuAuthService(AppDbContext context, IMemoryCache cache, ISettingsService settingsService, IOptions<AuthSettings> authSettings)
     {
         _context = context;
         _cache = cache;
         _settingsService = settingsService;
+        _authSettings = authSettings.Value;
     }
 
     /// <summary>整張 Map_Menu_Structure 的 child→parents 反向索引（每請求載入一次）</summary>
@@ -160,7 +164,7 @@ public class MenuAuthService : IMenuAuthService
 
     public async Task<HashSet<string>?> GetVisibleMenuIdsAsync(string empId, bool isAdmin)
     {
-        if (isAdmin) return null;                              // admin 不限
+        if (isAdmin || _authSettings.OpenAccessMode) return null;                              // admin 或 OpenAccessMode 開放模式不限
         if (string.IsNullOrWhiteSpace(empId)) return new HashSet<string>();  // 匿名 / 無效 → 空集合
 
         // E2：先查跨請求快取。key 綁 ETag → 任一權限寫入換 ETag 即作廢，故不會讀到過期權限。

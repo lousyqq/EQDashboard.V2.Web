@@ -3,6 +3,9 @@ namespace EQDashboard.V2.Web.Models.Settings;
 public class AuthSettings
 {
     public string? WindowsDomainStripPrefix { get; set; }
+    public bool OpenAccessMode { get; set; } = true;
+    public string? SimulatedAccount { get; set; }
+    public List<string> DefaultAdmins { get; set; } = new() { "yu-ting", "00058897", "admin" };
     public bool EnableEmergencyAdmin { get; set; }
     public bool AllowManualLogin { get; set; }
     public TestAccountsSettings TestAccounts { get; set; } = new();

@@ -282,5 +282,22 @@ public class SchemaBootstrap : ISchemaBootstrap
                 _logger.LogInformation("✅ SchemaBootstrap 種入測試帳號 {EmpId} ({Name})", empId, name);
             }
         }
+
+        // 確保 subadmin_user 擁有委派與角色關聯 (role_1 / m_ze) 以維持整合測試不變性與防範共用開發 DB 資料漂移
+        const string seedMappingsSql = @"
+            IF EXISTS (SELECT 1 FROM Accounts WHERE EmpId = 'subadmin_user') AND EXISTS (SELECT 1 FROM Roles WHERE RoleId = 'role_1')
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM Map_Account_Role WHERE EmpId = 'subadmin_user' AND RoleId = 'role_1')
+                    INSERT INTO Map_Account_Role (EmpId, RoleId) VALUES ('subadmin_user', 'role_1');
+            END
+            IF EXISTS (SELECT 1 FROM Accounts WHERE EmpId = 'subadmin_user') AND EXISTS (SELECT 1 FROM Menus WHERE MenuId = 'm_ze')
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM Map_Account_ManageMenu WHERE EmpId = 'subadmin_user' AND MenuId = 'm_ze')
+                    INSERT INTO Map_Account_ManageMenu (EmpId, MenuId) VALUES ('subadmin_user', 'm_ze');
+            END";
+        using (var mapCmd = new SqlCommand(seedMappingsSql, conn))
+        {
+            await mapCmd.ExecuteNonQueryAsync();
+        }
     }
 }

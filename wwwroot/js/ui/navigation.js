@@ -212,8 +212,8 @@ export function selectTopMenu(menuId) {
                 if (mMode === 'app_grid') openAppGridPage(mId, dName, null);
                 else if (mUrl) {
                     // ⚠️ XSS 防護：window.open 對 `javascript:` URL 在 same-origin 下會執行；
-                    //   先過 safeExternalUrl 把非 http(s)/相對路徑的危險 URL 全部阻斷
-                    const safeUrl = (typeof window.safeExternalUrl === 'function') ? window.safeExternalUrl(mUrl) : mUrl;
+                    let safeUrl = (typeof window.safeExternalUrl === 'function') ? window.safeExternalUrl(mUrl) : mUrl;
+                    safeUrl = normalizeTargetUrl(safeUrl);
                     if (safeUrl !== '#') {
                         if (mTarget === 'blank') {
                             window.open(safeUrl, '_blank', 'noopener,noreferrer');
@@ -317,7 +317,8 @@ export function activateMenu(menuId) {
         else if (mUrl) {
             // 依 OpenTarget 區分：blank=另開分頁 / fullscreen=全螢幕 / 其他=畫面內嵌
             // ⚠️ XSS 防護：先過 safeExternalUrl
-            const safeUrl = (typeof window.safeExternalUrl === 'function') ? window.safeExternalUrl(mUrl) : mUrl;
+            let safeUrl = (typeof window.safeExternalUrl === 'function') ? window.safeExternalUrl(mUrl) : mUrl;
+            safeUrl = normalizeTargetUrl(safeUrl);
             if (safeUrl !== '#') {
                 if (mTarget === 'blank') {
                     window.open(safeUrl, '_blank', 'noopener,noreferrer');
@@ -561,18 +562,27 @@ export function navTo(pageId, element, subTitle = '') {
     if (pageId !== 'page-app-grid') appState.currentAppGridMenuId = null;
 }
 
+export function normalizeTargetUrl(url) {
+    if (!url || url === '#' || url.startsWith('page-')) return url;
+    let u = String(url).trim();
+    if (/^https?:\/\//i.test(u)) return u;
+    if (u.startsWith('/') || u.startsWith('./') || u.startsWith('../')) return u;
+    if (/^(localhost|127\.0\.0\.1|(\d{1,3}\.){3}\d{1,3}|www\.|[a-z0-9]([a-z0-9-]*[a-z0-9])?\.[a-z]{2,})(:\d+)?(\/|$)/i.test(u)) {
+        return 'http://' + u;
+    }
+    return u;
+}
+window.normalizeTargetUrl = normalizeTargetUrl;
+
 export function openDynamicIframe(url, title, element, isFullscreen = false) {
     if (!url) return;
     navTo('page-iframe', element, title);
     const iframe = document.getElementById('main-iframe');
     iframe.removeAttribute('srcdoc');
 
-    let finalUrl = url;
-    if (!finalUrl.includes('fab=')) {
+    let finalUrl = normalizeTargetUrl(url);
+    if (!finalUrl.startsWith('page-') && !finalUrl.includes('fab=')) {
         finalUrl = finalUrl.includes('?') ? `${finalUrl}&fab=${appState.currentFab}` : `${finalUrl}?fab=${appState.currentFab}`;
-    }
-    if (!/^https?:\/\//i.test(finalUrl) && !finalUrl.startsWith('/') && !finalUrl.startsWith('page-')) {
-        finalUrl = 'http://' + finalUrl;
     }
 
     // ⚠️ 動態 sandbox：對 same-origin URL 維持原配置（內部看板需要 cookie/storage 才能用）；

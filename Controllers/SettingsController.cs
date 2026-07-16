@@ -1,8 +1,10 @@
 using System.Security.Claims;
 using System.Text.Json;
+using EQDashboard.V2.Web.Models.Settings;
 using EQDashboard.V2.Web.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace EQDashboard.V2.Web.Controllers;
 
@@ -20,12 +22,14 @@ public class SettingsController : Controller
 {
     private readonly ISettingsService _settingsService;
     private readonly IMenuAuthService _menuAuthService;
+    private readonly AuthSettings _authSettings;
     private readonly ILogger<SettingsController> _logger;
 
-    public SettingsController(ISettingsService settingsService, IMenuAuthService menuAuthService, ILogger<SettingsController> logger)
+    public SettingsController(ISettingsService settingsService, IMenuAuthService menuAuthService, IOptions<AuthSettings> authSettings, ILogger<SettingsController> logger)
     {
         _settingsService = settingsService;
         _menuAuthService = menuAuthService;
+        _authSettings = authSettings.Value;
         _logger = logger;
     }
 
@@ -40,12 +44,11 @@ public class SettingsController : Controller
         //    摻入身分後跨使用者必不相符（強制重抓 200），同一使用者的 304 優化照常生效。
         var isAdmin = User.IsInRole("admin");
         var callerEmpId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
-        var empIdForETag = callerEmpId.Replace("\"", "");
-        var eTag = $"\"{_settingsService.GetCurrentETag()}:{empIdForETag}:{(isAdmin ? 1 : 0)}\"";
+        var eTag = $"{_settingsService.GetCurrentETag()}:{callerEmpId.ToLowerInvariant()}:{(isAdmin ? "a" : "u")}:{(_authSettings.OpenAccessMode ? "o" : "r")}";
 
-        if (Request.Headers.TryGetValue("If-None-Match", out var incomingETag))
+        if (Request.Headers.TryGetValue("If-None-Match", out var clientETag))
         {
-            if (incomingETag == eTag)
+            if (string.Equals(clientETag.ToString(), eTag, StringComparison.Ordinal))
             {
                 Response.Headers["ETag"] = eTag; // HTTP 規範：304 也須帶 ETag
                 return StatusCode(StatusCodes.Status304NotModified);
@@ -63,7 +66,7 @@ public class SettingsController : Controller
             //    因此已是 no-op（仍保留作為防禦縱深、且全域表的真正過濾仍需 FilterTable）。
             var data = await _settingsService.GetInitialDataAsync(callerEmpId);
 
-            if (!isAdmin)
+            if (!isAdmin && !_authSettings.OpenAccessMode)
             {
                 var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
                 var visibleMenuIds = await _menuAuthService.GetVisibleMenuIdsAsync(empId, false)
