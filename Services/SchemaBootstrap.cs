@@ -30,6 +30,7 @@ public class SchemaBootstrap : ISchemaBootstrap
             await EnsureMenuAclTableAsync(conn, "Map_Menu_AllowAccount");
             await EnsureMenuAclTableAsync(conn, "Map_Menu_DenyAccount");
             await EnsureUserActivityLogsAsync(conn);
+            await EnsureDailyUserVisitsAsync(conn);
             await EnsureIndexesAsync(conn);
             await SeedTestAccountsAsync(conn);
 
@@ -189,6 +190,33 @@ public class SchemaBootstrap : ISchemaBootstrap
         }
     }
 
+    /// <summary>確保 DailyUserVisits 每日活躍統計表存在</summary>
+    private async Task EnsureDailyUserVisitsAsync(SqlConnection conn)
+    {
+        using (var checkCmd = new SqlCommand(
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'DailyUserVisits'", conn))
+        {
+            var exists = (int)(await checkCmd.ExecuteScalarAsync())! > 0;
+            if (!exists)
+            {
+                var createSql = @"
+                    CREATE TABLE DailyUserVisits (
+                        VisitDate      DATE NOT NULL,
+                        EmpId          NVARCHAR(50)  NOT NULL,
+                        EmpName        NVARCHAR(100) NULL,
+                        Department     NVARCHAR(100) NULL,
+                        VisitCount     INT           NOT NULL DEFAULT 1,
+                        FirstVisitTime DATETIME2     NOT NULL,
+                        LastVisitTime  DATETIME2     NOT NULL,
+                        CONSTRAINT PK_DailyUserVisits PRIMARY KEY (VisitDate, EmpId)
+                    );";
+                using var createCmd = new SqlCommand(createSql, conn);
+                await createCmd.ExecuteNonQueryAsync();
+                _logger.LogInformation("✅ SchemaBootstrap 建立資料表 DailyUserVisits（索引稍後由 EnsureIndexesAsync 建立）");
+            }
+        }
+    }
+
     /// <summary>
     /// 效能索引的「單一事實來源」(single source of truth)。
     /// 本專案無 EF Migrations、啟動也不呼叫 EnsureCreated/Migrate，
@@ -201,20 +229,14 @@ public class SchemaBootstrap : ISchemaBootstrap
         var indexes = new (string Name, string Table, string Cols)[]
         {
             ("IX_Accounts_RoleLevel",                "Accounts",         "RoleLevel"),
-            // P2：帳號清單搜尋 (AccountService.GetAccountsPagedAsync) 對 EmpId/Name/Department 做子字串
-            //     `Contains` → SQL `LIKE '%term%'`（前置萬用字元，本質 non-sargable、無法 B-tree seek，必掃描）。
-            //     以「窄覆蓋索引 (Name, Department)」讓不可避免的掃描改讀這條瘦索引（葉層自動含 clustered key
-            //     EmpId 作 row locator）而非整個寬 Accounts 表 —— 尤其 COUNT(*) 的三欄 OR-of-LIKE 完全被涵蓋、
-            //     免回主表。子字串 UX 維持不變（真正子線性需 full-text，屬過度設計、不在本次範圍）。
             ("IX_Accounts_Search",                   "Accounts",         "Name, Department"),
             ("IX_Requests_Status",                   "Requests",         "Status"),
             ("IX_UserActivityLogs_EmpId_Timestamp",  "UserActivityLogs", "EmpId, Timestamp DESC"),
             ("IX_UserActivityLogs_Timestamp",        "UserActivityLogs", "Timestamp DESC"),
             ("IX_UserActivityLogs_Category_Time",    "UserActivityLogs", "Category, Timestamp DESC"),
-            // E6：menu-level ACL 兩張表 PK 皆為 (MenuId, EmpId)，故「WHERE EmpId=@me」原本走全表掃描；
-            //     補 EmpId 索引讓 MenuAuthService.GetVisibleMenuIdsAsync 的可見性查詢走 index seek。
             ("IX_Map_Menu_AllowAccount_EmpId",       "Map_Menu_AllowAccount", "EmpId"),
             ("IX_Map_Menu_DenyAccount_EmpId",        "Map_Menu_DenyAccount",  "EmpId"),
+            ("IX_DailyUserVisits_Date_Dept",         "DailyUserVisits",       "VisitDate, Department"),
         };
 
         foreach (var ix in indexes)
@@ -270,11 +292,11 @@ public class SchemaBootstrap : ISchemaBootstrap
                     VALUES (@EmpId, @Name, @Dept, @RoleLevel, @CanEditOthers, 0, NULL);
                 END";
             using var cmd = new SqlCommand(upsertSql, conn);
-            cmd.Parameters.AddWithValue("@EmpId", empId);
-            cmd.Parameters.AddWithValue("@Name", name);
-            cmd.Parameters.AddWithValue("@Dept", dept);
-            cmd.Parameters.AddWithValue("@RoleLevel", roleLevel);
-            cmd.Parameters.AddWithValue("@CanEditOthers", canEditOthers);
+            cmd.Parameters.Add(new SqlParameter("@EmpId", System.Data.SqlDbType.NVarChar, 50) { Value = empId });
+            cmd.Parameters.Add(new SqlParameter("@Name", System.Data.SqlDbType.NVarChar, 100) { Value = name });
+            cmd.Parameters.Add(new SqlParameter("@Dept", System.Data.SqlDbType.NVarChar, 100) { Value = dept });
+            cmd.Parameters.Add(new SqlParameter("@RoleLevel", System.Data.SqlDbType.NVarChar, 20) { Value = roleLevel });
+            cmd.Parameters.Add(new SqlParameter("@CanEditOthers", System.Data.SqlDbType.Bit) { Value = canEditOthers });
 
             var affected = await cmd.ExecuteNonQueryAsync();
             if (affected > 0)

@@ -1,12 +1,12 @@
 // === render/account-ui.js - 帳號 Modal 內部 UI 渲染 ===
 
-import { getCustomMenus, getFabs, getRoles } from '../config.js?v=20260607k';
+import { getCustomMenus, getFabs, getRoles } from '../config.js?v=20260719c';
 
 
-import { clearDefaultMenu, pickDefaultMenu } from '../admin/account-manage.js?v=20260607k';
-import { generateIconHtml } from '../ui/dialogs.js?v=20260607k';
-import { getFullMenuPathStr } from '../ui/navigation.js?v=20260607k';
-import { appState } from '../store.js?v=20260607k';
+import { clearDefaultMenu, pickDefaultMenu } from '../admin/account-manage.js?v=20260719c';
+import { generateIconHtml } from '../ui/dialogs.js?v=20260719c';
+import { getFullMenuPathStr } from '../ui/navigation.js?v=20260719c';
+import { appState, escHtml, _jsArg } from '../store.js?v=20260719c';
 
 
 export function renderAccRoleCheckboxes(selectedIds) {
@@ -544,18 +544,18 @@ window.openMenuSelector = function (fabName) {
                 let badge = item.type === 'app_grid'
                     ? '<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 ms-2" style="font-size:0.6rem;">應用集合</span>'
                     : (isFolderItem ? '<span class="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25 ms-2" style="font-size:0.6rem;">資料夾 (登入落第一個子看板)</span>' : '');
-                let subPathHtml = item.subPath ? `<div class="badge bg-secondary bg-opacity-10 text-secondary border mt-1 fw-normal" style="font-size:0.65rem;">位於: ${item.subPath}</div>` : '';
+                let subPathHtml = item.subPath ? `<div class="badge bg-secondary bg-opacity-10 text-secondary border mt-1 fw-normal" style="font-size:0.65rem;">位於: ${escHtml(item.subPath)}</div>` : '';
                 const itemIcon = item.type === 'app_grid' ? 'fa-th-large text-success' : (isFolderItem ? 'fa-folder text-warning' : 'fa-file-alt text-secondary');
 
                 listHtml += `
-                    <div class="drawer-item d-flex justify-content-between align-items-center p-2 border-bottom cursor-pointer hover-bg-light" style="transition: all 0.2s;" onclick="pickDefaultMenu('${item.id}'); window.closeMenuSelector();">
+                    <div class="drawer-item d-flex justify-content-between align-items-center p-2 border-bottom cursor-pointer hover-bg-light" style="transition: all 0.2s;" onclick="pickDefaultMenu('${_jsArg(item.id)}'); window.closeMenuSelector();">
                         <div class="pe-2">
                             <div class="fw-bold text-dark d-flex align-items-center mb-0" style="font-size: 0.85rem;">
-                                <i class="fas ${itemIcon} item-icon me-2 opacity-75"></i> ${item.displayName} ${badge}
+                                <i class="fas ${itemIcon} item-icon me-2 opacity-75"></i> ${escHtml(item.displayName)} ${badge}
                             </div>
                             ${subPathHtml}
                         </div>
-                        <button type="button" class="btn btn-sm btn-outline-primary px-3 fw-bold rounded-pill shadow-sm bg-white" style="font-size: 0.75rem; flex-shrink: 0;" onclick="event.stopPropagation(); pickDefaultMenu('${item.id}'); window.closeMenuSelector();">選取</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary px-3 fw-bold rounded-pill shadow-sm bg-white" style="font-size: 0.75rem; flex-shrink: 0;" onclick="event.stopPropagation(); pickDefaultMenu('${_jsArg(item.id)}'); window.closeMenuSelector();">選取</button>
                     </div>
                 `;
             });
@@ -568,7 +568,7 @@ window.openMenuSelector = function (fabName) {
                     <div class="drawer-group-title bg-white border rounded shadow-sm p-3 d-flex justify-content-between align-items-center cursor-pointer ${isFirst ? '' : 'collapsed'}" onclick="window.toggleDrawerCollapse(event, 'drawer_col_${index}', this)" aria-expanded="${isFirst ? 'true' : 'false'}">
                         <div class="d-flex align-items-center">
                             <div style="width:24px; text-align:center;" class="me-2">${iconHtml}</div>
-                            <span class="fw-bold text-dark fs-6">${group.rootName}</span>
+                            <span class="fw-bold text-dark fs-6">${escHtml(group.rootName)}</span>
                         </div>
                         <span class="badge bg-white text-dark border border-secondary rounded-pill shadow-sm px-2">${group.items.length}</span>
                     </div>

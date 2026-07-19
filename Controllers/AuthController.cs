@@ -45,6 +45,7 @@ public class AuthController : ControllerBase
     [AllowAnonymous]
     public IActionResult GetConfig()
     {
+        Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
         return Ok(new
         {
             allowManualLogin = _authSettings.AllowManualLogin,
@@ -60,6 +61,7 @@ public class AuthController : ControllerBase
     [Authorize(AuthenticationSchemes = NegotiateDefaults.AuthenticationScheme)]
     public async Task<IActionResult> WhoAmI()
     {
+        Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
         string empId;
         string rawName;
         string loginSource = "windows";
@@ -130,61 +132,17 @@ public class AuthController : ControllerBase
                     LastLoginTime = DateTime.UtcNow
                 };
                 _context.Accounts.Add(account);
+
+                // 賦予所有現有角色群組權限，使「可視廠區為所有廠區」；登入預設首頁不設定（為未設定，自動抓取第一個）
+                var allRoleIds = await _context.Roles.AsNoTracking().Select(r => r.RoleId).ToListAsync();
+                foreach (var rId in allRoleIds)
+                {
+                    _context.MapAccountRoles.Add(new MapAccountRole { EmpId = empId, RoleId = rId });
+                }
+
                 await _context.SaveChangesAsync();
 
-                // 預設顯示為 12A 廠區第一個選單的第一個頁面
-                var targetFabName = "12A";
-                var fabExists = await _context.Fabs.AnyAsync(f => f.FabName == targetFabName || f.FabId == targetFabName);
-                if (!fabExists)
-                {
-                    var firstFab = await _context.Fabs.OrderBy(f => f.SortOrder).FirstOrDefaultAsync();
-                    if (firstFab != null) targetFabName = firstFab.FabName ?? firstFab.FabId ?? "12A";
-                }
-
-                if (!string.IsNullOrEmpty(targetFabName))
-                {
-                    var fabRoles = await _context.MapFabRoles.Where(m => m.FabId == targetFabName).Select(m => m.RoleId).ToListAsync();
-                    var fabMenuIds = await _context.MapRoleMenus.Where(m => fabRoles.Contains(m.RoleId)).Select(m => m.MenuId).ToListAsync();
-
-                    var allMenus = await _context.Menus.Where(m => m.Enabled != false && !m.IsPoolItem).ToListAsync();
-                    var menuStructs = await _context.MapMenuStructures.ToListAsync();
-
-                    var candidateRoots = allMenus.Where(m => fabMenuIds.Contains(m.MenuId) && !menuStructs.Any(ms => ms.ChildMenuId == m.MenuId)).OrderBy(m => fabMenuIds.IndexOf(m.MenuId)).ToList();
-                    if (candidateRoots.Count == 0)
-                        candidateRoots = allMenus.Where(m => !menuStructs.Any(ms => ms.ChildMenuId == m.MenuId)).OrderBy(m => m.GlobalOrder).ToList();
-
-                    string? targetMenuId = null;
-                    if (candidateRoots.Count > 0)
-                    {
-                        var firstRoot = candidateRoots[0];
-                        if (string.Equals(firstRoot.MenuMode, "folder", StringComparison.OrdinalIgnoreCase))
-                        {
-                            var childIds = menuStructs.Where(ms => ms.ParentMenuId == firstRoot.MenuId).OrderBy(ms => ms.SortOrder).Select(ms => ms.ChildMenuId).ToList();
-                            var firstChild = allMenus.FirstOrDefault(m => childIds.Contains(m.MenuId) && (!string.IsNullOrEmpty(m.Url) || !string.IsNullOrEmpty(m.TargetPage) || string.Equals(m.MenuMode, "app_grid", StringComparison.OrdinalIgnoreCase)));
-                            if (firstChild == null && childIds.Count > 0)
-                                firstChild = allMenus.FirstOrDefault(m => childIds.Contains(m.MenuId));
-                            if (firstChild != null) targetMenuId = firstChild.MenuId;
-                            else targetMenuId = firstRoot.MenuId;
-                        }
-                        else
-                        {
-                            targetMenuId = firstRoot.MenuId;
-                        }
-                    }
-
-                    if (!string.IsNullOrEmpty(targetMenuId))
-                    {
-                        _context.MapAccountDefaultPages.Add(new MapAccountDefaultPage
-                        {
-                            EmpId = empId,
-                            FabId = targetFabName,
-                            MenuId = targetMenuId
-                        });
-                        await _context.SaveChangesAsync();
-                    }
-                }
-
-                _logger.LogInformation("✅ WhoAmI (OpenAccessMode=true) 自動加入新帳號為 user，預設首頁設為 12A ({MenuId})：{EmpId}", targetFabName, empId);
+                _logger.LogInformation("✅ WhoAmI (OpenAccessMode=true) 自動加入新帳號為 user，已配置所有廠區可視且首頁未設定：{EmpId}", empId);
             }
             else
             {
@@ -209,6 +167,24 @@ public class AuthController : ControllerBase
             await _context.SaveChangesAsync();
             _logger.LogInformation("✅ WhoAmI 自動升級預設 Admin 帳號為 admin：{EmpId}", empId);
         }
+        else if (!isDefaultAdmin && _authSettings.OpenAccessMode && string.Equals(account.RoleLevel, "user", StringComparison.OrdinalIgnoreCase))
+        {
+            // 當開放瀏覽模式開啟且該使用者為 user，若未綁定任何角色（或曾由舊版自動建立），自動補齊所有角色並清除預設首頁設定，還原為「所有廠區可視 / 首頁未設定」
+            var existingRolesCount = await _context.MapAccountRoles.CountAsync(m => m.EmpId == account.EmpId);
+            if (existingRolesCount == 0)
+            {
+                var allRoleIds = await _context.Roles.AsNoTracking().Select(r => r.RoleId).ToListAsync();
+                foreach (var rId in allRoleIds)
+                {
+                    _context.MapAccountRoles.Add(new MapAccountRole { EmpId = account.EmpId, RoleId = rId });
+                }
+                var oldDefaultPages = await _context.MapAccountDefaultPages.Where(m => m.EmpId == account.EmpId).ToListAsync();
+                if (oldDefaultPages.Count > 0) _context.MapAccountDefaultPages.RemoveRange(oldDefaultPages);
+
+                await _context.SaveChangesAsync();
+                _logger.LogInformation("✅ WhoAmI (OpenAccessMode=true) 自動為既有 user 補齊角色權限並重設預設首頁：{EmpId}", account.EmpId);
+            }
+        }
 
         // 找到帳號 — 也順手發一張 Cookie，這樣 [Authorize] 的 API (例如 PersonalSettings) 後續才能用
         var claims = new List<Claim>
@@ -231,6 +207,11 @@ public class AuthController : ControllerBase
         await _activityLogger.LogLoginAsync(HttpContext, account.EmpId, account.Name, loginSource, true,
             detail: $"{{\"rawName\":\"{rawName}\"}}");
 
+        var assignedRoles = await _context.MapAccountRoles.AsNoTracking()
+            .Where(m => m.EmpId == account.EmpId).Select(m => m.RoleId).ToListAsync();
+        var defaultPages = await _context.MapAccountDefaultPages.AsNoTracking()
+            .Where(m => m.EmpId == account.EmpId).ToDictionaryAsync(m => m.FabId, m => m.MenuId ?? "");
+
         return Ok(new
         {
             success = true,
@@ -246,9 +227,9 @@ public class AuthController : ControllerBase
                 department = account.Department ?? "",
                 roleLevel = account.RoleLevel ?? "user",
                 canEditOthers = account.CanEditOthers,
-                assignedRoles = Array.Empty<string>(),
+                assignedRoles = assignedRoles,
                 manageableMenus = Array.Empty<string>(),
-                defaultPages = new Dictionary<string, string>()
+                defaultPages = defaultPages
             }
         });
     }
@@ -257,6 +238,7 @@ public class AuthController : ControllerBase
     [Authorize]
     public async Task<IActionResult> MyProfile()
     {
+        Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
         // ⚠️ User.Identity?.Name 在我們的 Cookie scheme 下會回「姓名」(ClaimTypes.Name)；EmpId 放在 NameIdentifier。
         var empId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(empId)) return Unauthorized();
@@ -276,6 +258,10 @@ public class AuthController : ControllerBase
         return Ok(new
         {
             empId = a.EmpId,
+            name = a.Name ?? a.EmpId,
+            department = a.Department ?? "",
+            loginCount = a.LoginCount ?? 0,
+            lastLoginTime = a.LastLoginTime,
             // 自身的 roleLevel / canEditOthers：讓 MyProfile 成為「登入者權限」的自足來源，
             // 前端 delegated-admin UI 判定不再隱性依賴 GetInitialData 的自身列或 Login 回應（皆為自己的值，無資訊外洩）。
             roleLevel = a.RoleLevel ?? "user",

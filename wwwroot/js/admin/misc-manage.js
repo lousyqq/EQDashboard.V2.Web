@@ -1,16 +1,16 @@
 // === admin/misc-manage.js - AppGrid + 需求申請 + 審核 + Excel 匯出 + 圖示工具 ===
 
-import { getAppItems, getCustomMenus, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings } from '../config.js?v=20260607k';
+import { getAppItems, getCustomMenus, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings } from '../config.js?v=20260719c';
 
 
-import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260607k';
-import { batchSaveMenusAPI, deleteAppAPI, fetchInitialDataFromDB, saveAppAPI, syncDataToDB } from '../api.js?v=20260607k';
-import { initDashboardUI } from '../main.js?v=20260607k';
-import { renderSidebarMenus } from '../render/sidebar.js?v=20260607k';
-import { renderAppGrid, renderApplyTable, renderAuditTable, renderMenuConfigTable, renderPersonalMenuManage, renderWebpageTable } from '../render/tables.js?v=20260607k';
-import { customAlert, customConfirm, updateSyncButtonUI } from '../ui/dialogs.js?v=20260607k';
-import { navTo } from '../ui/navigation.js?v=20260607k';
-import { appState } from '../store.js?v=20260607k';
+import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260719c';
+import { batchSaveMenusAPI, deleteAppAPI, fetchInitialDataFromDB, saveAppAPI, syncDataToDB } from '../api.js?v=20260719c';
+import { initDashboardUI } from '../main.js?v=20260719c';
+import { renderSidebarMenus } from '../render/sidebar.js?v=20260719c';
+import { renderAppGrid, renderApplyTable, renderAuditTable, renderMenuConfigTable, renderPersonalMenuManage, renderWebpageTable } from '../render/tables.js?v=20260719c';
+import { customAlert, customConfirm, showToast, updateSyncButtonUI } from '../ui/dialogs.js?v=20260719c';
+import { navTo } from '../ui/navigation.js?v=20260719c';
+import { appState } from '../store.js?v=20260719c';
 
 
 // === 拖曳全域輔助 (表格重新排序使用) ===
@@ -205,7 +205,7 @@ window.commitPersonalPendingOrder = async function () {
     if (typeof renderPersonalMenuManage === 'function') renderPersonalMenuManage();
     if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
 
-    if (typeof customAlert === 'function') customAlert('已儲存個人版面順序，並同步到上方導覽列');
+    if (typeof showToast === 'function') showToast('已儲存個人版面順序，並同步到上方導覽列');
 };
 
 // 「放棄」按鈕：清掉 pending、回到 localStorage 既有狀態
@@ -478,7 +478,7 @@ export async function submitApplyItem(e) {
         
         hideModalSafely('applyModal');
         if (typeof renderApplyTable === 'function') renderApplyTable();
-        customAlert(id ? '需求申請已重新送出！' : '您的需求申請已成功送出！系統管理員將盡快為您處理。');
+        showToast(id ? '需求申請已重新送出！' : '您的需求申請已成功送出！系統管理員將盡快為您處理。', 'success', 5000);
     } catch (error) { console.error("[submitApplyItem] 錯誤:", error); }
     return false;
 }
@@ -535,10 +535,13 @@ export function openAuditModal(id) {
         document.getElementById('auditReqId').value = r.id;
         document.getElementById('auditApplicant').value = `${r.empName} (${r.empId})`;
 
-        let dateStr = r.timestamp;
-        if (typeof r.timestamp === 'number') {
-            let now = new Date(r.timestamp); let pad = (n) => n < 10 ? '0' + n : n;
-            dateStr = now.getFullYear() + '/' + pad(now.getMonth() + 1) + '/' + pad(now.getDate()) + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+        let dateStr = r.timestamp || r.Timestamp || '';
+        let d = new Date(dateStr);
+        if (typeof dateStr === 'string' && /^\d+$/.test(dateStr)) { d = new Date(parseInt(dateStr, 10)); }
+        else if (typeof dateStr === 'number') { d = new Date(dateStr); }
+        if (!isNaN(d.getTime())) {
+            let pad = (n) => n < 10 ? '0' + n : n;
+            dateStr = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
         }
         document.getElementById('auditTime').value = dateStr;
 
@@ -572,7 +575,7 @@ export async function saveAuditItem(e) {
         hideModalSafely('auditModal');
 
         if (typeof renderAuditTable === 'function') renderAuditTable();
-        customAlert("已成功儲存並同步回覆狀態給使用者！");
+        showToast("已成功儲存並同步回覆狀態給使用者！");
 
     } catch (error) { console.error("[saveAuditItem] 錯誤:", error); }
     return false;
@@ -790,7 +793,7 @@ function runImportConfig(fileInput, file) {
                 if(loadingOverlay) loadingOverlay.remove();
                 
                 // 匯入完畢後，提示並在背景重新載入最新資料，避免畫面閃爍
-                customAlert("匯入成功！系統即將無縫載入新資料。");
+                showToast("匯入成功！系統即將無縫載入新資料。");
                 setTimeout(async () => {
                     try {
                         if (typeof window.fetchInitialDataFromDB === 'function') {

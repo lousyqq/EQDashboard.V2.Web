@@ -1,0 +1,119 @@
+/* === responsive.css - RWD 斷點（≤992px 平板 / ≤768px 手機）=== */
+/* 桌機版樣式一律維持原檔（variables/navbar/sidebar/components），此檔僅疊加小螢幕覆寫。 */
+
+/* 側欄浮層遮罩：預設（桌機）永遠隱藏，僅於 ≤992px 且側欄展開時顯示 */
+#sidebar-backdrop {
+    display: none;
+}
+
+/* ---------- ≤992px：側欄改為浮層 (overlay) + 背景遮罩 ---------- */
+@media (max-width: 992px) {
+    #sidebar {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        height: 100%;
+        z-index: 3000; /* 高於 top-navbar(2000)，低於 modal backdrop 之上層提示 */
+        box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25);
+    }
+
+    /* 背景遮罩：側欄展開時鋪滿畫面，點擊由 layout.js 收合側欄 */
+    #sidebar-backdrop {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 2999;
+        background: rgba(15, 23, 42, 0.45);
+    }
+
+    body:not(.sidebar-hidden) #sidebar-backdrop {
+        display: block;
+    }
+
+    /* 導覽列壓縮：小螢幕捨棄麵包屑，保留品牌與工具列 */
+    .nav-breadcrumb-inline {
+        display: none;
+    }
+
+    .navbar-row-top,
+    .navbar-row-bottom {
+        padding: 0 10px;
+    }
+
+    .util-divider {
+        margin: 0 4px;
+    }
+
+    #main-content {
+        padding: 12px;
+    }
+}
+
+/* ---------- ≤768px：手機進一步壓縮 ---------- */
+@media (max-width: 768px) {
+    .nav-logo-text {
+        font-size: 0.85rem;
+    }
+
+    /* 語言切換僅留地球圖示（下拉內仍有完整語言名稱） */
+    #current-lang-display {
+        display: none;
+    }
+
+    /* 意見箱僅留信封圖示 */
+    .feedback-link span {
+        display: none;
+    }
+
+    #main-content {
+        padding: 10px;
+    }
+
+    /* 首頁大卡片的裝飾底圖縮小，避免蓋住文字 */
+    .home-icon-bg,
+    .home-icon-bg.shield,
+    .home-icon-bg.building {
+        font-size: 100px;
+        opacity: 0.35;
+    }
+
+    .home-card-content {
+        padding: 18px;
+    }
+
+    /* App Grid 圖示縮小一階，一列可排更多 */
+    .app-grid {
+        grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+        gap: 14px;
+    }
+
+    .app-icon-box {
+        width: 72px;
+        height: 72px;
+    }
+}
+
+/* ---------- ≤480px：窄手機 ---------- */
+@media (max-width: 480px) {
+    /* 預設看板挑選抽屜改為近全寬 */
+    .offcanvas-custom {
+        width: 88vw;
+    }
+
+    .login-box {
+        max-width: 92vw;
+        padding: 22px;
+    }
+
+    /* Toast 貼齊視窗寬度 */
+    #toast-container {
+        left: 0;
+        right: 0;
+        padding: 10px !important;
+    }
+
+    #toast-container .toast {
+        width: 100%;
+    }
+}

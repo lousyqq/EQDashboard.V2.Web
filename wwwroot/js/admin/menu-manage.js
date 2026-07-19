@@ -1,15 +1,15 @@
 // === admin/menu-manage.js - 個人選單 + 看板管理 + 選單結構樹 ===
 
-import { getCustomMenus, getPersonalSettings, savePersonalSettings, t } from '../config.js?v=20260607k';
+import { getCustomMenus, getPersonalSettings, savePersonalSettings, t } from '../config.js?v=20260719c';
 
 
-import { getSelectedIconVal, setIconValToModal } from './misc-manage.js?v=20260607k';
-import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260607k';
-import { batchDeleteMenusAPI, batchSaveMenusAPI, deleteMenuAPI, fetchInitialDataFromDB, saveMenuAPI } from '../api.js?v=20260607k';
-import { renderSidebarMenus } from '../render/sidebar.js?v=20260607k';
-import { renderMenuConfigTable, renderPersonalMenuManage, renderWebpageTable } from '../render/tables.js?v=20260607k';
-import { customAlert, customConfirm } from '../ui/dialogs.js?v=20260607k';
-import { appState } from '../store.js?v=20260607k';
+import { getSelectedIconVal, setIconValToModal } from './misc-manage.js?v=20260719c';
+import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260719c';
+import { batchDeleteMenusAPI, batchSaveMenusAPI, deleteMenuAPI, fetchInitialDataFromDB, saveMenuAPI } from '../api.js?v=20260719c';
+import { renderSidebarMenus } from '../render/sidebar.js?v=20260719c';
+import { renderMenuConfigTable, renderPersonalMenuManage, renderWebpageTable } from '../render/tables.js?v=20260719c';
+import { customAlert, customConfirm, showToast } from '../ui/dialogs.js?v=20260719c';
+import { appState } from '../store.js?v=20260719c';
 
 
 // 共用工具：把 ACL textarea 內容切行、trim、過濾空字串、去重
@@ -62,7 +62,7 @@ export function restoreDefaultPersonalMenu() {
         if (typeof window.updatePersonalSaveButton === 'function') window.updatePersonalSaveButton();
         if (typeof renderPersonalMenuManage === 'function') renderPersonalMenuManage();
         if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
-        if (typeof customAlert === 'function') customAlert('已成功還原為預設版面！');
+        if (typeof showToast === 'function') showToast('已成功還原為預設版面！');
     });
 }
 

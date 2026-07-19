@@ -1,9 +1,9 @@
 // === render/sidebar.js - 側邊欄選單渲染 ===
 // ====== render.js 最上方的修復 ======
-import { getCustomMenus, getDataTableLang, getFabs, getPersonalSettings, getRoles, t } from '../config.js?v=20260607k';
-import { generateSidebarMenuItem } from './sidebar-item.js?v=20260607k';
-import { navTo, selectTopMenu } from '../ui/navigation.js?v=20260607k';
-import { appState } from '../store.js?v=20260607k';
+import { getCustomMenus, getDataTableLang, getFabs, getPersonalSettings, getRoles, t } from '../config.js?v=20260719c';
+import { generateSidebarMenuItem } from './sidebar-item.js?v=20260719c';
+import { navTo, selectTopMenu } from '../ui/navigation.js?v=20260719c';
+import { appState } from '../store.js?v=20260719c';
 
 
 window.cleanId = function (id) {
@@ -260,9 +260,13 @@ export function renderSidebarMenus() {
         const fabsList = getFabs();
         const currentFabObj = fabsList.find(f => window.cleanId(f.fabName || f.FabName || f.id || f.fabId || f.FabId) === cCurrentFab);
 
+        const isOpenAccess = appState.openAccessMode === true || (window._authConfig && window._authConfig.openAccessMode === true);
+        const isAdmin = appState.currentUser && appState.currentUser.roleLevel === 'admin';
         const fabRoleIds = currentFabObj ? (currentFabObj.assignedRoles || currentFabObj.AssignedRoles || []) : [];
-        const userRoleIds = appState.currentUser.assignedRoles || appState.currentUser.AssignedRoles || [];
-        const activeRoleIds = fabRoleIds.filter(id => userRoleIds.some(uId => window.cleanId(uId) === window.cleanId(id)));
+        const userRoleIds = appState.currentUser ? (appState.currentUser.assignedRoles || appState.currentUser.AssignedRoles || []) : [];
+
+        // ⭐️ 核心修復：如果為 Admin 或開啟了 OpenAccessMode，在當前廠區下應授權瀏覽「該廠區被指派的所有群組角色 (assignedRoles)」，從而精確呈現該廠區完整的上方導覽列選單組合 (不會混入其他廠區專門選單)；一般使用者則取交集。
+        const activeRoleIds = (isAdmin || isOpenAccess) ? fabRoleIds : fabRoleIds.filter(id => userRoleIds.some(uId => window.cleanId(uId) === window.cleanId(id)));
 
         const roles = getRoles();
         let initialMenuIds = [];
@@ -310,14 +314,10 @@ export function renderSidebarMenus() {
         const extraMenus = _ovForCurrentFab(appState.currentUser.extraMenus || appState.currentUser.ExtraMenus);
         if (extraMenus.length > 0) initialMenuIds.push(...extraMenus);
 
-        const isOpenAccess = appState.openAccessMode === true || (window._authConfig && window._authConfig.openAccessMode === true);
-        const isAdmin = appState.currentUser.roleLevel === 'admin';
-
-        let allowedSet;
-        if (isAdmin || isOpenAccess) {
+        let allowedSet = new Set(initialMenuIds.map(window.cleanId).filter(id => id !== ''));
+        // ⭐️ 若該廠區完全沒有配置任何群組，且為 Admin 或 OpenAccessMode，才 fallback 展開全站選單
+        if (allowedSet.size === 0 && (isAdmin || isOpenAccess)) {
             allowedSet = new Set(menus.map(m => window.cleanId(m.id)).filter(id => id !== ''));
-        } else {
-            allowedSet = new Set(initialMenuIds.map(window.cleanId).filter(id => id !== ''));
         }
 
         // 帳號層級 deny — 但若該 menu 被 Menu ACL force-allow，仍視為允許 (Menu 優先)。只扣「當前廠區」這份。
@@ -470,8 +470,36 @@ export function renderSidebarMenus() {
         });
 
         if (rootMenus.length === 0 && menus.length > 0) rootMenus = menus.slice(0, 5);
-        if ((!appState.currentActiveTopMenuId || appState.currentActiveTopMenuId !== 'system_settings' && !rootMenus.find(m => window.cleanId(m.id) === window.cleanId(appState.currentActiveTopMenuId))) && rootMenus.length > 0) {
-            appState.currentActiveTopMenuId = rootMenus[0].id;
+        if (appState.currentActiveTopMenuId !== 'system_settings' && (!appState.currentActiveTopMenuId || !rootMenus.find(m => window.cleanId(m.id) === window.cleanId(appState.currentActiveTopMenuId)))) {
+            let matchedRoot = null;
+            if (appState.currentActiveSidebarMenuId) {
+                const targetNode = menus.find(m => window.cleanId(m.id || m.MenuId) === window.cleanId(appState.currentActiveSidebarMenuId));
+                if (targetNode) {
+                    let queue = [targetNode];
+                    let visited = new Set([window.cleanId(targetNode.id || targetNode.MenuId)]);
+                    while (queue.length > 0 && !matchedRoot) {
+                        const curr = queue.shift();
+                        const currId = window.cleanId(curr.id || curr.MenuId);
+                        const r = rootMenus.find(rm => window.cleanId(rm.id || rm.MenuId) === currId);
+                        if (r) { matchedRoot = r.id; break; }
+                        let pIds = [];
+                        if (curr.parentId || curr.ParentMenuId) pIds.push(window.cleanId(curr.parentId || curr.ParentMenuId));
+                        if (Array.isArray(curr.parentIds)) curr.parentIds.forEach(pid => { if (pid) pIds.push(window.cleanId(pid)); });
+                        pIds.forEach(pid => {
+                            if (!visited.has(pid)) {
+                                visited.add(pid);
+                                const parentNode = menus.find(m => window.cleanId(m.id || m.MenuId) === pid);
+                                if (parentNode) queue.push(parentNode);
+                            }
+                        });
+                    }
+                }
+            }
+            if (matchedRoot) {
+                appState.currentActiveTopMenuId = matchedRoot;
+            } else if (rootMenus.length > 0) {
+                appState.currentActiveTopMenuId = rootMenus[0].id;
+            }
         }
 
         let topLinksHtml = '';
@@ -493,6 +521,7 @@ export function renderSidebarMenus() {
             else sysBtn.classList.remove('active');
         }
 
+        // === 2. 依目前上方導覽列選取項目，渲染左側目錄樹 ===
         let html = '';
         const triggerLeft = document.getElementById('trigger-left');
 
@@ -504,7 +533,7 @@ export function renderSidebarMenus() {
             const role = appState.currentUser.roleLevel;
             const canManage = role === 'admin' || (role === 'user' && appState.currentUser.manageableMenus && appState.currentUser.manageableMenus.length > 0);
 
-            // ⭐️ 核心修復：根據目前的版面模式 (appState.currentLayoutMode) 決定是否顯示「個人頁面管理」
+            // ⭐️ 根據目前的版面模式決定是否顯示「個人頁面管理」與系統選單
             const sysMenus = [
                 { id: 'page-personal-manage', icon: 'fas fa-user-cog', i18nKey: 'menu_personal_manage', fallback: '個人頁面管理', display: appState.currentLayoutMode === 'personal' },
                 { id: 'page-webpage-manage', icon: 'fas fa-file-code', i18nKey: 'menu_webpage_manage', fallback: '看板網頁管理', display: canManage },
@@ -515,6 +544,7 @@ export function renderSidebarMenus() {
                 { id: 'page-audit-manage', icon: 'fas fa-clipboard-check', i18nKey: 'menu_audit_manage', fallback: '申請審核管理', display: role === 'admin' },
                 { id: 'page-apply', icon: 'fas fa-paper-plane', i18nKey: 'menu_apply', fallback: '需求申請', display: role !== 'admin' },
                 { id: 'page-activity-log', icon: 'fas fa-history', i18nKey: 'menu_activity_log', fallback: '操作紀錄', display: role === 'admin' },
+                { id: 'page-traffic-stats', icon: 'fas fa-chart-line', i18nKey: 'menu_traffic_stats', fallback: '流量與使用率', display: role === 'admin' },
                 { id: 'page-config-manage', icon: 'fas fa-database', i18nKey: 'db_sync', fallback: '資料庫與同步', display: role === 'admin' }
             ];
             sysMenus.forEach(sm => {
@@ -538,7 +568,34 @@ export function renderSidebarMenus() {
             }
         }
         const sidebarContainer = document.getElementById('dynamic-sidebar-menus');
-        if (sidebarContainer) sidebarContainer.innerHTML = html;
+        if (sidebarContainer) {
+            sidebarContainer.innerHTML = html;
+            if (appState.currentActiveSidebarMenuId) {
+                const targetCleanId = window.cleanId(appState.currentActiveSidebarMenuId);
+                const items = sidebarContainer.querySelectorAll('.sidebar-link, .menu-item');
+                items.forEach(el => {
+                    const elCleanId = window.cleanId(el.getAttribute('data-id') || el.id || '');
+                    const onclickStr = el.getAttribute('onclick') || '';
+                    if (elCleanId === targetCleanId || onclickStr.includes(`'${appState.currentActiveSidebarMenuId}'`) || onclickStr.includes(`"${appState.currentActiveSidebarMenuId}"`)) {
+                        el.classList.add('active');
+                        let parentLi = el.closest('li');
+                        while (parentLi) {
+                            const parentSubmenu = parentLi.closest('ul.sidebar-submenu');
+                            if (parentSubmenu) {
+                                parentSubmenu.classList.add('show');
+                                const toggleEl = parentSubmenu.previousElementSibling;
+                                if (toggleEl && toggleEl.classList.contains('menu-toggle')) {
+                                    toggleEl.classList.add('open');
+                                }
+                                parentLi = parentSubmenu.closest('li');
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                });
+            }
+        }
 
         // 看板搜尋：初次渲染後綁定一次事件（內部以 dataset.bound 防重複綁定）
         if (typeof window.setupSidebarSearch === 'function') window.setupSidebarSearch();

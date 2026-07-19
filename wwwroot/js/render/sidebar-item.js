@@ -1,9 +1,9 @@
 // === render/sidebar-item.js - 選單項目產生器 ===
-import { getFabs, t } from '../config.js?v=20260607k';
-import { renderSidebarMenus } from './sidebar.js?v=20260607k';
-import { customAlert } from '../ui/dialogs.js?v=20260607k';
-import { changeLanguage, goDefaultHome } from '../ui/navigation.js?v=20260607k';
-import { appState } from '../store.js?v=20260607k';
+import { getFabs, t } from '../config.js?v=20260719c';
+import { renderSidebarMenus } from './sidebar.js?v=20260719c';
+import { customAlert } from '../ui/dialogs.js?v=20260719c';
+import { changeLanguage, goDefaultHome } from '../ui/navigation.js?v=20260719c';
+import { appState } from '../store.js?v=20260719c';
 
 
 export function generateSidebarMenuItem(menu, allMenus, level, forceExpand = true) {
@@ -246,14 +246,18 @@ window.switchFab = function (fabName) {
     );
     if (!fabObj) return;
 
-    // 防呆：使用者沒有交集角色就不允許切到該廠區
+    // 防呆：使用者沒有交集角色就不允許切到該廠區 (Admin 與 OpenAccessMode 除外)
     if (appState.currentUser) {
-        const userRoleIds = (appState.currentUser.assignedRoles || appState.currentUser.AssignedRoles || []).map(window.cleanId);
-        const fabRoleIds = (fabObj.assignedRoles || fabObj.AssignedRoles || []).map(window.cleanId);
-        const canSee = fabRoleIds.length > 0 && fabRoleIds.some(r => userRoleIds.includes(r));
-        if (!canSee) {
-            if (typeof customAlert === 'function') customAlert(t('no_permission', '您沒有權限存取此廠區'));
-            return;
+        const isAdmin = appState.currentUser.roleLevel === 'admin';
+        const isOpenAccess = appState.openAccessMode === true || (window._authConfig && window._authConfig.openAccessMode === true);
+        if (!isAdmin && !isOpenAccess) {
+            const userRoleIds = (appState.currentUser.assignedRoles || appState.currentUser.AssignedRoles || []).map(window.cleanId);
+            const fabRoleIds = (fabObj.assignedRoles || fabObj.AssignedRoles || []).map(window.cleanId);
+            const canSee = fabRoleIds.length > 0 && fabRoleIds.some(r => userRoleIds.includes(r));
+            if (!canSee) {
+                if (typeof customAlert === 'function') customAlert(t('no_permission', '您沒有權限存取此廠區'));
+                return;
+            }
         }
     }
 
@@ -270,7 +274,8 @@ window.switchFab = function (fabName) {
     if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
 
     const isSystemSettings = appState.currentActiveTopMenuId === 'system_settings';
-    if (appState.currentLayoutMode === 'system' && !isSystemSettings) {
+    // ⭐️ 核心修復：不論目前是系統預設配置或個人頁面配置，切換廠區時只要不是在系統後台，皆自動導向該新切換廠區的登入預設首頁
+    if (!isSystemSettings) {
         if (typeof goDefaultHome === 'function') {
             goDefaultHome();
         }

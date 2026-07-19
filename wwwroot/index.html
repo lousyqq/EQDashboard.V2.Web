@@ -26,10 +26,11 @@
             integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
 
     <!-- CSS 模組 (從 style.css 拆分) -->
-    <link href="css/variables.css?v=20260607e" rel="stylesheet">
-    <link href="css/navbar.css?v=20260607e" rel="stylesheet">
-    <link href="css/sidebar.css?v=20260607e" rel="stylesheet">
-    <link href="css/components.css?v=20260607e" rel="stylesheet">
+    <link href="css/variables.css?v=20260719c" rel="stylesheet">
+    <link href="css/navbar.css?v=20260719c" rel="stylesheet">
+    <link href="css/sidebar.css?v=20260719c" rel="stylesheet">
+    <link href="css/components.css?v=20260719c" rel="stylesheet">
+    <link href="css/responsive.css?v=20260719c" rel="stylesheet">
 </head>
 <body>
 
@@ -147,13 +148,15 @@
                 var cachedTop = localStorage.getItem("app_shell_top_menus");
                 if (cachedTop) document.getElementById("top-dynamic-menus").innerHTML = cachedTop;
             </script>
-            <!-- Round-5 B3：先不要連到 placeholder URL — 改成 onclick 提示「敬請期待」，
-                 待真正意見箱網址定下來再把 onclick 換成 href。href="#" + preventDefault 避免頁面跳轉。 -->
-            <a href="#" onclick="event.preventDefault(); if (typeof customAlert==='function') customAlert('意見箱功能即將上線，敬請期待！'); else alert('意見箱功能即將上線，敬請期待！');" class="feedback-link" title="提供您的寶貴意見"><i class="fas fa-envelope-open-text me-1"></i><span data-i18n="nav_feedback"> 意見箱</span></a>
+            <!-- 意見箱：導向系統既有的「需求申請」頁（openFeedbackPage @ ui/navigation.js），
+                 使用者可直接提交意見/需求，管理員於「申請審核管理」查看與回覆。 -->
+            <a href="#" onclick="event.preventDefault(); if (typeof openFeedbackPage==='function') openFeedbackPage();" class="feedback-link" title="提供您的寶貴意見"><i class="fas fa-envelope-open-text me-1"></i><span data-i18n="nav_feedback"> 意見箱</span></a>
         </div>
     </div>
 
     <div id="wrapper">
+        <!-- RWD (≤992px)：側欄浮層背景遮罩，點擊收合（layout.js 綁定） -->
+        <div id="sidebar-backdrop"></div>
         <div id="sidebar" class="sidebar">
             <div class="sidebar-module-header"><i class="fas fa-layer-group"></i> <div class="module-title-text" id="sidebar-module-title" data-i18n="sidebar_module">模組目錄</div></div>
             <div class="flex-grow-1 overflow-auto py-1" id="dynamic-sidebar-menus"></div>
@@ -363,95 +366,86 @@
 
                 <div id="page-activity-log" class="page-section">
                     <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h5 class="mb-0 fw-bold"><i class="fas fa-history text-primary me-2"></i>操作紀錄</h5>
+                        <h5 class="mb-0 fw-bold"><i class="fas fa-history text-primary me-2"></i><span data-i18n="menu_activity_log">操作紀錄</span></h5>
                         <div class="d-flex gap-2">
-                            <button class="btn btn-sm btn-outline-primary fw-bold" id="btn-activity-refresh" onclick="loadActivityLogs()"><i class="fas fa-sync-alt me-1"></i> 重新整理</button>
-                            <button class="btn btn-sm btn-outline-danger fw-bold" id="btn-activity-purge" onclick="purgeActivityLogs()"><i class="fas fa-trash me-1"></i> 清除 90 天前</button>
+                            <button class="btn btn-sm btn-outline-primary fw-bold" id="btn-activity-refresh" onclick="loadActivityLogs(true)"><i class="fas fa-sync-alt me-1"></i> <span data-i18n="btn_refresh">重新整理</span></button>
+                            <button class="btn btn-sm btn-outline-danger fw-bold" id="btn-activity-purge" onclick="purgeActivityLogs()"><i class="fas fa-trash me-1"></i> <span data-i18n="btn_purge_90">清除 90 天前</span></button>
                         </div>
                     </div>
                     <div class="card border-0 shadow-sm mb-3">
                         <div class="card-body p-3">
                             <div class="row g-2 align-items-end">
                                 <div class="col-md-2">
-                                    <label class="form-label small fw-bold text-secondary mb-1">工號</label>
-                                    <input type="text" id="alEmpId" class="form-control form-control-sm" placeholder="(全部)">
+                                    <label class="form-label small fw-bold text-secondary mb-1" data-i18n="th_emp_id">工號</label>
+                                    <input type="text" id="alEmpId" class="form-control form-control-sm" placeholder="(全部)" data-i18n-placeholder="opt_all">
                                 </div>
                                 <div class="col-md-2">
-                                    <label class="form-label small fw-bold text-secondary mb-1">分類</label>
+                                    <label class="form-label small fw-bold text-secondary mb-1" data-i18n="al_category">分類</label>
                                     <select id="alCategory" class="form-select form-select-sm">
-                                        <option value="">(全部)</option>
-                                        <option value="Login">登入</option>
-                                        <option value="Logout">登出</option>
-                                        <option value="Auth">身分驗證</option>
-                                        <option value="Menu">選單</option>
-                                        <option value="Account">帳號</option>
-                                        <option value="Role">權限群組</option>
-                                        <option value="Fab">廠區</option>
-                                        <option value="App">應用集合</option>
-                                        <option value="Request">申請</option>
-                                        <option value="PersonalSettings">個人設定</option>
-                                        <option value="Settings">設定檔</option>
-                                        <option value="Page">主頁</option>
-                                        <option value="Other">其他</option>
+                                        <option value="" data-i18n="opt_all">(全部)</option>
+                                        <option value="Login" data-i18n="cat_login">登入</option>
+                                        <option value="Logout" data-i18n="cat_logout">登出</option>
+                                        <option value="Auth" data-i18n="cat_auth">身分驗證</option>
+                                        <option value="Menu" data-i18n="cat_menu">選單</option>
+                                        <option value="Account" data-i18n="cat_account">帳號</option>
+                                        <option value="Role" data-i18n="cat_role">權限群組</option>
+                                        <option value="Fab" data-i18n="cat_fab">廠區</option>
+                                        <option value="App" data-i18n="cat_app">應用集合</option>
+                                        <option value="Request" data-i18n="cat_request">申請</option>
+                                        <option value="PersonalSettings" data-i18n="cat_psettings">個人設定</option>
+                                        <option value="Settings" data-i18n="cat_settings">設定檔</option>
+                                        <option value="Page" data-i18n="cat_page">主頁</option>
+                                        <option value="Other" data-i18n="cat_other">其他</option>
                                     </select>
                                 </div>
                                 <div class="col-md-2">
-                                    <label class="form-label small fw-bold text-secondary mb-1">開始日期</label>
+                                    <label class="form-label small fw-bold text-secondary mb-1" data-i18n="lbl_from">開始日期</label>
                                     <input type="datetime-local" id="alFrom" class="form-control form-control-sm">
                                 </div>
                                 <div class="col-md-2">
-                                    <label class="form-label small fw-bold text-secondary mb-1">結束日期</label>
+                                    <label class="form-label small fw-bold text-secondary mb-1" data-i18n="lbl_to">結束日期</label>
                                     <input type="datetime-local" id="alTo" class="form-control form-control-sm">
                                 </div>
                                 <div class="col-md-2">
-                                    <label class="form-label small fw-bold text-secondary mb-1">關鍵字</label>
+                                    <label class="form-label small fw-bold text-secondary mb-1" data-i18n="lbl_keyword">關鍵字</label>
                                     <input type="text" id="alKeyword" class="form-control form-control-sm" placeholder="path / action / target">
                                 </div>
                                 <div class="col-md-1">
-                                    <label class="form-label small fw-bold text-secondary mb-1">狀態</label>
+                                    <label class="form-label small fw-bold text-secondary mb-1" data-i18n="th_status">狀態</label>
                                     <select id="alSuccess" class="form-select form-select-sm">
-                                        <option value="">全部</option>
-                                        <option value="true">成功</option>
-                                        <option value="false">失敗</option>
+                                        <option value="" data-i18n="opt_all_plain">全部</option>
+                                        <option value="true" data-i18n="opt_success">成功</option>
+                                        <option value="false" data-i18n="opt_fail">失敗</option>
                                     </select>
                                 </div>
                                 <div class="col-md-1">
-                                    <button class="btn btn-sm btn-primary fw-bold w-100" onclick="loadActivityLogs()"><i class="fas fa-search me-1"></i>查詢</button>
+                                    <button class="btn btn-sm btn-primary fw-bold w-100" onclick="searchActivityLogs()"><i class="fas fa-search me-1"></i><span data-i18n="btn_search">查詢</span></button>
                                 </div>
                             </div>
                         </div>
                     </div>
                     <div class="card border-0 shadow-sm">
                         <div class="card-body p-3">
-                            <style>
-                                /* 保險起見的樣式 */
-                                #activity-log-table thead th {
-                                    position: sticky !important;
-                                    top: 0 !important;
-                                    z-index: 1020 !important;
-                                    background-color: #f8fafc !important;
-                                    box-shadow: inset 0 -2px 0 #cbd5e1 !important;
-                                }
-                            </style>
+                            <!-- sticky 表頭樣式統一由 components.css 的 #page-activity-log 規則提供，勿在此重複宣告 -->
                             <div class="table-responsive border rounded" style="max-height: 65vh; overflow-y: auto;">
                                 <table id="activity-log-table" class="table table-sm table-hover align-middle text-nowrap mb-0">
                                     <thead class="table-light">
                                         <tr>
-                                            <th style="width:140px; position: sticky; top: 0; background-color: #f8fafc; z-index: 1020;">時間</th>
-                                            <th style="width:90px; position: sticky; top: 0; background-color: #f8fafc; z-index: 1020;">工號</th>
-                                            <th style="width:110px; position: sticky; top: 0; background-color: #f8fafc; z-index: 1020;">姓名</th>
-                                            <th style="width:65px; position: sticky; top: 0; background-color: #f8fafc; z-index: 1020;">來源</th>
-                                            <th style="width:90px; position: sticky; top: 0; background-color: #f8fafc; z-index: 1020;">分類</th>
-                                            <th style="position: sticky; top: 0; background-color: #f8fafc; z-index: 1020;">動作</th>
-                                            <th style="width:60px; position: sticky; top: 0; background-color: #f8fafc; z-index: 1020;">方法</th>
-                                            <th style="position: sticky; top: 0; background-color: #f8fafc; z-index: 1020;">Path</th>
-                                            <th style="width:60px; position: sticky; top: 0; background-color: #f8fafc; z-index: 1020;">狀態</th>
-                                            <th style="width:70px; position: sticky; top: 0; background-color: #f8fafc; z-index: 1020;">耗時(ms)</th>
-                                            <th style="width:120px; position: sticky; top: 0; background-color: #f8fafc; z-index: 1020;">IP</th>
-                                            <th class="text-start" style="position: sticky; top: 0; background-color: #f8fafc; z-index: 1020;">詳情</th>
+                                            <th style="width:140px;" data-i18n="al_th_time">時間</th>
+                                            <th style="width:90px;" data-i18n="th_emp_id">工號</th>
+                                            <th style="width:110px;" data-i18n="th_name">姓名</th>
+                                            <th style="width:65px;" data-i18n="al_th_source">來源</th>
+                                            <th style="width:90px;" data-i18n="al_category">分類</th>
+                                            <th data-i18n="al_th_action">動作</th>
+                                            <th style="width:60px;" data-i18n="al_th_method">方法</th>
+                                            <th>Path</th>
+                                            <th style="width:60px;" data-i18n="th_status">狀態</th>
+                                            <th style="width:70px;" data-i18n="al_th_duration">耗時(ms)</th>
+                                            <th style="width:120px;">IP</th>
+                                            <th class="text-start" data-i18n="al_th_detail">詳情</th>
                                         </tr>
                                     </thead>
-                                    <tbody id="activityLogBody"><tr><td colspan="12" class="text-center text-muted py-4">尚未載入</td></tr></tbody>
+                                    <tbody id="activityLogBody"><tr><td colspan="12" class="text-center text-muted py-4" data-i18n="al_not_loaded">尚未載入</td></tr></tbody>
                                 </table>
                             </div>
                         </div>
@@ -461,6 +455,199 @@
                                 <button class="btn btn-sm btn-outline-secondary" id="alPrev" onclick="changeActivityPage(-1)"><i class="fas fa-chevron-left"></i></button>
                                 <span class="small fw-bold" id="alPageInfo">— / —</span>
                                 <button class="btn btn-sm btn-outline-secondary" id="alNext" onclick="changeActivityPage(1)"><i class="fas fa-chevron-right"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="page-traffic-stats" class="page-section">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0 fw-bold"><i class="fas fa-chart-line text-primary me-2"></i><span data-i18n="menu_traffic_stats">流量與使用率</span></h5>
+                        <div class="d-flex gap-2 align-items-center">
+                            <label class="small fw-bold text-secondary mb-0" data-i18n="ts_range">統計範圍:</label>
+                            <select id="tsDaysSelect" class="form-select form-select-sm" style="width:120px;" onchange="loadTrafficStats()">
+                                <option value="7" data-i18n="ts_days_7">最近 7 天</option>
+                                <option value="30" selected data-i18n="ts_days_30">最近 30 天</option>
+                                <option value="60" data-i18n="ts_days_60">最近 60 天</option>
+                                <option value="90" data-i18n="ts_days_90">最近 90 天</option>
+                            </select>
+                            <button class="btn btn-sm btn-outline-primary fw-bold" onclick="loadTrafficStats()"><i class="fas fa-sync-alt me-1"></i> <span data-i18n="btn_refresh">重新整理</span></button>
+                        </div>
+                    </div>
+
+                    <!-- KPI Summary Cards -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-3">
+                            <div class="card border-0 shadow-sm h-100 p-3" style="background: linear-gradient(135deg, #eff6ff 0%, #ffffff 100%); border-left: 4px solid #3b82f6 !important;">
+                                <div class="text-secondary small fw-bold mb-1"><i class="fas fa-user-check text-primary me-1"></i><span data-i18n="ts_kpi_dau">今日活躍人數 (DAU)</span></div>
+                                <div class="d-flex justify-content-between align-items-baseline">
+                                    <h2 class="fw-bold mb-0 text-primary" id="tsTodayDau">0</h2>
+                                    <small class="text-muted fw-bold" id="tsTodayVisits">—</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card border-0 shadow-sm h-100 p-3" style="background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%); border-left: 4px solid #10b981 !important;">
+                                <div class="text-secondary small fw-bold mb-1"><i class="fas fa-calendar-check text-success me-1"></i><span data-i18n="ts_kpi_mau">本月活躍人數 (MAU)</span></div>
+                                <div class="d-flex justify-content-between align-items-baseline">
+                                    <h2 class="fw-bold mb-0 text-success" id="tsMonthMau">0</h2>
+                                    <small class="text-muted fw-bold" id="tsMonthVisits">—</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card border-0 shadow-sm h-100 p-3" style="background: linear-gradient(135deg, #fef3c7 0%, #ffffff 100%); border-left: 4px solid #f59e0b !important;">
+                                <div class="text-secondary small fw-bold mb-1"><i class="fas fa-users text-warning me-1"></i><span data-i18n="ts_kpi_total">全站帳號總數</span></div>
+                                <div class="d-flex justify-content-between align-items-baseline">
+                                    <h2 class="fw-bold mb-0 text-dark" id="tsTotalAccounts">0</h2>
+                                    <small class="text-muted fw-bold" data-i18n="ts_kpi_total_sub">已開通帳號</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card border-0 shadow-sm h-100 p-3" style="background: linear-gradient(135deg, #f3e8ff 0%, #ffffff 100%); border-left: 4px solid #8b5cf6 !important;">
+                                <div class="text-secondary small fw-bold mb-1"><i class="fas fa-percentage text-purple me-1" style="color:#8b5cf6;"></i><span data-i18n="ts_kpi_rate">近期平均活躍率</span></div>
+                                <div class="d-flex justify-content-between align-items-baseline">
+                                    <h2 class="fw-bold mb-0" style="color:#8b5cf6;" id="tsAvgDauRate">0%</h2>
+                                    <small class="text-muted fw-bold" data-i18n="ts_kpi_rate_sub">DAU / 總人數</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Navigation Tabs -->
+                    <ul class="nav nav-tabs mb-3" id="tsTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active fw-bold" id="ts-tab-daily-btn" data-bs-toggle="tab" data-bs-target="#ts-tab-daily" type="button" role="tab"><i class="fas fa-calendar-day me-1"></i><span data-i18n="ts_tab_daily">每日趨勢</span></button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link fw-bold" id="ts-tab-monthly-btn" data-bs-toggle="tab" data-bs-target="#ts-tab-monthly" type="button" role="tab"><i class="fas fa-calendar-alt me-1"></i><span data-i18n="ts_tab_monthly">月份統計 (12個月)</span></button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link fw-bold" id="ts-tab-dept-btn" data-bs-toggle="tab" data-bs-target="#ts-tab-dept" type="button" role="tab"><i class="fas fa-building me-1"></i><span data-i18n="ts_tab_dept">各部門活躍比率</span></button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link fw-bold" id="ts-tab-details-btn" data-bs-toggle="tab" data-bs-target="#ts-tab-details" type="button" role="tab"><i class="fas fa-list me-1"></i><span data-i18n="ts_tab_details">每日造訪明細</span></button>
+                        </li>
+                    </ul>
+
+                    <!-- Tab Contents -->
+                    <div class="tab-content" id="tsTabsContent">
+                        <!-- Tab 1: Daily Trend -->
+                        <div class="tab-pane fade show active" id="ts-tab-daily" role="tabpanel">
+                            <div class="card border-0 shadow-sm p-3">
+                                <div class="table-responsive" style="max-height: 55vh; overflow-y: auto;">
+                                    <table class="table table-sm table-hover align-middle text-nowrap mb-0">
+                                        <thead class="table-light sticky-top">
+                                            <tr>
+                                                <th style="width: 140px;" data-i18n="th_date">日期</th>
+                                                <th style="width: 140px;" data-i18n="ts_th_dau">獨立訪客 (DAU)</th>
+                                                <th style="width: 140px;" data-i18n="ts_th_visits">總造訪人次</th>
+                                                <th data-i18n="ts_th_trend">活躍趨勢長條圖</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="tsDailyBody">
+                                            <tr><td colspan="4" class="text-center py-4 text-muted" data-i18n="loading">載入中...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tab 2: Monthly Trend -->
+                        <div class="tab-pane fade" id="ts-tab-monthly" role="tabpanel">
+                            <div class="card border-0 shadow-sm p-3">
+                                <div class="table-responsive" style="max-height: 55vh; overflow-y: auto;">
+                                    <table class="table table-sm table-hover align-middle text-nowrap mb-0">
+                                        <thead class="table-light sticky-top">
+                                            <tr>
+                                                <th style="width: 140px;" data-i18n="ts_th_month">月份 (Year-Month)</th>
+                                                <th style="width: 140px;" data-i18n="ts_th_mau">月度活躍 (MAU)</th>
+                                                <th style="width: 140px;" data-i18n="ts_th_mvisits">當月造訪總人次</th>
+                                                <th data-i18n="ts_th_mratio">月度造訪量比率</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="tsMonthlyBody">
+                                            <tr><td colspan="4" class="text-center py-4 text-muted" data-i18n="loading">載入中...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tab 3: Department Breakdown -->
+                        <div class="tab-pane fade" id="ts-tab-dept" role="tabpanel">
+                            <div class="card border-0 shadow-sm p-3">
+                                <div class="table-responsive" style="max-height: 55vh; overflow-y: auto;">
+                                    <table class="table table-sm table-hover align-middle text-nowrap mb-0">
+                                        <thead class="table-light sticky-top">
+                                            <tr>
+                                                <th style="width: 200px;" data-i18n="ts_th_dept">部門 / 廠區名稱</th>
+                                                <th style="width: 140px;" data-i18n="ts_th_uniq">獨立造訪人數</th>
+                                                <th style="width: 140px;" data-i18n="ts_th_cum">累計造訪人次</th>
+                                                <th data-i18n="ts_th_share">造訪占比</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="tsDeptBody">
+                                            <tr><td colspan="4" class="text-center py-4 text-muted" data-i18n="loading">載入中...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tab 4: Daily Details -->
+                        <div class="tab-pane fade" id="ts-tab-details" role="tabpanel">
+                            <div class="card border-0 shadow-sm mb-3">
+                                <div class="card-body p-3">
+                                    <div class="row g-2 align-items-end">
+                                        <div class="col-md-3">
+                                            <label class="form-label small fw-bold text-secondary mb-1" data-i18n="ts_lbl_date">指定日期</label>
+                                            <input type="date" id="tsDetailDate" class="form-control form-control-sm">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label small fw-bold text-secondary mb-1" data-i18n="dept">部門</label>
+                                            <input type="text" id="tsDetailDept" class="form-control form-control-sm" placeholder="例如：12A / IT" data-i18n-placeholder="ts_ph_dept">
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label small fw-bold text-secondary mb-1" data-i18n="ts_lbl_kw">關鍵字 (工號或姓名)</label>
+                                            <input type="text" id="tsDetailKeyword" class="form-control form-control-sm" placeholder="請輸入關鍵字..." data-i18n-placeholder="ts_ph_kw">
+                                        </div>
+                                        <div class="col-md-2">
+                                            <button class="btn btn-sm btn-primary fw-bold w-100" onclick="loadTrafficDetails(1)"><i class="fas fa-search me-1"></i><span data-i18n="btn_search">查詢</span></button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card border-0 shadow-sm">
+                                <div class="card-body p-3">
+                                    <div class="table-responsive border rounded" style="max-height: 50vh; overflow-y: auto;">
+                                        <table class="table table-sm table-hover align-middle text-nowrap mb-0">
+                                            <thead class="table-light sticky-top">
+                                                <tr>
+                                                    <th style="width: 120px;" data-i18n="th_date">日期</th>
+                                                    <th style="width: 100px;" data-i18n="th_emp_id">工號</th>
+                                                    <th style="width: 140px;" data-i18n="th_name">姓名</th>
+                                                    <th style="width: 160px;" data-i18n="dept">部門</th>
+                                                    <th style="width: 100px;" data-i18n="ts_th_daycount">當日造訪人次</th>
+                                                    <th style="width: 110px;" data-i18n="ts_th_first">首次時間</th>
+                                                    <th style="width: 110px;" data-i18n="ts_th_last">最後時間</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="tsDetailsBody">
+                                                <tr><td colspan="7" class="text-center py-4 text-muted" data-i18n="loading">載入中...</td></tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                <div class="card-footer bg-white d-flex justify-content-between align-items-center py-2">
+                                    <div class="small text-muted" id="tsDetailsStats">—</div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <button class="btn btn-sm btn-outline-secondary" id="tsDetailPrev" onclick="changeTrafficDetailPage(-1)"><i class="fas fa-chevron-left"></i></button>
+                                        <span class="small fw-bold" id="tsDetailPageInfo">— / —</span>
+                                        <button class="btn btn-sm btn-outline-secondary" id="tsDetailNext" onclick="changeTrafficDetailPage(1)"><i class="fas fa-chevron-right"></i></button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -539,27 +726,27 @@
     <script src="appbase.js"></script>
 
     <!-- __APP_VER__ 已在 modals.html fetch 之前定義；以下 <script src> 共用同一版本碼 -->
-    <script type="module" src="js/config.js?v=20260607k"></script>
-    <script type="module" src="js/api.js?v=20260607k"></script>
-    <script type="module" src="js/auth.js?v=20260607k"></script>
+    <script type="module" src="js/config.js?v=20260719c"></script>
+    <script type="module" src="js/api.js?v=20260719c"></script>
+    <script type="module" src="js/auth.js?v=20260719c"></script>
     <!-- ui 模組 (從 ui.js 拆分) -->
-    <script type="module" src="js/ui/layout.js?v=20260607k"></script>
-    <script type="module" src="js/ui/navigation.js?v=20260607k"></script>
-    <script type="module" src="js/ui/dialogs.js?v=20260607k"></script>
+    <script type="module" src="js/ui/layout.js?v=20260719c"></script>
+    <script type="module" src="js/ui/navigation.js?v=20260719c"></script>
+    <script type="module" src="js/ui/dialogs.js?v=20260719c"></script>
     <!-- render 模組 (從 render.js 拆分) -->
-    <script type="module" src="js/render/sidebar.js?v=20260607k"></script>
-    <script type="module" src="js/render/sidebar-item.js?v=20260607k"></script>
-    <script type="module" src="js/render/tables.js?v=20260607k"></script>
-    <script type="module" src="js/render/account-ui.js?v=20260607k"></script>
+    <script type="module" src="js/render/sidebar.js?v=20260719c"></script>
+    <script type="module" src="js/render/sidebar-item.js?v=20260719c"></script>
+    <script type="module" src="js/render/tables.js?v=20260719c"></script>
+    <script type="module" src="js/render/account-ui.js?v=20260719c"></script>
     <!-- admin 模組 (從 admin.js 拆分) -->
-    <script type="module" src="js/admin/modal-utils.js?v=20260607k"></script>
-    <script type="module" src="js/admin/fab-manage.js?v=20260607k"></script>
-    <script type="module" src="js/admin/role-manage.js?v=20260607k"></script>
-    <script type="module" src="js/admin/account-manage.js?v=20260607k"></script>
-    <script type="module" src="js/admin/menu-manage.js?v=20260607k"></script>
-    <script type="module" src="js/admin/activity-log.js?v=20260607k"></script>
-    <script type="module" src="js/admin/misc-manage.js?v=20260607k"></script>
-    <script type="module" src="js/main.js?v=20260607k"></script>
+    <script type="module" src="js/admin/modal-utils.js?v=20260719c"></script>
+    <script type="module" src="js/admin/fab-manage.js?v=20260719c"></script>
+    <script type="module" src="js/admin/role-manage.js?v=20260719c"></script>
+    <script type="module" src="js/admin/account-manage.js?v=20260719c"></script>
+    <script type="module" src="js/admin/menu-manage.js?v=20260719c"></script>
+    <script type="module" src="js/admin/activity-log.js?v=20260719c"></script>
+    <script type="module" src="js/admin/misc-manage.js?v=20260719c"></script>
+    <script type="module" src="js/main.js?v=20260719c"></script>
 
 </body>
 </html>

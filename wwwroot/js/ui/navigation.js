@@ -1,10 +1,10 @@
 // === ui/navigation.js - 語系切換、選單導航、路由、iframe ===
-import { getCustomMenus, getFabs, getRoles, t } from '../config.js?v=20260607k';
-import { loadActivityLogs } from '../admin/activity-log.js?v=20260607k';
-import { openAppGridPage } from '../admin/misc-manage.js?v=20260607k';
-import { renderSidebarMenus } from '../render/sidebar.js?v=20260607k';
-import { renderAccountTable, renderApplyTable, renderAuditTable, renderFabTable, renderMenuConfigTable, renderPersonalMenuManage, renderRoleTable, renderWebpageTable } from '../render/tables.js?v=20260607k';
-import { appState } from '../store.js?v=20260607k';
+import { getCustomMenus, getFabs, getRoles, t } from '../config.js?v=20260719c';
+import { loadActivityLogs } from '../admin/activity-log.js?v=20260719c';
+import { openAppGridPage } from '../admin/misc-manage.js?v=20260719c';
+import { renderSidebarMenus } from '../render/sidebar.js?v=20260719c';
+import { renderAccountTable, renderApplyTable, renderAuditTable, renderFabTable, renderMenuConfigTable, renderPersonalMenuManage, renderRoleTable, renderWebpageTable } from '../render/tables.js?v=20260719c';
+import { appState } from '../store.js?v=20260719c';
 
 
 export function changeLanguage(lang) {
@@ -57,6 +57,7 @@ export function changeLanguage(lang) {
         if (pageId === 'page-apply' && typeof renderApplyTable === 'function') renderApplyTable();
         if (pageId === 'page-audit-manage' && typeof renderAuditTable === 'function') renderAuditTable();
         if (pageId === 'page-activity-log' && typeof loadActivityLogs === 'function') loadActivityLogs();
+        if (pageId === 'page-traffic-stats' && typeof loadTrafficStats === 'function') loadTrafficStats();
     }
 }
 window.changeLanguage = changeLanguage;
@@ -279,18 +280,42 @@ export function activateMenu(menuId) {
         }
 
         let rootId = targetMenu.id || targetMenu.MenuId || targetMenu.menuId;
-        let currNode = targetMenu;
-        while (currNode) {
-            let pId = currNode.parentId || currNode.ParentMenuId || currNode.parentMenuId || (currNode.parentIds && currNode.parentIds.length > 0 ? currNode.parentIds[0] : null);
-            let cPId = window.cleanId(pId);
-            if (cPId && cPId !== 'null') {
-                currNode = menus.find(m => window.cleanId(m.id || m.MenuId || m.menuId) === cPId);
-                if (currNode) rootId = currNode.id || currNode.MenuId || currNode.menuId;
-                else break;
+        const validList = appState._currentValidMenus || menus;
+        const getParentCandidates = (node) => {
+            const list = new Set();
+            if (node.parentId || node.ParentMenuId || node.parentMenuId) list.add(window.cleanId(node.parentId || node.ParentMenuId || node.parentMenuId));
+            if (Array.isArray(node.parentIds)) node.parentIds.forEach(p => { if (p) list.add(window.cleanId(p)); });
+            return Array.from(list).filter(id => id && id !== 'null' && id !== window.cleanId(node.id || node.MenuId || node.menuId));
+        };
+
+        // ⭐️ 廣度優先 (BFS) 往上找尋最上層 Root (無父節點者)，優先匹配存在於 validList 中的合法根群組，確保對位正確
+        let queue = [[targetMenu]];
+        let bestRoot = null;
+        let bestValidRoot = null;
+        let visited = new Set([window.cleanId(targetMenu.id || targetMenu.MenuId || targetMenu.menuId)]);
+
+        while (queue.length > 0) {
+            const path = queue.shift();
+            const curr = path[path.length - 1];
+            const pIds = getParentCandidates(curr);
+            if (pIds.length === 0) {
+                const rId = curr.id || curr.MenuId || curr.menuId;
+                bestRoot = bestRoot || rId;
+                if (validList.some(v => window.cleanId(v.id || v.MenuId) === window.cleanId(rId))) {
+                    bestValidRoot = rId;
+                    break;
+                }
             } else {
-                break;
+                pIds.forEach(pid => {
+                    if (!visited.has(pid)) {
+                        visited.add(pid);
+                        const parentNode = menus.find(m => window.cleanId(m.id || m.MenuId || m.menuId) === pid);
+                        if (parentNode) queue.push([...path, parentNode]);
+                    }
+                });
             }
         }
+        rootId = bestValidRoot || bestRoot || rootId;
 
         appState.currentActiveTopMenuId = rootId;
         appState.currentActiveSidebarMenuId = menuId;
@@ -401,26 +426,40 @@ export function goDefaultHome() {
 
         const _isFolder = (m) => !!m && String(m.menuMode || m.MenuMode || '').toLowerCase() === 'folder';
         const _isOpenable = (m) => !!m && !!(m.url || m.Url || m.targetPage || m.TargetPage || (m.menuMode || m.MenuMode) === 'app_grid');
-        // ⭐ 預設頁若指向「資料夾」（管理者在挑選器把整個群組指定為預設）→ 自動往下展開到第一個可開啟的子看板，
-        //    避免登入落在資料夾空殼（activateMenu 對 folder 會顯示「內容建置中」）。只在「可見」(validList) 的
-        //    子節點中找，優先挑可直接開啟者；找不到可開啟者就鑽進第一個子資料夾繼續展開。
+        // ⭐ 預設頁若指向「資料夾」（管理者在挑選器把整個群組指定為預設）→ 遞迴展開到底下第一個可直接開啟的葉節點
         const _resolveFolderToFirstLeaf = (folderId) => {
-            let curId = window.cleanId(folderId), guard = 0;
-            while (guard++ < 100) {
-                const node = menus.find(m => window.cleanId(m.id || m.MenuId) === curId);
-                if (!node || !_isFolder(node)) return curId;
-                let children = validList.filter(m =>
-                    window.cleanId(m.parentId || m.ParentMenuId) === curId ||
-                    (m.parentIds || []).map(window.cleanId).includes(curId)
-                );
-                if (children.length === 0) return curId;
+            let curId = window.cleanId(folderId);
+            const searchList = (validList && validList.length > 0) ? validList : menus.filter(m => m.enabled !== false);
+            let queue = [curId];
+            let visited = new Set([curId]);
+            let guard = 0;
+            while (queue.length > 0 && guard++ < 500) {
+                const cid = queue.shift();
+                const node = searchList.find(m => window.cleanId(m.id || m.MenuId) === cid) || menus.find(m => window.cleanId(m.id || m.MenuId) === cid);
+                if (node && _isOpenable(node) && !_isFolder(node)) {
+                    return cid;
+                }
+                let children = searchList.filter(m => {
+                    const pid = window.cleanId(m.parentId || m.ParentMenuId);
+                    const pids = (m.parentIds || []).map(window.cleanId);
+                    return pid === cid || pids.includes(cid);
+                });
+                if (children.length === 0 && searchList !== menus) {
+                    children = menus.filter(m => m.enabled !== false && (window.cleanId(m.parentId || m.ParentMenuId) === cid || (m.parentIds || []).map(window.cleanId).includes(cid)));
+                }
                 children.sort((a, b) => {
-                    const oa = (a.parentOrders && a.parentOrders[curId] != null) ? a.parentOrders[curId] : (a.order || a.GlobalOrder || 0);
-                    const ob = (b.parentOrders && b.parentOrders[curId] != null) ? b.parentOrders[curId] : (b.order || b.GlobalOrder || 0);
+                    const oa = (a.parentOrders && a.parentOrders[cid] != null) ? a.parentOrders[cid] : (a.order || a.GlobalOrder || 0);
+                    const ob = (b.parentOrders && b.parentOrders[cid] != null) ? b.parentOrders[cid] : (b.order || b.GlobalOrder || 0);
                     return oa - ob;
                 });
-                const next = children.find(_isOpenable) || children[0];
-                curId = window.cleanId(next.id || next.MenuId);
+                children.forEach(ch => {
+                    const chId = window.cleanId(ch.id || ch.MenuId);
+                    if (chId && !visited.has(chId)) {
+                        visited.add(chId);
+                        if (_isOpenable(ch) && !_isFolder(ch)) queue.unshift(chId);
+                        else queue.push(chId);
+                    }
+                });
             }
             return curId;
         };
@@ -431,7 +470,9 @@ export function goDefaultHome() {
             if (currentFabObj) {
                 const fabRoleIds = currentFabObj.assignedRoles || currentFabObj.AssignedRoles || [];
                 const userRoleIds = appState.currentUser.assignedRoles || appState.currentUser.AssignedRoles || [];
-                const activeRoleIds = fabRoleIds.filter(id => userRoleIds.some(uId => window.cleanId(uId) === window.cleanId(id)));
+                const isOpenAccess = appState.openAccessMode === true || (window._authConfig && window._authConfig.openAccessMode === true);
+                const isAdmin = appState.currentUser && appState.currentUser.roleLevel === 'admin';
+                const activeRoleIds = (isAdmin || isOpenAccess) ? fabRoleIds : fabRoleIds.filter(id => userRoleIds.some(uId => window.cleanId(uId) === window.cleanId(id)));
 
                 const roles = getRoles();
                 let initialMenuIds = [];
@@ -442,13 +483,12 @@ export function goDefaultHome() {
                     }
                 });
 
-                const isOpenAccess = appState.openAccessMode === true || (window._authConfig && window._authConfig.openAccessMode === true);
-                const isAdmin = appState.currentUser && appState.currentUser.roleLevel === 'admin';
-                const allowedIds = (isAdmin || isOpenAccess)
-                    ? new Set(menus.map(m => m.id))
-                    : (typeof window.getAllowedIdsWithHierarchy === 'function'
-                        ? window.getAllowedIdsWithHierarchy(menus, initialMenuIds)
-                        : new Set(initialMenuIds));
+                let allowedIds = typeof window.getAllowedIdsWithHierarchy === 'function'
+                    ? window.getAllowedIdsWithHierarchy(menus, initialMenuIds)
+                    : new Set(initialMenuIds);
+                if (allowedIds.size === 0 && (isAdmin || isOpenAccess)) {
+                    allowedIds = new Set(menus.map(m => m.id));
+                }
 
                 // 找出第一層 root（非 pool、無父節點、啟用、且在 allowedIds 中）
                 let validRoots = menus.filter(m =>
@@ -468,17 +508,8 @@ export function goDefaultHome() {
 
                 if (validRoots.length > 0) {
                     let firstRoot = validRoots[0];
-                    // root 若為 folder，自動取其下第一個子看板，避免顯示空殼
                     if (firstRoot.menuMode === 'folder') {
-                        let children = menus.filter(m =>
-                            m.parentId === firstRoot.id ||
-                            (m.parentIds && m.parentIds.includes(firstRoot.id))
-                        );
-                        children.sort((a, b) =>
-                            (a.parentOrders && a.parentOrders[firstRoot.id] != null ? a.parentOrders[firstRoot.id] : (a.order || 0)) -
-                            (b.parentOrders && b.parentOrders[firstRoot.id] != null ? b.parentOrders[firstRoot.id] : (b.order || 0))
-                        );
-                        defPage = children.length > 0 ? children[0].id : firstRoot.id;
+                        defPage = _resolveFolderToFirstLeaf(firstRoot.id);
                     } else {
                         defPage = firstRoot.id;
                     }
@@ -492,13 +523,13 @@ export function goDefaultHome() {
             if (_isFolder(_defObj)) {
                 const _resolved = _resolveFolderToFirstLeaf(defPage);
                 const _resObj = menus.find(m => window.cleanId(m.id || m.MenuId) === window.cleanId(_resolved));
-                defPage = (_resObj && !_isFolder(_resObj)) ? _resolved : null; // 仍是資料夾(空) → 交給下方防呆
+                defPage = (_resObj && !_isFolder(_resObj)) ? _resolved : null;
             }
         }
 
-        // 3. 終極防呆：仍找不到或合法權限已被拔除 → 從安全過濾後的清單尋找
+        // 3. 終極防呆：仍找不到或合法權限已被拔除/在個人設定中被隱藏 → 從安全過濾後的清單尋找第一個可直接開啟的看板
         if (!defPage || !validList.find(m => window.cleanId(m.id) === window.cleanId(defPage))) {
-            let firstVisible = validList.find(m => (m.menuMode || '').toLowerCase() !== 'folder');
+            let firstVisible = validList.find(m => _isOpenable(m) && !_isFolder(m));
             if (firstVisible) defPage = firstVisible.id;
             else defPage = null; // ⭐️ 安全防護：無可用看板時寧可空白，避免越權顯示
         }
@@ -538,8 +569,12 @@ export function navTo(pageId, element, subTitle = '') {
             let topName = getTopMenuName();
             let folderPath = element ? getMenuPath(element) : '';
 
+            let elName = element ? (element.querySelector('span')?.innerText || element.innerText.trim()) : '';
+            const leafName = subTitle || elName || '';
+
             let finalPathArr = [];
-            if (topName) finalPathArr.push(topName);
+            // 根層看板直接開啟時上層名稱與頁面同名 → 不重複顯示（避免「ZE / ZE」）
+            if (topName && !(topName === leafName && !folderPath)) finalPathArr.push(topName);
             if (folderPath) finalPathArr.push(folderPath);
 
             if (finalPathArr.length > 0) {
@@ -549,8 +584,7 @@ export function navTo(pageId, element, subTitle = '') {
                 bcPath.style.display = 'none';
             }
 
-            let elName = element ? (element.querySelector('span')?.innerText || element.innerText.trim()) : '';
-            bcName.innerText = subTitle || elName || '';
+            bcName.innerText = leafName;
         }
     }
 
@@ -563,6 +597,7 @@ export function navTo(pageId, element, subTitle = '') {
     if (pageId === 'page-apply' && typeof renderApplyTable === 'function') renderApplyTable();
     if (pageId === 'page-audit-manage' && typeof renderAuditTable === 'function') renderAuditTable();
     if (pageId === 'page-activity-log' && typeof loadActivityLogs === 'function') loadActivityLogs();
+    if (pageId === 'page-traffic-stats' && typeof loadTrafficStats === 'function') loadTrafficStats();
     if (pageId !== 'page-app-grid') appState.currentAppGridMenuId = null;
 }
 
@@ -612,6 +647,19 @@ export function openDynamicIframe(url, title, element, isFullscreen = false) {
 // Expose for HTML inline handlers
 window.changeLanguage = changeLanguage;
 window.renderLangSwitcher = renderLangSwitcher;
+// 意見箱：導向既有的「需求申請」頁（使用者提交意見/需求，管理員於申請審核管理回覆）
+export function openFeedbackPage() {
+    selectTopMenu('system_settings');
+    // selectTopMenu('system_settings') 會在 50ms 後自動點擊第一個設定項，
+    // 故延後切至需求申請頁；側欄有該項（非 admin）時用點擊同步 active 樣式，否則直接 navTo。
+    setTimeout(() => {
+        const el = document.querySelector('#dynamic-sidebar-menus .menu-item[onclick*="page-apply"]');
+        if (el) el.click();
+        else navTo('page-apply', null, t('menu_apply', '需求申請'));
+    }, 120);
+}
+window.openFeedbackPage = openFeedbackPage;
+
 window.getTopMenuName = getTopMenuName;
 window.getMenuPath = getMenuPath;
 window.getFullMenuPathStr = getFullMenuPathStr;

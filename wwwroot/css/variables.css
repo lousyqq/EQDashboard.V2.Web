@@ -1,4 +1,4 @@
-﻿/* === variables.css - CSS 變數、全域 reset、scrollbar === */
+/* === variables.css - CSS 變數、全域 reset、scrollbar === */
 :root {
     /* V27 極致空間美化配色 */
     --navbar-bg: #0b1120;
@@ -20,8 +20,8 @@ body {
     flex-direction: column;
     height: 100vh;
     overflow: hidden;
-    font-size: 0.85rem;
-    color: #334155;
+    font-size: 0.88rem;
+    color: #0f172a;
 }
 
 ::-webkit-scrollbar {

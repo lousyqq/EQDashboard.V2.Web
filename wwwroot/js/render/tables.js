@@ -1,17 +1,17 @@
 // === render/tables.js - 管理表格渲染 (Fab, Role, Account, Webpage, MenuConfig, Apply, Audit, AppGrid) ===
 
-import { getCustomMenus, getDataTableLang, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings, t } from '../config.js?v=20260607k';
+import { getCustomMenus, getDataTableLang, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings, t } from '../config.js?v=20260719c';
 
 
-import { deleteAccount, editAccount } from '../admin/account-manage.js?v=20260607k';
-import { deleteFab, editFab } from '../admin/fab-manage.js?v=20260607k';
-import { deleteMenuNodeItem, deleteWebpageItem, editPersonalMenu, openAddMenuNodeModal, openAddWebpageModal } from '../admin/menu-manage.js?v=20260607k';
-import { handleDragLeave, handleDragOver, handleDragStart, handleDrop, openAuditModal, withdrawApply } from '../admin/misc-manage.js?v=20260607k';
-import { deleteRole, editRole } from '../admin/role-manage.js?v=20260607k';
-import { getDtPageLen, initDataTable, rememberDtPageLen, renderSidebarMenus, safeDestroyDataTable } from './sidebar.js?v=20260607k';
-import { generateIconHtml } from '../ui/dialogs.js?v=20260607k';
-import { getFullMenuPathStr } from '../ui/navigation.js?v=20260607k';
-import { appState } from '../store.js?v=20260607k';
+import { deleteAccount, editAccount } from '../admin/account-manage.js?v=20260719c';
+import { deleteFab, editFab } from '../admin/fab-manage.js?v=20260719c';
+import { deleteMenuNodeItem, deleteWebpageItem, editPersonalMenu, openAddMenuNodeModal, openAddWebpageModal } from '../admin/menu-manage.js?v=20260719c';
+import { handleDragLeave, handleDragOver, handleDragStart, handleDrop, openAuditModal, withdrawApply } from '../admin/misc-manage.js?v=20260719c';
+import { deleteRole, editRole } from '../admin/role-manage.js?v=20260719c';
+import { getDtPageLen, initDataTable, rememberDtPageLen, renderSidebarMenus, safeDestroyDataTable } from './sidebar.js?v=20260719c';
+import { generateIconHtml } from '../ui/dialogs.js?v=20260719c';
+import { getFullMenuPathStr } from '../ui/navigation.js?v=20260719c';
+import { appState } from '../store.js?v=20260719c';
 
 
 // ⚠️ Stored XSS 防護：判斷 URL 是否安全到可以放進 href 或 window.open。
@@ -58,7 +58,9 @@ export function renderPersonalMenuManage() {
         const menusData = getCustomMenus();
         const fabRoleIds = currentFabObj.assignedRoles || currentFabObj.AssignedRoles || [];
         const userRoleIds = appState.currentUser.assignedRoles || appState.currentUser.AssignedRoles || [];
-        const activeRoleIds = fabRoleIds.filter(id => userRoleIds.some(uId => window.cleanId(uId) === window.cleanId(id)));
+        const isOpenAccess = appState.openAccessMode === true || (window._authConfig && window._authConfig.openAccessMode === true);
+        const isAdmin = appState.currentUser && appState.currentUser.roleLevel === 'admin';
+        const activeRoleIds = (isAdmin || isOpenAccess) ? fabRoleIds : fabRoleIds.filter(id => userRoleIds.some(uId => window.cleanId(uId) === window.cleanId(id)));
 
         let initialMenuIds = [];
         activeRoleIds.forEach(roleId => {

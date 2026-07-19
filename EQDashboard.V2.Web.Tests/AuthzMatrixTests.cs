@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using Xunit;
 
@@ -28,6 +29,19 @@ public class EqDashboardWebAppFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
+
+        // 必須明確注入測試設定，覆寫 Auth:AllowManualLogin = true 與 TestAccounts:Enabled = true，
+        // 避免 appsettings.json 將手動登入關閉或將模擬帳號修改時導致測試第一步登入 401。
+        builder.ConfigureAppConfiguration((context, config) =>
+        {
+            config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Auth:AllowManualLogin"] = "true",
+                ["Auth:TestAccounts:Enabled"] = "true",
+                ["Auth:SimulatedAccount"] = "",
+                ["Auth:OpenAccessMode"] = "false"
+            });
+        });
 
         // ⚠️ TestServer（記憶體內）不支援 Negotiate（它需要 Kestrel 的 IConnectionItemsFeature）。
         //    Negotiate handler 是 IAuthenticationRequestHandler，會在「每個」請求初始化 → 一律丟

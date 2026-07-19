@@ -1,6 +1,6 @@
-import { enforceSystemModeUI } from './layout.js?v=20260607k';
-import { changeLanguage, renderLangSwitcher } from './navigation.js?v=20260607k';
-import { appState } from '../store.js?v=20260607k';
+import { enforceSystemModeUI } from './layout.js?v=20260719c';
+import { changeLanguage, renderLangSwitcher } from './navigation.js?v=20260719c';
+import { appState } from '../store.js?v=20260719c';
 
 
 ﻿// === ui/dialogs.js - 同步按鈕、自訂 Alert/Confirm、語系更新 ===
@@ -20,22 +20,11 @@ export function updateSyncButtonUI() {
     }
 }
 
-// === Alert 防重複 / 匯入訊息控管 ===
+// === Alert 防重複 ===
 window.__alertState = window.__alertState || {
     lastHtml: null,
     lastAt: 0
 };
-
-// 預設：不讓「匯入結果」在每次一般儲存時一直彈出
-window.__allowImportResultAlert = window.__allowImportResultAlert || false;
-
-// 提供一個工具：只允許接下來 1 次匯入結果訊息彈出
-window.allowNextImportResultAlert = function () {
-    window.__allowImportResultAlert = true;
-    // 10 秒後自動關掉，避免忘記關
-    setTimeout(() => { window.__allowImportResultAlert = false; }, 10000);
-};
-
 
 export function customAlert(msg, isHtml = false) {
     const msgEl = document.getElementById('systemAlertMsg');
@@ -47,19 +36,7 @@ export function customAlert(msg, isHtml = false) {
 
     const safeHtml = isHtml ? rawStr : (window.escapeHtml ? window.escapeHtml(rawStr) : rawStr.replace(/</g, "&lt;").replace(/>/g, "&gt;"));
 
-    // 1) 若是「匯入結果」訊息：預設不彈，避免你每次編輯/儲存都一直跳
-    const isImportResult =
-        safeHtml.includes('匯入完畢') ||
-        safeHtml.includes('成功同步至資料庫') ||
-        safeHtml.includes('略過異常') ||
-        safeHtml.includes('全部資料');
-
-    if (isImportResult && window.__allowImportResultAlert !== true) {
-        // 直接忽略
-        return;
-    }
-
-    // 2) 防止同一訊息短時間內重複彈出
+    // 防止同一訊息短時間內重複彈出
     const now = Date.now();
     if (window.__alertState.lastHtml === safeHtml && (now - window.__alertState.lastAt) < 1500) {
         return;
@@ -69,9 +46,66 @@ export function customAlert(msg, isHtml = false) {
 
     if (msgEl) msgEl.innerHTML = safeHtml;
     if (typeof appState.systemAlertModalObj !== 'undefined' && appState.systemAlertModalObj) appState.systemAlertModalObj.show();
+}
 
-    // 匯入結果只允許彈一次就關掉
-    if (isImportResult) window.__allowImportResultAlert = false;
+// =========================================================================
+// ⭐️ 非阻斷式 Toast — 「成功/資訊」類回饋專用。
+//    錯誤訊息與需要使用者決策的情境仍走 customAlert / customConfirm。
+// =========================================================================
+const TOAST_STYLES = {
+    success: { bg: 'text-bg-success', icon: 'fa-check-circle' },
+    info:    { bg: 'text-bg-primary', icon: 'fa-info-circle' },
+    warning: { bg: 'text-bg-warning', icon: 'fa-exclamation-triangle' },
+    error:   { bg: 'text-bg-danger',  icon: 'fa-times-circle' }
+};
+
+export function showToast(msg, type = 'success', delay = 3200, isHtml = false) {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.className = 'toast-container position-fixed top-0 end-0 p-3';
+        // 需高於 modal(1060) / offcanvas(2050)，Toast 才不會被遮住
+        container.style.zIndex = '20000';
+        document.body.appendChild(container);
+    }
+
+    const style = TOAST_STYLES[type] || TOAST_STYLES.success;
+    const rawStr = (typeof msg === 'object' && msg !== null) ? (msg.message || JSON.stringify(msg)) : String(msg ?? '');
+    const safeHtml = isHtml ? rawStr : (window.escapeHtml ? window.escapeHtml(rawStr) : rawStr.replace(/</g, "&lt;").replace(/>/g, "&gt;"));
+
+    const el = document.createElement('div');
+    el.className = `toast align-items-center border-0 shadow ${style.bg}`;
+    el.setAttribute('role', 'status');
+    el.setAttribute('aria-live', 'polite');
+    el.innerHTML = `<div class="d-flex"><div class="toast-body fw-bold"><i class="fas ${style.icon} me-2"></i>${safeHtml}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="關閉"></button></div>`;
+    container.appendChild(el);
+
+    if (typeof bootstrap !== 'undefined' && bootstrap.Toast) {
+        el.addEventListener('hidden.bs.toast', () => el.remove());
+        new bootstrap.Toast(el, { delay }).show();
+    } else {
+        // Bootstrap 尚未載入時的退路：直接顯示並定時移除
+        el.classList.add('show');
+        setTimeout(() => el.remove(), delay);
+    }
+}
+
+// =========================================================================
+// ⭐️ 表格載入骨架屏 (Bootstrap placeholder-glow)：
+//    取代「spinner + 查詢中...」文字列，載入時維持表格版面高度、減少跳動感。
+// =========================================================================
+export function skeletonRows(colCount, rowCount = 6) {
+    const widths = ['col-8', 'col-6', 'col-7', 'col-5', 'col-9', 'col-4'];
+    let rows = '';
+    for (let r = 0; r < rowCount; r++) {
+        let tds = '';
+        for (let c = 0; c < colCount; c++) {
+            tds += `<td><span class="placeholder placeholder-sm ${widths[(r + c) % widths.length]}"></span></td>`;
+        }
+        rows += `<tr class="placeholder-glow" aria-hidden="true">${tds}</tr>`;
+    }
+    return rows;
 }
 
 export function customConfirm(msg, callback, isHtml = false) {
@@ -173,5 +207,7 @@ window.generateIconHtml = generateIconHtml;
 window.updateSyncButtonUI = updateSyncButtonUI;
 window.customAlert = customAlert;
 window.customConfirm = customConfirm;
+window.showToast = showToast;
+window.skeletonRows = skeletonRows;
 window.syncPinButtonUI = syncPinButtonUI;
 

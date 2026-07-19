@@ -30,3 +30,21 @@ export const appState = {
 // Expose state globally ONLY for debugging purposes
 // Production code should import appState from store.js
 window.appState = appState;
+
+// 全域 XSS 防禦與 JS 跳脫工具函式
+export function escHtml(s) {
+    return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+export function _jsArg(s) {
+    let v = String(s == null ? '' : s)
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/\r/g, '\\r')
+        .replace(/\n/g, '\\n');
+    return v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+window.escHtml = escHtml;
+window._jsArg = _jsArg;
+

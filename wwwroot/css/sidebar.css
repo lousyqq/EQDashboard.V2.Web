@@ -1,4 +1,4 @@
-﻿/* === sidebar.css - 側邊欄與內容區樣式 === */
+/* === sidebar.css - 側邊欄與內容區樣式 === */
 /* ================= V27 側邊欄與內容區 ================= */
 #wrapper {
     display: flex;
@@ -46,16 +46,17 @@
     left: 20px;
     top: 50%;
     transform: translateY(-50%);
-    font-size: 0.75rem;
-    color: #94a3b8;
+    font-size: 0.8rem;
+    color: #64748b;
     pointer-events: none;
 }
 
 .sidebar-search-input {
     width: 100%;
     padding: 6px 28px 6px 28px;
-    font-size: 0.78rem;
-    color: #0b1120;
+    font-size: 0.82rem;
+    color: #0f172a;
+    font-weight: 600;
     background: #f8fafc;
     border: 1px solid var(--border-color);
     border-radius: 6px;
@@ -70,7 +71,7 @@
     }
 
     .sidebar-search-input::placeholder {
-        color: #b6c0cc;
+        color: #94a3b8;
     }
 
 .sidebar-search-clear {
@@ -114,8 +115,9 @@
 }
 
 .sidebar-search-crumb {
-    font-size: 0.62rem;
-    color: #94a3b8;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #64748b;
     margin-top: 2px;
     max-width: 100%;
 }
@@ -160,9 +162,9 @@ body.sidebar-hidden #sidebar {
 
 .menu-item {
     padding: 8px 16px;
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: #475569;
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: #1e293b;
     display: flex;
     align-items: center;
     cursor: pointer;
@@ -173,16 +175,17 @@ body.sidebar-hidden #sidebar {
 
     .menu-item i.menu-icon {
         margin-right: 10px;
-        font-size: 0.85rem;
+        font-size: 0.9rem;
         width: 16px;
         text-align: center;
-        color: #94a3b8;
+        color: #64748b;
     }
 
     .menu-item i.dropdown-arrow {
         margin-left: auto;
-        font-size: 0.65rem;
-        color: #cbd5e1;
+        font-size: 0.72rem;
+        font-weight: bold;
+        color: #94a3b8;
         transition: transform 0.2s;
     }
 
@@ -215,8 +218,9 @@ body.sidebar-hidden #sidebar {
 
 .menu-item.sub-item {
     padding: 6px 16px 6px 40px;
-    font-size: 0.75rem;
-    font-weight: 500;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #334155;
     position: relative;
 }
 

@@ -167,7 +167,32 @@ public class ActivityLogger : IActivityLogger
                 (l.EmpName != null && l.EmpName.Contains(kw)));
         }
 
-        var total = await q.CountAsync();
+        bool hasFilters = !string.IsNullOrWhiteSpace(empId) ||
+                          !string.IsNullOrWhiteSpace(category) ||
+                          fromUtc.HasValue ||
+                          toUtc.HasValue ||
+                          successOnly.HasValue ||
+                          !string.IsNullOrWhiteSpace(keyword);
+
+        int total = 0;
+        if (!hasFilters)
+        {
+            try
+            {
+                var fastCount = await _context.Database.SqlQueryRaw<long>(
+                    "SELECT ISNULL(SUM(rows), 0) AS Value FROM sys.partitions WHERE object_id = OBJECT_ID('UserActivityLogs') AND (index_id < 2)")
+                    .FirstOrDefaultAsync();
+                total = (int)Math.Min(fastCount, int.MaxValue);
+            }
+            catch
+            {
+                total = await q.CountAsync();
+            }
+        }
+        else
+        {
+            total = await q.CountAsync();
+        }
 
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 10, 500);

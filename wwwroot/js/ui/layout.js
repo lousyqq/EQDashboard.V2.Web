@@ -1,9 +1,9 @@
-import { getCustomMenus } from '../config.js?v=20260607k';
+import { getCustomMenus } from '../config.js?v=20260719c';
 
 
-import { renderSidebarMenus } from '../render/sidebar.js?v=20260607k';
-import { goDefaultHome, navTo } from './navigation.js?v=20260607k';
-import { appState } from '../store.js?v=20260607k';
+import { renderSidebarMenus } from '../render/sidebar.js?v=20260719c';
+import { goDefaultHome, navTo } from './navigation.js?v=20260719c';
+import { appState } from '../store.js?v=20260719c';
 
 
 ﻿// === ui/layout.js - 版面切換、側邊欄、全螢幕、釘選 ===
@@ -176,6 +176,42 @@ export function switchLayoutMode(mode) {
 // 讓 index.html 的 onclick="switchLayoutMode(...)" 一定能呼叫到
 window.switchLayoutMode = switchLayoutMode;
 
+
+// ============================================================================
+// ⭐️ RWD (≤992px)：側欄改為浮層 (responsive.css)，此處補上對應行為
+//    - 初載 / 縮放至窄幅時自動收合側欄，避免浮層蓋住內容
+//    - 點擊背景遮罩 (#sidebar-backdrop) 收合
+//    - 點選側欄「連結項」(非資料夾) 導頁後自動收合
+// ============================================================================
+const RWD_SIDEBAR_BREAKPOINT = 992;
+function isNarrowViewport() { return window.innerWidth <= RWD_SIDEBAR_BREAKPOINT; }
+
+document.addEventListener('DOMContentLoaded', () => {
+    if (isNarrowViewport()) document.body.classList.add('sidebar-hidden');
+
+    // 跨越斷點時同步：縮窄 → 收合；放寬 → 還原顯示（桌機預設側欄可見）
+    let wasNarrow = isNarrowViewport();
+    window.addEventListener('resize', () => {
+        const narrow = isNarrowViewport();
+        if (narrow === wasNarrow) return;
+        wasNarrow = narrow;
+        if (narrow) document.body.classList.add('sidebar-hidden');
+        else document.body.classList.remove('sidebar-hidden');
+    });
+
+    const backdrop = document.getElementById('sidebar-backdrop');
+    if (backdrop) backdrop.addEventListener('click', () => document.body.classList.add('sidebar-hidden'));
+
+    const sideMenus = document.getElementById('dynamic-sidebar-menus');
+    if (sideMenus) sideMenus.addEventListener('click', (e) => {
+        if (!isNarrowViewport()) return;
+        const item = e.target.closest('.menu-item');
+        // 資料夾（有展開箭頭）點了是展開/收合子層，不關閉浮層；連結項導頁後才收合
+        if (item && !item.querySelector('.dropdown-arrow')) {
+            document.body.classList.add('sidebar-hidden');
+        }
+    });
+});
 
 // Expose for HTML inline handlers
 window.toggleSidebar = toggleSidebar;

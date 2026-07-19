@@ -2,9 +2,9 @@
 
 // ⭐️ ES Module imports：fetch 覆寫攔截 401/403 時會用到 logout()/customAlert()。
 //    其餘 getter / 渲染函式皆透過 window.* 呼叫，毋須在此 import。
-import { logout } from './auth.js?v=20260607k';
-import { customAlert } from './ui/dialogs.js?v=20260607k';
-import { appState } from './store.js?v=20260607k';
+import { logout } from './auth.js?v=20260719c';
+import { customAlert, showToast } from './ui/dialogs.js?v=20260719c';
+import { appState } from './store.js?v=20260719c';
 
 
 // ⭐️ IIS 子目錄部署自適應：把絕對路徑 URL 自動 prepend APP_BASE。
@@ -155,8 +155,8 @@ export async function fetchInitialDataFromDB() {
         // 🚀 並行：MyProfile 與 GetInitialData 互不相依（皆僅需 auth cookie），同時發出省 1 個 RTT；MyProfile 結果在 accounts 填好後才 await。
         //    ⚠️ .catch(() => null) 必留：GetInitialData 網路層失敗會先 throw 早退，此 promise 若同樣 reject
         //    且從未被 await → unhandled rejection console 噪音。消費端以 `myProfileRes && myProfileRes.ok` 判空。
-        const myProfilePromise = fetch('/api/Auth/MyProfile').catch(() => null);
-        const response = await fetch('/Settings/GetInitialData', { cache: 'no-store' });
+        const myProfilePromise = fetch(window.toAppUrl('/api/Auth/MyProfile'), { cache: 'no-store', credentials: 'include' }).catch(() => null);
+        const response = await fetch(window.toAppUrl('/Settings/GetInitialData'), { cache: 'no-store', credentials: 'include' });
 
         // 先擋掉非 200
         if (!response.ok) {
@@ -469,6 +469,10 @@ export async function fetchInitialDataFromDB() {
                 myEmpId = String(myProfile.empId || '');
                 let myAcc = window.appState.accounts.find(a => String(a.empId) === String(myProfile.empId));
                 if (myAcc) {
+                    if (myProfile.name) myAcc.name = myProfile.name;
+                    if (myProfile.department) myAcc.department = myProfile.department;
+                    if (myProfile.loginCount !== undefined) myAcc.loginCount = myProfile.loginCount;
+                    if (myProfile.lastLoginTime !== undefined) myAcc.lastLoginTime = myProfile.lastLoginTime;
                     myAcc.assignedRoles = myProfile.assignedRoles || [];
                     myAcc.manageableMenus = myProfile.manageableMenus || [];
                     // canEditOthers 現由 MyProfile 直接帶回（自足來源）；僅在後端有提供時覆寫，否則保留 GetInitialData 解析值（向後相容）。
@@ -478,6 +482,9 @@ export async function fetchInitialDataFromDB() {
                     myAcc.denyMenus = myProfile.denyMenus || {};
                     myAcc.defaultPages = myProfile.defaultPages || {};
                 }
+                // ⭐️ 記錄後端 API 認證的真實身分與最新快照，供 main.js restoreLoginFromStorage 防呆與無縫同步
+                window._currentServerEmpId = myEmpId;
+                window._currentServerProfile = myAcc || myProfile;
             }
         } catch (e) {
             console.error("無法取得個人權限", e);
@@ -612,6 +619,28 @@ export function getDatabasePayload() {
     return payload;
 }
 
+// ⭐️ 全域快取自動清理與防禦機制 (App Shell / LocalStorage Cache Defense)
+//   當後台同步/儲存資料、登入切換身分、或模擬帳號異動時呼叫，自動清除過時的 App Shell 快取及個人快取，
+//   確保重整或按 Ctrl + F5 時，畫面永遠百分之百由 DB 最新資料重新構建，不需要再手動進 F12 清除。
+export function clearAppCache(preserveCurrentUser = false) {
+    try {
+        localStorage.removeItem('app_shell_top_menus');
+        localStorage.removeItem('app_shell_sidebar_menus');
+        if (!preserveCurrentUser) {
+            localStorage.removeItem('umc_current_user');
+        }
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && (k.startsWith('umc_personal_menus_') || k.startsWith('umc_user_') || k.startsWith('app_shell_'))) {
+                keysToRemove.push(k);
+            }
+        }
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+    } catch (e) { /* 靜默忽略 localStorage 權限限制 */ }
+}
+window.clearAppCache = clearAppCache;
+
 // 將前端資料同步寫入後端 DB 的核心功能
 // showFeedback=true 時會顯示 loading 遮罩與成功訊息（手動觸發匯入時用）；
 // 一般 CRUD 操作走 showFeedback=false（靜默同步，避免干擾使用者）。
@@ -638,8 +667,10 @@ export async function syncDataToDB(showFeedback) {
 
         if (result.success) {
             appState.hasUnsavedChanges = false;
-            if (showFeedback === true && typeof customAlert === 'function') {
-                customAlert(result.message || "資料已成功同步至資料庫！");
+            // ⭐️ 自動清除 App Shell 與本地殘留快照，確保 Ctrl+F5 或切換畫面能立即從 DB 更新
+            if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
+            if (showFeedback === true && typeof showToast === 'function') {
+                showToast(result.message || "資料已成功同步至資料庫！");
             }
         } else {
             if (typeof customAlert === 'function') customAlert("寫入失敗: " + result.message);
@@ -677,6 +708,7 @@ export async function saveFabAPI(isNew, fabData) {
             throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
         }
 
+        if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
         return { success: true };
     } catch (error) {
         console.error("儲存廠區失敗:", error);
@@ -692,6 +724,7 @@ export async function deleteFabAPI(id) {
             const err = await res.text();
             throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
         }
+        if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
         return { success: true };
     } catch (error) {
         console.error("刪除廠區失敗:", error);
@@ -716,6 +749,7 @@ export async function saveRoleAPI(isNew, roleData) {
             throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
         }
 
+        if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
         return { success: true };
     } catch (error) {
         console.error("儲存權限群組失敗:", error);
@@ -731,6 +765,7 @@ export async function deleteRoleAPI(id) {
             const err = await res.text();
             throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
         }
+        if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
         return { success: true };
     } catch (error) {
         console.error("刪除權限群組失敗:", error);
@@ -755,6 +790,7 @@ export async function saveAccountAPI(isNew, accountData) {
             throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
         }
 
+        if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
         return { success: true };
     } catch (error) {
         console.error("儲存帳號失敗:", error);
@@ -770,6 +806,7 @@ export async function deleteAccountAPI(id) {
             const err = await res.text();
             throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
         }
+        if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
         return { success: true };
     } catch (error) {
         console.error("刪除帳號失敗:", error);
@@ -794,6 +831,7 @@ export async function saveMenuAPI(isNew, menuData) {
             throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
         }
 
+        if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
         return { success: true };
     } catch (error) {
         console.error("儲存選單失敗:", error);
@@ -809,6 +847,7 @@ export async function deleteMenuAPI(id) {
             const err = await res.text();
             throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
         }
+        if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
         return { success: true };
     } catch (error) {
         console.error("刪除選單失敗:", error);
@@ -829,6 +868,7 @@ export async function batchSaveMenusAPI(menusData) {
             const err = await res.text();
             throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
         }
+        if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
         return { success: true };
     } catch (error) {
         console.error("批次儲存選單失敗:", error);
@@ -849,6 +889,7 @@ export async function batchDeleteMenusAPI(ids) {
             const err = await res.text();
             throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
         }
+        if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
         return { success: true };
     } catch (error) {
         console.error("批次刪除選單失敗:", error);
@@ -873,6 +914,7 @@ export async function saveAppAPI(isNew, appData) {
             throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
         }
 
+        if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
         return { success: true };
     } catch (error) {
         console.error("儲存應用項目失敗:", error);
@@ -888,6 +930,7 @@ export async function deleteAppAPI(id) {
             const err = await res.text();
             throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
         }
+        if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
         return { success: true };
     } catch (error) {
         console.error("刪除應用項目失敗:", error);

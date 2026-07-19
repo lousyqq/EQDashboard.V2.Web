@@ -167,6 +167,12 @@ public class SettingsService : ISettingsService
             throw new Exception("部分資料表載入失敗，無法回傳完整的 InitialData");
         }
 
+        // 觸發每日造訪統計 (單一語句原子 UPSERT)
+        var myAccDict = (dbData["Accounts"] as List<Dictionary<string, object>>)?.FirstOrDefault();
+        string? myName = myAccDict?.TryGetValue("Name", out var nObj) == true ? nObj?.ToString() : null;
+        string? myDept = myAccDict?.TryGetValue("Department", out var dObj) == true ? dObj?.ToString() : null;
+        await RecordDailyUserVisitAsync(empId, myName, myDept);
+
         return dbData;
     }
 
@@ -591,10 +597,48 @@ public class SettingsService : ISettingsService
         {
             int loginCount = Convert.ToInt32(r.GetValue(0));
             DateTime? lastLogin = r.IsDBNull(1) ? null : Convert.ToDateTime(r.GetValue(1));
+            await r.CloseAsync();
+            await RecordDailyUserVisitAsync(empId, null, null);
             return (true, loginCount,
                 lastLogin?.ToString("yyyy-MM-dd HH:mm:ss"), null);
         }
 
         return (false, 0, null, "找不到帳號 " + empId);
+    }
+
+    private async Task RecordDailyUserVisitAsync(string empId, string? name, string? department)
+    {
+        if (string.IsNullOrWhiteSpace(empId)) return;
+        try
+        {
+            using var conn = new SqlConnection(_connStr);
+            await conn.OpenAsync();
+            using var cmd = new SqlCommand(@"
+                UPDATE DailyUserVisits
+                SET VisitCount = VisitCount + 1,
+                    LastVisitTime = GETDATE(),
+                    EmpName = COALESCE(@EmpName, EmpName, (SELECT TOP 1 Name FROM Accounts WHERE EmpId = @EmpId)),
+                    Department = COALESCE(@Department, Department, (SELECT TOP 1 Department FROM Accounts WHERE EmpId = @EmpId))
+                WHERE VisitDate = CONVERT(date, GETDATE()) AND EmpId = @EmpId;
+
+                IF @@ROWCOUNT = 0
+                BEGIN
+                    INSERT INTO DailyUserVisits (VisitDate, EmpId, EmpName, Department, VisitCount, FirstVisitTime, LastVisitTime)
+                    SELECT CONVERT(date, GETDATE()), @EmpId, COALESCE(@EmpName, Name), COALESCE(@Department, Department), 1, GETDATE(), GETDATE()
+                    FROM Accounts WHERE EmpId = @EmpId;
+
+                    IF @@ROWCOUNT = 0
+                        INSERT INTO DailyUserVisits (VisitDate, EmpId, EmpName, Department, VisitCount, FirstVisitTime, LastVisitTime)
+                        VALUES (CONVERT(date, GETDATE()), @EmpId, @EmpName, @Department, 1, GETDATE(), GETDATE());
+                END", conn);
+            cmd.Parameters.Add(new SqlParameter("@EmpId", System.Data.SqlDbType.NVarChar, 50) { Value = empId });
+            cmd.Parameters.Add(new SqlParameter("@EmpName", System.Data.SqlDbType.NVarChar, 100) { Value = (object?)name ?? DBNull.Value });
+            cmd.Parameters.Add(new SqlParameter("@Department", System.Data.SqlDbType.NVarChar, 100) { Value = (object?)department ?? DBNull.Value });
+            await cmd.ExecuteNonQueryAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "每日造訪統計紀錄寫入失敗 (EmpId: {EmpId})", empId);
+        }
     }
 }

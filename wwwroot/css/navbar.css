@@ -1,4 +1,4 @@
-﻿/* === navbar.css - 雙列導覽列樣式 === */
+/* === navbar.css - 雙列導覽列樣式 === */
 /* ================= V27 雙列導覽列 - 極致壓縮空間 ================= */
 .top-navbar-group {
     background-color: var(--navbar-bg);
@@ -54,11 +54,11 @@ body.nav-hidden .top-navbar-group {
     }
 
 .nav-breadcrumb-inline {
-    font-size: 0.7rem;
-    color: rgba(255, 255, 255, 0.35);
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.65);
     margin-left: 12px;
     padding-left: 12px;
-    border-left: 1px solid rgba(255,255,255,0.1);
+    border-left: 1px solid rgba(255,255,255,0.2);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -68,8 +68,8 @@ body.nav-hidden .top-navbar-group {
 }
 
     .nav-breadcrumb-inline .current {
-        color: rgba(255, 255, 255, 0.7);
-        font-weight: 600;
+        color: #ffffff;
+        font-weight: 700;
         flex-shrink: 1;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -86,8 +86,8 @@ body.nav-hidden .top-navbar-group {
 }
 
 .util-item {
-    font-size: 0.7rem;
-    color: rgba(255,255,255,0.5);
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.78);
     font-weight: 700;
     border: none;
     background: transparent;
@@ -102,7 +102,7 @@ body.nav-hidden .top-navbar-group {
 
     .util-item:hover {
         color: white;
-        background: rgba(255,255,255,0.1);
+        background: rgba(255,255,255,0.15);
     }
 
     .util-item.active {
@@ -133,11 +133,11 @@ body.nav-hidden .top-navbar-group {
     }
 
 .top-menu-link {
-    color: rgba(255,255,255,0.55);
+    color: rgba(255,255,255,0.8);
     text-decoration: none;
     font-weight: 600;
-    font-size: clamp(10px, 1.2cqi, 12.5px);
-    padding: 6px 4px 5px 4px;
+    font-size: clamp(11px, 1.3cqi, 13px);
+    padding: 6px 6px 5px 6px;
     border-bottom: 2px solid transparent;
     letter-spacing: 0px;
     margin: 0 1px;
@@ -148,11 +148,12 @@ body.nav-hidden .top-navbar-group {
 
     .top-menu-link:hover {
         color: #fff;
-        background: rgba(255,255,255,0.05);
+        background: rgba(255,255,255,0.1);
     }
 
     .top-menu-link.active {
         color: white;
+        font-weight: 700;
         border-bottom-color: var(--navbar-accent);
     }
 
@@ -198,8 +199,8 @@ body.nav-hidden .top-navbar-group {
     }
 
 .feedback-link {
-    font-size: 0.75rem;
-    color: rgba(255,255,255,0.45);
+    font-size: 0.78rem;
+    color: rgba(255,255,255,0.75);
     text-decoration: none;
     font-weight: bold;
     transition: color 0.2s ease;

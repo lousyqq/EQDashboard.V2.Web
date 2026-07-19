@@ -253,6 +253,8 @@ using (var scope = app.Services.CreateScope())
         issues.Add("Auth:TestAccounts:Enabled = true (測試帳號 admin/admin、user/user 等可直接登入)");
     if (cfg.GetValue<bool>("Auth:EnableEmergencyAdmin"))
         issues.Add("Auth:EnableEmergencyAdmin = true (admin 帳號可無密碼登入)");
+    if (!string.IsNullOrWhiteSpace(cfg["Auth:SimulatedAccount"]))
+        issues.Add($"Auth:SimulatedAccount = \"{cfg["Auth:SimulatedAccount"]}\" (非 Development 環境禁止啟用模擬帳號，請務必留空)");
 
     // LDAP placeholder：若 LDAP 已啟用，Server 必須是真實 hostname、不能是已知 placeholder
     if (cfg.GetValue<bool>("Auth:Ldap:Enabled"))
@@ -317,10 +319,6 @@ if (requireHttps)
     app.UseHttpsRedirection();
 }
 
-// ⭐️ 回應壓縮：放在靜態檔/路由之前，才能壓到 wwwroot 靜態檔與所有 controller 回應
-//    （尤其 /Settings/GetInitialData 這份大 JSON）。須在 UseStaticFiles 之前註冊。
-app.UseResponseCompression();
-
 // ⭐️ 安全標頭中介軟體：防止點擊劫持、MIME 嗅探等攻擊。
 //   ⚠️ CSRF 驗證已「下移」到 UseAuthentication / UseAuthorization 之後（見下方）。
 //      原因：ASP.NET antiforgery token 綁定「登入者 claims 身分」，必須等 UseAuthentication
@@ -343,7 +341,7 @@ app.Use(async (context, next) =>
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net; " +
         "img-src 'self' data: https:; " +
         "font-src 'self' data: https://cdnjs.cloudflare.com; " +
-        "connect-src 'self'; " +
+        "connect-src 'self' ws: wss: http://localhost:* http://127.0.0.1:* https://localhost:* https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net https://code.jquery.com; " +
         "frame-src 'self' http: https:; " +
         "object-src 'none'; " +
         "base-uri 'self'; " +
@@ -400,6 +398,9 @@ if (app.Environment.IsDevelopment())
         c.UseRequestInterceptor("(req) => { req.credentials = 'include'; return req; }");
     });
 }
+
+// ⭐️ 回應壓縮：移至 UseStaticFiles 之後、UseRouting 之前，專門壓縮 Controller 動態回應（尤其 /Settings/GetInitialData 這份大 JSON），避免對 index.html 等 wwwroot 靜態檔產生雙重壓縮與 ERR_CONTENT_DECODING_FAILED。
+app.UseResponseCompression();
 
 app.UseRouting();
 app.UseAuthentication();

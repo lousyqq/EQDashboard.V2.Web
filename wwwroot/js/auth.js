@@ -6,11 +6,11 @@
 //   window.retryWhoAmI()     - 「重試偵測」按鈕
 //   window.logout()          - 右上頭像下拉的登出
 
-import { getAccounts } from './config.js?v=20260607k';
-import { fetchInitialDataFromDB } from './api.js?v=20260607k';
-import { initDashboardUI, restoreLoginFromStorage } from './main.js?v=20260607k';
-import { customAlert } from './ui/dialogs.js?v=20260607k';
-import { appState } from './store.js?v=20260607k';
+import { getAccounts } from './config.js?v=20260719c';
+import { fetchInitialDataFromDB } from './api.js?v=20260719c';
+import { initDashboardUI, restoreLoginFromStorage } from './main.js?v=20260719c';
+import { customAlert } from './ui/dialogs.js?v=20260719c';
+import { appState } from './store.js?v=20260719c';
 
 
 // 「使用者主動登出 → 別再自動登入」旗標
@@ -41,7 +41,7 @@ export async function fetchAuthConfig() {
     } catch (e) { console.warn('CsrfToken 取得失敗:', e); }
 
     try {
-        const resp = await fetch('/api/Auth/Config', { credentials: 'include' });
+        const resp = await fetch(window.toAppUrl('/api/Auth/Config'), { cache: 'no-store', credentials: 'include' });
         if (resp.ok) {
             const c = await resp.json();
             if (c) {
@@ -130,8 +130,9 @@ export async function fetchWhoAmI(allowAutoLogin = false) {
     if (btn) btn.disabled = true;
 
     try {
-        const resp = await fetch('/api/Auth/WhoAmI', {
+        const resp = await fetch(window.toAppUrl('/api/Auth/WhoAmI'), {
             method: 'GET',
+            cache: 'no-store',
             credentials: 'include'
         });
 
@@ -432,6 +433,7 @@ export async function completeLoginAfterAuth(empId, source, fallbackAccount) {
     };
     // ⚠️ id 必須一起存 — restoreLoginFromStorage 與 sidebar.js getMenuPermissions 都會用 appState.currentUser.id 判定權限
     const slimUser = { id: appState.currentUser.id, empId: appState.currentUser.empId, name: appState.currentUser.name, department: appState.currentUser.department, roleLevel: appState.currentUser.roleLevel, loginSource: appState.currentUser.loginSource };
+    if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
     localStorage.setItem('umc_current_user', JSON.stringify(slimUser));
 
     hideLoginOverlay();
@@ -504,19 +506,19 @@ export async function logout() {
     try { sessionStorage.setItem(FORCE_MANUAL_KEY, '1'); } catch (e) { }
     try { localStorage.removeItem(FORCE_MANUAL_KEY); } catch (e) { } // 順手清舊版殘留
 
-    localStorage.removeItem('umc_current_user');
-
-    // Round-5 B10：把所有「使用者個人」快取一併清掉，避免共用電腦切換帳號時讀到上一個人的舊資料。
-    //   會清：umc_user_stats_<empId>、umc_user_personal_<empId> 等所有 umc_user_* 前綴；
-    //   FORCE_MANUAL_KEY 上面才剛設、要保留。
-    try {
-        const keysToRemove = [];
-        for (let i = 0; i < localStorage.length; i++) {
-            const k = localStorage.key(i);
-            if (k && k.startsWith('umc_user_')) keysToRemove.push(k);
-        }
-        keysToRemove.forEach(k => localStorage.removeItem(k));
-    } catch (e) { /* localStorage 無法讀寫時靜默忽略 */ }
+    if (typeof window.clearAppCache === 'function') {
+        window.clearAppCache(false);
+    } else {
+        localStorage.removeItem('umc_current_user');
+        try {
+            const keysToRemove = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (k && (k.startsWith('umc_user_') || k.startsWith('umc_personal_menus_') || k.startsWith('app_shell_'))) keysToRemove.push(k);
+            }
+            keysToRemove.forEach(k => localStorage.removeItem(k));
+        } catch (e) { /* localStorage 無法讀寫時靜默忽略 */ }
+    }
 
     appState.currentUser = null;
     _whoamiResult = null;

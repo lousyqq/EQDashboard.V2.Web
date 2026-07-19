@@ -1,21 +1,22 @@
-import { appState } from './store.js?v=20260607k';
-import './config.js?v=20260607h';
-import './api.js?v=20260607h';
-import './auth.js?v=20260607h';
-import './ui/layout.js?v=20260607h';
-import './ui/navigation.js?v=20260607h';
-import './ui/dialogs.js?v=20260607h';
-import './render/sidebar.js?v=20260607h';
-import './render/sidebar-item.js?v=20260607h';
-import './render/tables.js?v=20260607h';
-import './render/account-ui.js?v=20260607h';
-import './admin/modal-utils.js?v=20260607h';
-import './admin/fab-manage.js?v=20260607h';
-import './admin/role-manage.js?v=20260607h';
-import './admin/account-manage.js?v=20260607h';
-import './admin/menu-manage.js?v=20260607h';
-import './admin/misc-manage.js?v=20260607h';
-import './admin/activity-log.js?v=20260607h';
+import { appState, escHtml } from './store.js?v=20260719c';
+import './config.js?v=20260719c';
+import './api.js?v=20260719c';
+import './auth.js?v=20260719c';
+import './ui/layout.js?v=20260719c';
+import './ui/navigation.js?v=20260719c';
+import './ui/dialogs.js?v=20260719c';
+import './render/sidebar.js?v=20260719c';
+import './render/sidebar-item.js?v=20260719c';
+import './render/tables.js?v=20260719c';
+import './render/account-ui.js?v=20260719c';
+import './admin/modal-utils.js?v=20260719c';
+import './admin/fab-manage.js?v=20260719c';
+import './admin/role-manage.js?v=20260719c';
+import './admin/account-manage.js?v=20260719c';
+import './admin/menu-manage.js?v=20260719c';
+import './admin/misc-manage.js?v=20260719c';
+import './admin/activity-log.js?v=20260719c';
+import './admin/traffic-stats.js?v=20260718';
 
 export function initModalSafely(id) { const el = document.getElementById(id); return el ? new bootstrap.Modal(el) : null; }
 
@@ -92,25 +93,37 @@ export function restoreLoginFromStorage() {
         // 順手補回 id 欄位讓下游用 appState.currentUser.id 的程式碼能正常 (sidebar.js getMenuPermissions 等)
         if (!tempUser.id) tempUser.id = storedEmpId;
 
+        // ⭐️ 雙重驗證 (Identity Guard)：如果後端 API (`MyProfile`) 在初始載入 DB 時，
+        //    已成功回報目前真實的登入身分 (`window._currentServerEmpId`)，而 localStorage 內暫存的 `storedEmpId`
+        //    與之不一致（例如按 Ctrl+F5 前已在後端換了帳號、或切換了 simulatedAccount），
+        //    代表 localStorage 的帳號快取已經過期或屬於前一個帳號！
+        //    必須立刻清除本機舊帳號快取，並 return false，交給 tryAutoLogin / 重新載入最新正確的帳號。
+        const currentServerEmpId = window._currentServerEmpId || '';
+        if (currentServerEmpId && String(currentServerEmpId).toLowerCase() !== String(storedEmpId).toLowerCase()) {
+            localStorage.removeItem('umc_current_user');
+            if (typeof window.clearAppCache === 'function') window.clearAppCache(false);
+            return false;
+        }
+
         if (typeof getAccounts === 'function') {
             let freshAcc = getAccounts().find(a => String(a.empId).toLowerCase() === String(storedEmpId).toLowerCase());
+            if (!freshAcc && window._currentServerProfile && String(window._currentServerProfile.empId || '').toLowerCase() === String(storedEmpId).toLowerCase()) {
+                freshAcc = window._currentServerProfile;
+            }
             if (!freshAcc) {
                 // 本地 user 在 DB 查無（帳號被刪、或 cookie 身分與 localStorage 身分不一致）
                 //   → 靜默清掉 localStorage、return false 交給 tryAutoLogin 走 Windows 自動偵測重登。
-                //   ⚠️ 刻意「不」彈任何提示視窗（曾設 umc_account_deleted_hint 讓登入框彈
-                //   「帳號已被移除」警告，但企業內部員工桌機開頁時會被誤傷、純屬擾民，
-                //   2026-07-03 依使用者要求移除）——有權限者由 tryAutoLogin 靜默重新登入
-                //   直達預設首頁；無權限者自然停在登入框，兩者皆不需要彈窗。
                 localStorage.removeItem('umc_current_user');
                 return false;
             }
-            tempUser.roleLevel = freshAcc.roleLevel;
-            tempUser.assignedRoles = freshAcc.assignedRoles || [];
-            tempUser.manageableMenus = freshAcc.manageableMenus || [];
-            tempUser.canEditOthers = freshAcc.canEditOthers || false;
-            tempUser.defaultPages = freshAcc.defaultPages || {};
-            tempUser.loginCount = typeof freshAcc.loginCount === 'number' ? freshAcc.loginCount : parseInt(freshAcc.loginCount) || 0;
-            tempUser.lastLoginTime = freshAcc.lastLoginTime || null;
+            // ⭐️ 全欄位即時同步 (Full-Field Synchronizer)：
+            //    舊版僅手動覆寫 roleLevel, assignedRoles 等 7 個欄位，如果使用者名稱 (name)、部門 (department)、
+            //    個別廠區選單覆寫 (extraMenus / denyMenus) 在 DB 有異動，按 Ctrl + F5 仍會持續讀到 localStorage 舊值。
+            //    此處以 Object.assign 將最新 freshAcc 完整覆寫至 local user 物件，確保按 Ctrl + F5 時，
+            //    畫面上顯示的所有個人資訊、權限與統計數值永遠 100% 同步至最新狀態。
+            Object.assign(tempUser, freshAcc);
+            tempUser.id = freshAcc.empId || freshAcc.EmpId || storedEmpId;
+            tempUser.empId = tempUser.id;
         }
 
         appState.currentUser = tempUser;
@@ -263,7 +276,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     } catch (error) {
         clearTimeout(loadingTimeoutId);
         if (!document.body.contains(loadingOverlay)) document.body.appendChild(loadingOverlay);
-        loadingOverlay.innerHTML = '<i class="fas fa-times-circle text-danger" style="font-size: 4rem; margin-bottom: 20px;"></i><h2 class="text-danger">系統發生非預期錯誤</h2><p class="fs-5">' + error.message + '</p><div class="text-warning text-start" style="max-width:800px; overflow:auto; max-height:300px;"><pre>' + error.stack + '</pre></div>';
+        const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.port !== '';
+        const stackHtml = isDev && error.stack ? '<div class="text-warning text-start mt-3" style="max-width:800px; overflow:auto; max-height:300px;"><pre>' + escHtml(error.stack) + '</pre></div>' : '';
+        loadingOverlay.innerHTML = '<i class="fas fa-times-circle text-danger" style="font-size: 4rem; margin-bottom: 20px;"></i><h2 class="text-danger">系統發生非預期錯誤</h2><p class="fs-5">' + escHtml(error.message || '未知錯誤') + '</p>' + stackHtml;
     }
 });
 
