@@ -28,4 +28,9 @@ public interface IAuthService
     /// fake Account 僅在 DB Accounts 表沒有這個工號時，作為 fallback 使用。
     /// </summary>
     (bool matched, Models.Account? fallbackAccount) VerifyTestAccount(string empId, string password);
+
+    /// <summary>
+    /// 依 EMPNO 查詢 [WEB].[dbo].[notes_person] 資料表，取回該名員工的姓名 (NAME) 與部門 (DEPTNAME)。
+    /// </summary>
+    Task<(string? Name, string? Department)> LookupPersonFromNotesAsync(string empId);
 }

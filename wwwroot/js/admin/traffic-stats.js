@@ -1,12 +1,12 @@
-// === admin/traffic-stats.js — 總瀏覽統計與使用率 (DAU/MAU/部門熱度) 查詢頁 (admin only) ===
+﻿// === admin/traffic-stats.js — 總瀏覽統計與使用率 (DAU/MAU/部門熱度) 查詢頁 (admin only) ===
 //
 // 對應後端：GET /api/Analytics/UsageStats?days=N
 //           GET /api/Analytics/details?page=...&pageSize=...
 // 對應頁面：#page-traffic-stats
 
-import { customAlert, skeletonRows } from '../ui/dialogs.js?v=20260719c';
-import { appState } from '../store.js?v=20260719c';
-import { t } from '../config.js?v=20260719c';
+import { customAlert, skeletonRows } from '../ui/dialogs.js?v=20260720b';
+import { appState } from '../store.js?v=20260720b';
+import { t } from '../config.js?v=20260720b';
 
 // XSS 防禦：對插入 innerHTML 的使用者資料做 HTML 實體跳脫
 function escHtml(s) {

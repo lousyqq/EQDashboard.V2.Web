@@ -1,16 +1,16 @@
-// === admin/misc-manage.js - AppGrid + 需求申請 + 審核 + Excel 匯出 + 圖示工具 ===
+﻿// === admin/misc-manage.js - AppGrid + 需求申請 + 審核 + Excel 匯出 + 圖示工具 ===
 
-import { getAppItems, getCustomMenus, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings } from '../config.js?v=20260719c';
+import { getAppItems, getCustomMenus, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings } from '../config.js?v=20260720b';
 
 
-import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260719c';
-import { batchSaveMenusAPI, deleteAppAPI, fetchInitialDataFromDB, saveAppAPI, syncDataToDB } from '../api.js?v=20260719c';
-import { initDashboardUI } from '../main.js?v=20260719c';
-import { renderSidebarMenus } from '../render/sidebar.js?v=20260719c';
-import { renderAppGrid, renderApplyTable, renderAuditTable, renderMenuConfigTable, renderPersonalMenuManage, renderWebpageTable } from '../render/tables.js?v=20260719c';
-import { customAlert, customConfirm, showToast, updateSyncButtonUI } from '../ui/dialogs.js?v=20260719c';
-import { navTo } from '../ui/navigation.js?v=20260719c';
-import { appState } from '../store.js?v=20260719c';
+import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260720b';
+import { batchSaveMenusAPI, deleteAppAPI, fetchInitialDataFromDB, saveAppAPI, syncDataToDB } from '../api.js?v=20260720b';
+import { initDashboardUI } from '../main.js?v=20260720b';
+import { renderSidebarMenus } from '../render/sidebar.js?v=20260720b';
+import { renderAppGrid, renderApplyTable, renderAuditTable, renderMenuConfigTable, renderPersonalMenuManage, renderWebpageTable } from '../render/tables.js?v=20260720b';
+import { customAlert, customConfirm, showToast, updateSyncButtonUI } from '../ui/dialogs.js?v=20260720b';
+import { navTo } from '../ui/navigation.js?v=20260720b';
+import { appState } from '../store.js?v=20260720b';
 
 
 // === 拖曳全域輔助 (表格重新排序使用) ===
@@ -299,6 +299,52 @@ export function openAppGridPage(menuId, title, element) {
     if (typeof renderAppGrid === 'function') renderAppGrid('app-grid-container', apps);
 }
 
+function hasValidAppImage(icon) {
+    if (!icon) return false;
+    const str = String(icon).trim();
+    if (!str || str === 'null' || str === 'undefined' || str === 'false' || str === '[object Object]') return false;
+    if (str === '/images/icons/' || str === 'images/icons/' || str === '/images/icons' || str === 'images/icons') return false;
+    if (str.startsWith('data:image/')) return true;
+    if (str.startsWith('http://') || str.startsWith('https://') || str.startsWith('//')) return true;
+    if (str.includes('images/icons/')) {
+        const parts = str.split('images/icons/');
+        const fileName = parts[1] ? parts[1].trim() : '';
+        if (fileName && fileName !== 'null' && fileName !== 'undefined' && fileName !== 'false' && /\.(png|jpg|jpeg|gif|webp|svg|ico)$/i.test(fileName)) {
+            return true;
+        }
+        return false;
+    }
+    if (/\.(png|jpg|jpeg|gif|webp|svg|ico)$/i.test(str)) return true;
+    return false;
+}
+window.hasValidAppImage = hasValidAppImage;
+
+function setIconPreviewBoxVisible(visible, isNewUpload = false) {
+    const previewBox = document.getElementById('appIconPreviewBox');
+    if (previewBox) {
+        if (visible) {
+            previewBox.classList.remove('d-none');
+            previewBox.classList.add('d-flex');
+            previewBox.style.setProperty('display', 'flex', 'important');
+            if (isNewUpload) {
+                if (document.getElementById('appIconPreviewTitle')) document.getElementById('appIconPreviewTitle').textContent = '目前已選擇新圖示';
+                if (document.getElementById('appIconPreviewSub')) document.getElementById('appIconPreviewSub').textContent = '儲存後即會替換目前圖示';
+            } else {
+                if (document.getElementById('appIconPreviewTitle')) document.getElementById('appIconPreviewTitle').textContent = '目前已配置專屬圖示';
+                if (document.getElementById('appIconPreviewSub')) document.getElementById('appIconPreviewSub').textContent = '若需更換請重新選擇檔案；若要移除圖示請點擊右方垃圾桶';
+            }
+        } else {
+            previewBox.classList.remove('d-flex');
+            previewBox.classList.add('d-none');
+            previewBox.style.setProperty('display', 'none', 'important');
+        }
+    } else {
+        const fallback = document.getElementById('appIconPreview');
+        if (fallback) fallback.style.display = visible ? 'block' : 'none';
+    }
+}
+window.setIconPreviewBoxVisible = setIconPreviewBoxVisible;
+
 export function openAppGridModal(id = null) {
     if (!canManageCurrentAppGrid()) {
         if (typeof customAlert === 'function') customAlert("您沒有管理此應用集合的權限");
@@ -307,18 +353,24 @@ export function openAppGridModal(id = null) {
     try {
         document.getElementById('appForm').reset();
         document.getElementById('appIdInput').value = id || '';
-        document.getElementById('appIconPreview').style.display = 'none';
+        setIconPreviewBoxVisible(false);
         document.getElementById('appIconPreview').src = '';
+        if (document.getElementById('appIconFile')) document.getElementById('appIconFile').value = '';
 
         if (id) {
-            const app = getAppItems().find(a => window.cleanId(a.id) === window.cleanId(id));
+            const app = getAppItems().find(a => window.cleanId(a.id || a.AppId) === window.cleanId(id));
             if (app) {
-                document.getElementById('appName').value = app.name;
-                document.getElementById('appUrl').value = app.url;
-                document.getElementById('appTarget').value = app.target || '_blank';
-                if (app.iconBase64) {
-                    document.getElementById('appIconPreview').style.display = 'block';
-                    document.getElementById('appIconPreview').src = app.iconBase64;
+                document.getElementById('appName').value = app.name || app.AppName || '';
+                document.getElementById('appUrl').value = app.url || app.Url || '';
+                document.getElementById('appTarget').value = app.target || app.Target || '_blank';
+                const rawIcon = app.iconBase64 || app.IconBase64 || '';
+                const cleanIcon = typeof window.resolveIconUrl === 'function' ? window.resolveIconUrl(rawIcon) : rawIcon;
+                if (hasValidAppImage(cleanIcon)) {
+                    setIconPreviewBoxVisible(true, false);
+                    document.getElementById('appIconPreview').src = cleanIcon;
+                } else {
+                    setIconPreviewBoxVisible(false);
+                    document.getElementById('appIconPreview').src = '';
                 }
             }
         }
@@ -341,22 +393,31 @@ export async function saveAppItem(e) {
         const name = document.getElementById('appName').value.trim();
         const url = document.getElementById('appUrl').value.trim();
         const target = document.getElementById('appTarget').value;
+        const previewBox = document.getElementById('appIconPreviewBox');
+        const isBoxVisible = previewBox ? !previewBox.classList.contains('d-none') : (document.getElementById('appIconPreview').style.display === 'block');
         const iconSrc = document.getElementById('appIconPreview').src;
-        const finalIcon = document.getElementById('appIconPreview').style.display === 'block' ? iconSrc : '';
+        let finalIcon = '';
+        if (isBoxVisible && iconSrc && hasValidAppImage(iconSrc)) {
+            finalIcon = iconSrc;
+        }
 
         let apps = getAppItems();
         let appData;
         let isNew = false;
         
         if (id) {
-            let idx = apps.findIndex(a => window.cleanId(a.id) === window.cleanId(id));
+            let idx = apps.findIndex(a => window.cleanId(a.id || a.AppId) === window.cleanId(id));
             if (idx > -1) { 
-                apps[idx].name = name; apps[idx].url = url; apps[idx].target = target; apps[idx].iconBase64 = finalIcon; 
+                apps[idx].name = name; apps[idx].AppName = name;
+                apps[idx].url = url; apps[idx].Url = url;
+                apps[idx].target = target; apps[idx].Target = target;
+                apps[idx].iconBase64 = finalIcon; apps[idx].IconBase64 = finalIcon; 
                 appData = apps[idx];
             }
         } else {
             isNew = true;
-            appData = { id: 'app_' + Date.now(), menuId: appState.currentAppGridMenuId, name: name, url: url, target: target, iconBase64: finalIcon };
+            const newId = 'app_' + Date.now();
+            appData = { id: newId, AppId: newId, menuId: appState.currentAppGridMenuId, MenuId: appState.currentAppGridMenuId, name: name, AppName: name, url: url, Url: url, target: target, Target: target, iconBase64: finalIcon, IconBase64: finalIcon };
             apps.push(appData);
         }
 
@@ -407,15 +468,22 @@ export function handleAppIconUpload(e) {
         compressImageFile(file, function (base64Str) {
             if (base64Str.length > 32700) {
                 customAlert("圖檔太複雜，無法壓縮至安全大小，請更換較簡單的圖標。");
-                document.getElementById('appIconPreview').style.display = 'none';
+                setIconPreviewBoxVisible(false);
                 e.target.value = '';
             } else {
                 document.getElementById('appIconPreview').src = base64Str;
-                document.getElementById('appIconPreview').style.display = 'block';
+                setIconPreviewBoxVisible(true, true);
             }
         });
     }
 }
+
+export function clearAppIconUpload() {
+    setIconPreviewBoxVisible(false);
+    document.getElementById('appIconPreview').src = '';
+    if (document.getElementById('appIconFile')) document.getElementById('appIconFile').value = '';
+}
+window.clearAppIconUpload = clearAppIconUpload;
 
 // === Apply & Audit 申請與審核 ===
 export function openApplyModal(id = null) {

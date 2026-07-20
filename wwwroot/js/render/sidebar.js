@@ -1,9 +1,9 @@
-// === render/sidebar.js - 側邊欄選單渲染 ===
+﻿// === render/sidebar.js - 側邊欄選單渲染 ===
 // ====== render.js 最上方的修復 ======
-import { getCustomMenus, getDataTableLang, getFabs, getPersonalSettings, getRoles, t } from '../config.js?v=20260719c';
-import { generateSidebarMenuItem } from './sidebar-item.js?v=20260719c';
-import { navTo, selectTopMenu } from '../ui/navigation.js?v=20260719c';
-import { appState } from '../store.js?v=20260719c';
+import { getCustomMenus, getDataTableLang, getFabs, getPersonalSettings, getRoles, t } from '../config.js?v=20260720b';
+import { generateSidebarMenuItem } from './sidebar-item.js?v=20260720b';
+import { navTo, selectTopMenu } from '../ui/navigation.js?v=20260720b';
+import { appState } from '../store.js?v=20260720b';
 
 
 window.cleanId = function (id) {
@@ -670,9 +670,9 @@ export function filterSidebarMenus(term) {
     matches.forEach(m => {
         const name = nameOf(m);
         let iconHtml;
-        // 圖片來源 = data: URI 或任何含 '/' 的路徑（/images/icons/... 實體檔、舊 icon/...）；FA class 永不含 '/'
-        if (m.icon && (String(m.icon).startsWith('data:') || String(m.icon).includes('/'))) {
-            iconHtml = `<img src="${window.escapeHTML(m.icon)}" class="custom-icon menu-icon" alt="icon">`;
+        const cleanIcon = typeof window.resolveIconUrl === 'function' ? window.resolveIconUrl(m.icon) : m.icon;
+        if (cleanIcon && (String(cleanIcon).startsWith('data:') || String(cleanIcon).includes('/'))) {
+            iconHtml = `<img src="${window.escapeHTML(cleanIcon)}" class="custom-icon menu-icon" alt="icon" onerror="this.onerror=null;this.replaceWith(document.createElement('i'));this.className='fas fa-file-alt text-muted menu-icon';">`;
         } else {
             iconHtml = `<i class="${window.escapeHTML(m.icon || 'far fa-file-alt')} menu-icon"></i>`;
         }

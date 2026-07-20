@@ -1,13 +1,13 @@
-// === admin/fab-manage.js - 廠區管理 CRUD ===
+﻿// === admin/fab-manage.js - 廠區管理 CRUD ===
 
-import { getCustomMenus, getFabs } from '../config.js?v=20260719c';
+import { getCustomMenus, getFabs } from '../config.js?v=20260720b';
 
 
-import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260719c';
-import { deleteFabAPI, fetchInitialDataFromDB, saveFabAPI } from '../api.js?v=20260719c';
-import { renderFabTable } from '../render/tables.js?v=20260719c';
-import { customAlert, customConfirm } from '../ui/dialogs.js?v=20260719c';
-import { appState } from '../store.js?v=20260719c';
+import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260720b';
+import { deleteFabAPI, fetchInitialDataFromDB, saveFabAPI } from '../api.js?v=20260720b';
+import { renderFabTable } from '../render/tables.js?v=20260720b';
+import { customAlert, customConfirm } from '../ui/dialogs.js?v=20260720b';
+import { appState } from '../store.js?v=20260720b';
 
 
 // === 權限檢查輔助 ===

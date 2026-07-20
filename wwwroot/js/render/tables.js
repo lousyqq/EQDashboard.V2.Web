@@ -1,17 +1,17 @@
-// === render/tables.js - 管理表格渲染 (Fab, Role, Account, Webpage, MenuConfig, Apply, Audit, AppGrid) ===
+﻿// === render/tables.js - 管理表格渲染 (Fab, Role, Account, Webpage, MenuConfig, Apply, Audit, AppGrid) ===
 
-import { getCustomMenus, getDataTableLang, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings, t } from '../config.js?v=20260719c';
+import { getCustomMenus, getDataTableLang, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings, t } from '../config.js?v=20260720b';
 
 
-import { deleteAccount, editAccount } from '../admin/account-manage.js?v=20260719c';
-import { deleteFab, editFab } from '../admin/fab-manage.js?v=20260719c';
-import { deleteMenuNodeItem, deleteWebpageItem, editPersonalMenu, openAddMenuNodeModal, openAddWebpageModal } from '../admin/menu-manage.js?v=20260719c';
-import { handleDragLeave, handleDragOver, handleDragStart, handleDrop, openAuditModal, withdrawApply } from '../admin/misc-manage.js?v=20260719c';
-import { deleteRole, editRole } from '../admin/role-manage.js?v=20260719c';
-import { getDtPageLen, initDataTable, rememberDtPageLen, renderSidebarMenus, safeDestroyDataTable } from './sidebar.js?v=20260719c';
-import { generateIconHtml } from '../ui/dialogs.js?v=20260719c';
-import { getFullMenuPathStr } from '../ui/navigation.js?v=20260719c';
-import { appState } from '../store.js?v=20260719c';
+import { deleteAccount, editAccount } from '../admin/account-manage.js?v=20260720b';
+import { deleteFab, editFab } from '../admin/fab-manage.js?v=20260720b';
+import { deleteMenuNodeItem, deleteWebpageItem, editPersonalMenu, openAddMenuNodeModal, openAddWebpageModal } from '../admin/menu-manage.js?v=20260720b';
+import { handleDragLeave, handleDragOver, handleDragStart, handleDrop, openAuditModal, withdrawApply } from '../admin/misc-manage.js?v=20260720b';
+import { deleteRole, editRole } from '../admin/role-manage.js?v=20260720b';
+import { getDtPageLen, initDataTable, rememberDtPageLen, renderSidebarMenus, safeDestroyDataTable } from './sidebar.js?v=20260720b';
+import { generateIconHtml } from '../ui/dialogs.js?v=20260720b';
+import { getFullMenuPathStr } from '../ui/navigation.js?v=20260720b';
+import { appState } from '../store.js?v=20260720b';
 
 
 // ⚠️ Stored XSS 防護：判斷 URL 是否安全到可以放進 href 或 window.open。
@@ -699,7 +699,9 @@ export function renderAppGrid(containerId, appList) {
     appList.forEach(app => {
         const aName = window.escapeHTML(app.name || app.AppName);
         const aUrl = window.escapeHTML(app.url || app.Url);
-        let imgHtml = (app.iconBase64 || app.IconBase64) ? `<img src="${window.escapeHTML(app.iconBase64 || app.IconBase64)}" class="app-icon-img" alt="${aName}">` : `<i class="fas fa-cube text-muted" style="font-size:2rem;"></i>`;
+        const rawIcon = app.iconBase64 || app.IconBase64;
+        const cleanIcon = typeof window.resolveIconUrl === 'function' ? window.resolveIconUrl(rawIcon) : rawIcon;
+        let imgHtml = cleanIcon ? `<img src="${window.escapeHTML(cleanIcon)}" class="app-icon-img" alt="${aName}" onerror="this.onerror=null;this.replaceWith(document.createElement('i'));this.className='fas fa-cube text-muted';this.style.fontSize='2rem';">` : `<i class="fas fa-cube text-muted" style="font-size:2rem;"></i>`;
         let aTargetVal = (app.target || app.Target);
         let actionAttr = aTargetVal === 'iframe'
             ? `data-action="open-iframe" data-url="${aUrl}" data-name="${aName}"`

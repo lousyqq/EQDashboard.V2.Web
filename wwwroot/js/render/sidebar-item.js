@@ -1,9 +1,9 @@
-// === render/sidebar-item.js - 選單項目產生器 ===
-import { getFabs, t } from '../config.js?v=20260719c';
-import { renderSidebarMenus } from './sidebar.js?v=20260719c';
-import { customAlert } from '../ui/dialogs.js?v=20260719c';
-import { changeLanguage, goDefaultHome } from '../ui/navigation.js?v=20260719c';
-import { appState } from '../store.js?v=20260719c';
+﻿// === render/sidebar-item.js - 選單項目產生器 ===
+import { getFabs, t } from '../config.js?v=20260720b';
+import { renderSidebarMenus } from './sidebar.js?v=20260720b';
+import { customAlert } from '../ui/dialogs.js?v=20260720b';
+import { changeLanguage, goDefaultHome } from '../ui/navigation.js?v=20260720b';
+import { appState } from '../store.js?v=20260720b';
 
 
 export function generateSidebarMenuItem(menu, allMenus, level, forceExpand = true) {
@@ -22,8 +22,9 @@ export function generateSidebarMenuItem(menu, allMenus, level, forceExpand = tru
     let iconHtml = `<i class="${window.escapeHTML(iconClass)} menu-icon ${menu.menuMode === 'folder' ? 'text-warning' : ''}"></i>`;
     // 圖片來源 = data: URI（剛上傳的預覽）或任何含 '/' 的路徑（/images/icons/... 實體檔、舊 icon/...、外部 URL）。
     // FontAwesome class（如 "fas fa-folder"）永不含 '/'，故以此區分圖片 vs FA。
-    if (menu.icon && (menu.icon.startsWith('data:') || menu.icon.includes('/'))) {
-        iconHtml = `<img src="${window.escapeHTML(menu.icon)}" class="custom-icon menu-icon" alt="icon">`;
+    const cleanIcon = typeof window.resolveIconUrl === 'function' ? window.resolveIconUrl(menu.icon) : menu.icon;
+    if (cleanIcon && (cleanIcon.startsWith('data:') || cleanIcon.includes('/'))) {
+        iconHtml = `<img src="${window.escapeHTML(cleanIcon)}" class="custom-icon menu-icon" alt="icon" onerror="this.onerror=null;this.replaceWith(document.createElement('i'));this.className='fas fa-folder text-muted menu-icon';">`;
     }
 
     const safeDomId = 'collapse_' + encodeURIComponent(String(menu.id)).replace(/%/g, '_').replace(/[^a-zA-Z0-9_-]/g, '');

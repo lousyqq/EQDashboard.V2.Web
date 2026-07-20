@@ -1,13 +1,14 @@
-import { enforceSystemModeUI } from './layout.js?v=20260719c';
-import { changeLanguage, renderLangSwitcher } from './navigation.js?v=20260719c';
-import { appState } from '../store.js?v=20260719c';
+﻿import { enforceSystemModeUI } from './layout.js?v=20260720b';
+import { changeLanguage, renderLangSwitcher } from './navigation.js?v=20260720b';
+import { appState } from '../store.js?v=20260720b';
 
 
 ﻿// === ui/dialogs.js - 同步按鈕、自訂 Alert/Confirm、語系更新 ===
 export function generateIconHtml(iconVal, colorCls, extraCls, isFolder = false) {
     if (!iconVal) return `<i class="fas ${isFolder ? 'fa-folder text-warning' : 'fa-file-alt text-muted'} ${extraCls}"></i>`;
     // 圖片來源 = data: URI 或任何含 '/' 的路徑（/images/icons/... 實體檔、舊 icon/...）；FA class 永不含 '/'
-    if (iconVal.startsWith('data:') || iconVal.includes('/')) return `<img src="${iconVal}" class="custom-icon ${extraCls}" alt="icon">`;
+    const cleanIcon = typeof window.resolveIconUrl === 'function' ? window.resolveIconUrl(iconVal) : iconVal;
+    if (cleanIcon && (cleanIcon.startsWith('data:') || cleanIcon.includes('/'))) return `<img src="${window.escapeHTML(cleanIcon)}" class="custom-icon ${extraCls}" alt="icon" onerror="this.onerror=null;this.replaceWith(document.createElement('i'));this.className='fas fa-file-alt text-muted ${extraCls}';">`;
     return `<i class="${iconVal} ${colorCls} ${extraCls}"></i>`;
 }
 

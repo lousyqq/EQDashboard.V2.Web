@@ -12,8 +12,8 @@ public class IconStorageService : IIconStorageService
     private readonly IWebHostEnvironment _env;
     private readonly ILogger<IconStorageService> _logger;
 
-    // 本站 icon 路徑的共同前綴（同時用於辨識、正規化、刪檔）
-    private const string IconUrlPrefix = "/images/icons/";
+    // 本站 icon 路徑的共同前綴（改為相對路徑無開頭斜線，相容 IIS 虛擬目錄部署）
+    private const string IconUrlPrefix = "images/icons/";
 
     // MIME → 副檔名白名單。非白名單的 data: URI 一律丟棄（防 data:text/html 等怪內容寫進磁碟/DB）。
     private static readonly Dictionary<string, string> MimeToExt = new(StringComparer.OrdinalIgnoreCase)
@@ -76,7 +76,10 @@ public class IconStorageService : IIconStorageService
 
         try
         {
-            var path = Path.Combine(_env.WebRootPath, "images", "icons", fileName);
+            var webRoot = !string.IsNullOrEmpty(_env.WebRootPath)
+                ? _env.WebRootPath
+                : Path.Combine(_env.ContentRootPath, "wwwroot");
+            var path = Path.Combine(webRoot, "images", "icons", fileName);
             if (File.Exists(path)) File.Delete(path);
         }
         catch (Exception ex)
@@ -116,7 +119,7 @@ public class IconStorageService : IIconStorageService
         return converted;
     }
 
-    /// <summary>把 base64 data URI 寫成實體檔，回傳 "/images/icons/{guid}.{ext}"；非白名單/解析失敗回 null。</summary>
+    /// <summary>把 base64 data URI 寫成實體檔，回傳 "images/icons/{guid}.{ext}"；非白名單/解析失敗回 null。</summary>
     private async Task<string?> ConvertDataUriToFileAsync(string dataUri)
     {
         var match = DataUriRegex.Match(dataUri);
@@ -136,25 +139,36 @@ public class IconStorageService : IIconStorageService
         }
         if (data.Length == 0) return null;
 
-        var folder = Path.Combine(_env.WebRootPath, "images", "icons");
-        Directory.CreateDirectory(folder);
+        try
+        {
+            var webRoot = !string.IsNullOrEmpty(_env.WebRootPath)
+                ? _env.WebRootPath
+                : Path.Combine(_env.ContentRootPath, "wwwroot");
+            var folder = Path.Combine(webRoot, "images", "icons");
+            Directory.CreateDirectory(folder);
 
-        var fileName = $"{Guid.NewGuid():N}.{ext}";
-        await File.WriteAllBytesAsync(Path.Combine(folder, fileName), data);
+            var fileName = $"{Guid.NewGuid():N}.{ext}";
+            await File.WriteAllBytesAsync(Path.Combine(folder, fileName), data);
 
-        return IconUrlPrefix + fileName;
+            return IconUrlPrefix + fileName;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "寫入自訂圖示實體檔案失敗（請確認 IIS/工作目錄對 wwwroot/images/icons 有寫入權限）");
+            return null;
+        }
     }
 
     /// <summary>
-    /// 若 value 是本站 icon（相對 "/images/icons/x" 或絕對 "http://host/images/icons/x"），
-    /// 取出檔名（擋掉 query/hash 與 ../）並回傳正規化的相對路徑 "/images/icons/{file}"；否則回 null。
+    /// 若 value 是本站 icon（相對 "images/icons/x" 或舊版 "/images/icons/x" 或絕對 "http://host/images/icons/x"），
+    /// 取出檔名（擋掉 query/hash 與 ../）並回傳正規化的相對路徑 "images/icons/{file}"；否則回 null。
     /// </summary>
     private static string? TryNormalizeLocalPath(string value)
     {
-        var idx = value.IndexOf(IconUrlPrefix, StringComparison.OrdinalIgnoreCase);
+        var idx = value.IndexOf("images/icons/", StringComparison.OrdinalIgnoreCase);
         if (idx < 0) return null;
 
-        var fileName = value.Substring(idx + IconUrlPrefix.Length);
+        var fileName = value.Substring(idx + "images/icons/".Length);
 
         // 砍掉 query / hash
         var cut = fileName.IndexOfAny(new[] { '?', '#' });

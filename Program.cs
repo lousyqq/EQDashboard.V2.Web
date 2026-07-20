@@ -339,7 +339,7 @@ app.Use(async (context, next) =>
         "default-src 'self'; " +
         "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net https://code.jquery.com; " +
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net; " +
-        "img-src 'self' data: https:; " +
+        "img-src 'self' data: http: https:; " +
         "font-src 'self' data: https://cdnjs.cloudflare.com; " +
         "connect-src 'self' ws: wss: http://localhost:* http://127.0.0.1:* https://localhost:* https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net https://code.jquery.com; " +
         "frame-src 'self' http: https:; " +

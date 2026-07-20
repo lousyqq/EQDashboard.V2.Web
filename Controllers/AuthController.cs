@@ -103,13 +103,15 @@ public class AuthController : ControllerBase
 
         if (account == null)
         {
+            var (lookupName, lookupDept) = await _authService.LookupPersonFromNotesAsync(empId);
+
             if (isDefaultAdmin)
             {
                 account = new Account
                 {
                     EmpId = empId,
-                    Name = empId,
-                    Department = "系統管理員",
+                    Name = !string.IsNullOrWhiteSpace(lookupName) ? lookupName : empId,
+                    Department = !string.IsNullOrWhiteSpace(lookupDept) ? lookupDept : "系統管理員",
                     RoleLevel = "admin",
                     CanEditOthers = true,
                     LoginCount = 0,
@@ -124,8 +126,8 @@ public class AuthController : ControllerBase
                 account = new Account
                 {
                     EmpId = empId,
-                    Name = empId,
-                    Department = "一般使用者",
+                    Name = !string.IsNullOrWhiteSpace(lookupName) ? lookupName : empId,
+                    Department = !string.IsNullOrWhiteSpace(lookupDept) ? lookupDept : "一般使用者",
                     RoleLevel = "user",
                     CanEditOthers = false,
                     LoginCount = 0,
@@ -374,14 +376,67 @@ public class AuthController : ControllerBase
             }
             else
             {
-                await _activityLogger.LogLoginAsync(HttpContext, empId, null, loginSource, false,
-                    errorMessage: "工號通過密碼驗證但 Accounts 表內無此帳號");
-                return Unauthorized(new
+                var isDefaultAdmin = _authSettings.DefaultAdmins?.Any(x => string.Equals(x, empId, StringComparison.OrdinalIgnoreCase)) == true;
+                if (isDefaultAdmin || _authSettings.OpenAccessMode)
                 {
-                    success = false,
-                    message = $"工號 [{empId}] 尚未建立帳號，請聯絡管理員。"
-                });
+                    var (lookupName, lookupDept) = await _authService.LookupPersonFromNotesAsync(empId);
+
+                    if (isDefaultAdmin)
+                    {
+                        account = new Models.Account
+                        {
+                            EmpId = empId,
+                            Name = !string.IsNullOrWhiteSpace(lookupName) ? lookupName : empId,
+                            Department = !string.IsNullOrWhiteSpace(lookupDept) ? lookupDept : "系統管理員",
+                            RoleLevel = "admin",
+                            CanEditOthers = true,
+                            LoginCount = 0,
+                            LastLoginTime = DateTime.UtcNow
+                        };
+                        _context.Accounts.Add(account);
+                        await _context.SaveChangesAsync();
+                        _logger.LogInformation("✅ Login 自動建立預設 Admin 帳號：{EmpId}", empId);
+                    }
+                    else if (_authSettings.OpenAccessMode)
+                    {
+                        account = new Models.Account
+                        {
+                            EmpId = empId,
+                            Name = !string.IsNullOrWhiteSpace(lookupName) ? lookupName : empId,
+                            Department = !string.IsNullOrWhiteSpace(lookupDept) ? lookupDept : "一般使用者",
+                            RoleLevel = "user",
+                            CanEditOthers = false,
+                            LoginCount = 0,
+                            LastLoginTime = DateTime.UtcNow
+                        };
+                        _context.Accounts.Add(account);
+
+                        var allRoleIds = await _context.Roles.AsNoTracking().Select(r => r.RoleId).ToListAsync();
+                        foreach (var rId in allRoleIds)
+                        {
+                            _context.MapAccountRoles.Add(new MapAccountRole { EmpId = empId, RoleId = rId });
+                        }
+
+                        await _context.SaveChangesAsync();
+                        _logger.LogInformation("✅ Login (OpenAccessMode=true) 自動加入新帳號為 user：{EmpId}", empId);
+                    }
+                }
+                else
+                {
+                    await _activityLogger.LogLoginAsync(HttpContext, empId, null, loginSource, false,
+                        errorMessage: "工號通過密碼驗證但 Accounts 表內無此帳號且未開啟 OpenAccessMode");
+                    return Unauthorized(new
+                    {
+                        success = false,
+                        message = $"工號 [{empId}] 尚未建立帳號，請聯絡管理員。"
+                    });
+                }
             }
+        }
+
+        if (account == null)
+        {
+            return Unauthorized(new { success = false, message = $"工號 [{empId}] 帳號資訊驗證失敗。" });
         }
 
         // 寫入 Cookie

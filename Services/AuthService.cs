@@ -1,3 +1,4 @@
+using System.Data;
 using System.DirectoryServices.Protocols;
 using System.Net;
 using EQDashboard.V2.Web.Data;
@@ -154,5 +155,42 @@ public class AuthService : IAuthService
         }
 
         return (false, null);
+    }
+
+    public async Task<(string? Name, string? Department)> LookupPersonFromNotesAsync(string empId)
+    {
+        if (string.IsNullOrWhiteSpace(empId)) return (null, null);
+        try
+        {
+            var conn = _context.Database.GetDbConnection();
+            var wasOpen = conn.State == ConnectionState.Open;
+            if (!wasOpen) await conn.OpenAsync();
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT TOP 1 NAME, DEPTNAME FROM [WEB].[dbo].[notes_person] WHERE EMPNO = @empId";
+                var p = cmd.CreateParameter();
+                p.ParameterName = "@empId";
+                p.Value = empId.Trim();
+                cmd.Parameters.Add(p);
+
+                using var reader = await cmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    var name = reader["NAME"] != DBNull.Value ? reader["NAME"].ToString()?.Trim() : null;
+                    var dept = reader["DEPTNAME"] != DBNull.Value ? reader["DEPTNAME"].ToString()?.Trim() : null;
+                    return (name, dept);
+                }
+            }
+            finally
+            {
+                if (!wasOpen) await conn.CloseAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "自 [WEB].[dbo].[notes_person] 查詢員工姓名與部門失敗 (empId={EmpId})", empId);
+        }
+        return (null, null);
     }
 }

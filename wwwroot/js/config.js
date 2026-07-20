@@ -1,3 +1,5 @@
+﻿import { appState } from './store.js?v=20260720b';
+
 // === 資料庫 / LocalStorage 鍵值常數 (已棄用 LocalStorage，僅留作常數參考) ===
 const DB_MENUS = 'umc_menus_v1';
 const DB_FABS = 'umc_fabs_v1';
@@ -16,6 +18,21 @@ window.escapeHTML = function (str) {
         .replace(/'/g, "&#039;");
 };
 window.escapeHtml = window.escapeHTML; // Alias for backward compatibility
+
+window.resolveIconUrl = function (icon) {
+    if (!icon || icon === 'null' || icon === 'undefined' || icon === 'false' || icon === '[object Object]') return '';
+    const str = String(icon).trim();
+    if (!str || str === 'null' || str === 'undefined' || str === 'false' || str === '[object Object]') return '';
+    if (str === '/images/icons/' || str === 'images/icons/' || str === '/images/icons' || str === 'images/icons') return '';
+    if (str.startsWith('data:') || str.startsWith('http://') || str.startsWith('https://') || str.startsWith('//')) return str;
+    // 移除開頭斜線 /images/icons/ -> images/icons/... 以相容 IIS 虛擬目錄及子應用程式部署
+    if (str.startsWith('/images/icons/')) {
+        const sub = str.substring(1);
+        if (sub === 'images/icons/' || sub === 'images/icons') return '';
+        return sub;
+    }
+    return str;
+};
 
 // === i18n 翻譯表 (從 TEST_20260429.html:2129-2145 移植) ===
 const i18n = {
@@ -128,8 +145,6 @@ const i18n = {
         ts_stats_fmt: "全 {0} 件の訪問記録", ts_people_fmt: "{0} 人", ts_times_fmt: "{0} 回", ts_count_fmt: "{0} 回", load_failed: "読み込み失敗: ", unspecified: "未指定"
     }
 };
-
-import { appState } from './store.js?v=20260719c';
 
 // =========================================================================
 // ⭐️ 終極資料讀取介面：全面接管舊有的 LocalStorage 函式，強制導向資料庫記憶體 (appState)

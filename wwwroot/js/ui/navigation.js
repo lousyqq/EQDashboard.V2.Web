@@ -1,10 +1,10 @@
-// === ui/navigation.js - 語系切換、選單導航、路由、iframe ===
-import { getCustomMenus, getFabs, getRoles, t } from '../config.js?v=20260719c';
-import { loadActivityLogs } from '../admin/activity-log.js?v=20260719c';
-import { openAppGridPage } from '../admin/misc-manage.js?v=20260719c';
-import { renderSidebarMenus } from '../render/sidebar.js?v=20260719c';
-import { renderAccountTable, renderApplyTable, renderAuditTable, renderFabTable, renderMenuConfigTable, renderPersonalMenuManage, renderRoleTable, renderWebpageTable } from '../render/tables.js?v=20260719c';
-import { appState } from '../store.js?v=20260719c';
+﻿// === ui/navigation.js - 語系切換、選單導航、路由、iframe ===
+import { getCustomMenus, getFabs, getRoles, t } from '../config.js?v=20260720b';
+import { loadActivityLogs } from '../admin/activity-log.js?v=20260720b';
+import { openAppGridPage } from '../admin/misc-manage.js?v=20260720b';
+import { renderSidebarMenus } from '../render/sidebar.js?v=20260720b';
+import { renderAccountTable, renderApplyTable, renderAuditTable, renderFabTable, renderMenuConfigTable, renderPersonalMenuManage, renderRoleTable, renderWebpageTable } from '../render/tables.js?v=20260720b';
+import { appState } from '../store.js?v=20260720b';
 
 
 export function changeLanguage(lang) {

@@ -1,10 +1,10 @@
-// === 全域變數：取代原本的 localStorage，達成真正的 DB 讀寫 ===
+﻿// === 全域變數：取代原本的 localStorage，達成真正的 DB 讀寫 ===
 
 // ⭐️ ES Module imports：fetch 覆寫攔截 401/403 時會用到 logout()/customAlert()。
 //    其餘 getter / 渲染函式皆透過 window.* 呼叫，毋須在此 import。
-import { logout } from './auth.js?v=20260719c';
-import { customAlert, showToast } from './ui/dialogs.js?v=20260719c';
-import { appState } from './store.js?v=20260719c';
+import { logout } from './auth.js?v=20260720b';
+import { customAlert, showToast } from './ui/dialogs.js?v=20260720b';
+import { appState } from './store.js?v=20260720b';
 
 
 // ⭐️ IIS 子目錄部署自適應：把絕對路徑 URL 自動 prepend APP_BASE。
