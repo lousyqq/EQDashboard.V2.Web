@@ -46,14 +46,15 @@ public class AccountService : IAccountService
 
         var total = await query.CountAsync();
 
-        // 先用穩定排序 + Skip/Take 取「本頁的 root 帳號」，再 Include 兩個一對多 collection。
-        //   2 個 collection-Include → AsSplitQuery 避免 cartesian 相乘（對齊 §6.2 規範）。
+        // 先用穩定排序 + Skip/Take 取「本頁的 root 帳號」，再 Include 相關的一對多 collection。
+        //   3 個 collection-Include → AsSplitQuery 避免 cartesian 相乘（對齊 §6.2 規範）。
         var pageAccounts = await query
             .OrderBy(a => a.EmpId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Include(a => a.MapAccountRoles)
             .Include(a => a.MapAccountDefaultPages)
+            .Include(a => a.MapAccountManageMenus)
             .AsSplitQuery()
             .ToListAsync();
 
@@ -63,8 +64,9 @@ public class AccountService : IAccountService
             name = a.Name,
             department = a.Department,
             roleLevel = a.RoleLevel,
+            canEditOthers = a.CanEditOthers,
             assignedRoles = a.MapAccountRoles?.Select(m => m.RoleId).ToList() ?? new List<string>(),
-            // 帳號管理列表只顯示「登入預設首頁」與「可視群組版面」→ 需 defaultPages + assignedRoles 即可
+            manageableMenus = a.MapAccountManageMenus?.Select(m => m.MenuId).ToList() ?? new List<string>(),
             defaultPages = a.MapAccountDefaultPages?.ToDictionary(m => m.FabId, m => m.MenuId ?? "") ?? new Dictionary<string, string>()
         }).Cast<object>().ToList();
 

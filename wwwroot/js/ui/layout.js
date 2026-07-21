@@ -1,9 +1,9 @@
-﻿import { getCustomMenus } from '../config.js?v=20260720b';
+﻿import { getCustomMenus } from '../config.js?v=20260721a';
 
 
-import { renderSidebarMenus } from '../render/sidebar.js?v=20260720b';
-import { goDefaultHome, navTo } from './navigation.js?v=20260720b';
-import { appState } from '../store.js?v=20260720b';
+import { renderSidebarMenus } from '../render/sidebar.js?v=20260721a';
+import { goDefaultHome, navTo } from './navigation.js?v=20260721a';
+import { appState } from '../store.js?v=20260721a';
 
 
 ﻿// === ui/layout.js - 版面切換、側邊欄、全螢幕、釘選 ===

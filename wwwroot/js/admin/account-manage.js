@@ -1,12 +1,12 @@
 ﻿// === admin/account-manage.js - 帳號管理 CRUD ===
 
-import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260720b';
-import { deleteAccountAPI, fetchInitialDataFromDB, saveAccountAPI } from '../api.js?v=20260720b';
-import { renderAccDefaultPagesUI, renderAccManageMenuCheckboxes, renderAccRoleCheckboxes } from '../render/account-ui.js?v=20260720b';
-import { renderSidebarMenus } from '../render/sidebar.js?v=20260720b';
-import { renderAccountTable } from '../render/tables.js?v=20260720b';
-import { customAlert, customConfirm } from '../ui/dialogs.js?v=20260720b';
-import { appState } from '../store.js?v=20260720b';
+import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260721a';
+import { deleteAccountAPI, fetchInitialDataFromDB, saveAccountAPI } from '../api.js?v=20260721a';
+import { renderAccDefaultPagesUI, renderAccManageMenuCheckboxes, renderAccRoleCheckboxes } from '../render/account-ui.js?v=20260721a';
+import { renderSidebarMenus } from '../render/sidebar.js?v=20260721a';
+import { renderAccountTable } from '../render/tables.js?v=20260721a';
+import { customAlert, customConfirm } from '../ui/dialogs.js?v=20260721a';
+import { appState } from '../store.js?v=20260721a';
 
 
 // === Accounts 帳號管理 ===

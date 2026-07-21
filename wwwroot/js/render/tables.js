@@ -1,17 +1,17 @@
 ﻿// === render/tables.js - 管理表格渲染 (Fab, Role, Account, Webpage, MenuConfig, Apply, Audit, AppGrid) ===
 
-import { getCustomMenus, getDataTableLang, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings, t } from '../config.js?v=20260720b';
+import { getCustomMenus, getDataTableLang, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings, t } from '../config.js?v=20260721a';
 
 
-import { deleteAccount, editAccount } from '../admin/account-manage.js?v=20260720b';
-import { deleteFab, editFab } from '../admin/fab-manage.js?v=20260720b';
-import { deleteMenuNodeItem, deleteWebpageItem, editPersonalMenu, openAddMenuNodeModal, openAddWebpageModal } from '../admin/menu-manage.js?v=20260720b';
-import { handleDragLeave, handleDragOver, handleDragStart, handleDrop, openAuditModal, withdrawApply } from '../admin/misc-manage.js?v=20260720b';
-import { deleteRole, editRole } from '../admin/role-manage.js?v=20260720b';
-import { getDtPageLen, initDataTable, rememberDtPageLen, renderSidebarMenus, safeDestroyDataTable } from './sidebar.js?v=20260720b';
-import { generateIconHtml } from '../ui/dialogs.js?v=20260720b';
-import { getFullMenuPathStr } from '../ui/navigation.js?v=20260720b';
-import { appState } from '../store.js?v=20260720b';
+import { deleteAccount, editAccount } from '../admin/account-manage.js?v=20260721a';
+import { deleteFab, editFab } from '../admin/fab-manage.js?v=20260721a';
+import { deleteMenuNodeItem, deleteWebpageItem, editPersonalMenu, openAddMenuNodeModal, openAddWebpageModal } from '../admin/menu-manage.js?v=20260721a';
+import { handleDragLeave, handleDragOver, handleDragStart, handleDrop, openAuditModal, withdrawApply } from '../admin/misc-manage.js?v=20260721a';
+import { deleteRole, editRole } from '../admin/role-manage.js?v=20260721a';
+import { getDtPageLen, initDataTable, rememberDtPageLen, renderSidebarMenus, safeDestroyDataTable } from './sidebar.js?v=20260721a';
+import { generateIconHtml } from '../ui/dialogs.js?v=20260721a';
+import { getFullMenuPathStr } from '../ui/navigation.js?v=20260721a';
+import { appState } from '../store.js?v=20260721a';
 
 
 // ⚠️ Stored XSS 防護：判斷 URL 是否安全到可以放進 href 或 window.open。
@@ -359,7 +359,42 @@ function _accDefaultPagesHtml(defaultPages) {
     return html;
 }
 
-// 把一筆 /api/Accounts 列轉成 DataTable 的一列陣列（對齊 index.html 6 欄 thead）。
+// 由帳號的 canEditOthers 和 manageableMenus 推算「是否啟用委派管理」狀態 HTML。
+function _accDelegationStatusHtml(canEditOthers, manageableMenus, roleLevel) {
+    if (String(roleLevel || '').toLowerCase() === 'admin') {
+        return '<span class="badge bg-success"><i class="fas fa-crown me-1"></i>全權管理 (Admin)</span>';
+    }
+    const mIds = manageableMenus || [];
+    const hasDelegation = mIds.length > 0 || (canEditOthers === true);
+    if (!hasDelegation) {
+        return '<span class="badge bg-secondary"><i class="fas fa-times me-1"></i>未啟用</span>';
+    }
+    if (canEditOthers === true) {
+        return '<span class="badge bg-info text-dark border"><i class="fas fa-user-cog me-1"></i>已啟用 (允許變更他人)</span>';
+    } else {
+        return '<span class="badge bg-info text-dark border"><i class="fas fa-user-check me-1"></i>已啟用 (限改自建)</span>';
+    }
+}
+
+// 由帳號的 manageableMenus 推算「委派管理選單」 HTML。
+function _accManageableMenusHtml(manageableMenus, roleLevel) {
+    if (String(roleLevel || '').toLowerCase() === 'admin') {
+        return '<span class="badge bg-light text-dark border"><i class="fas fa-check-double me-1 text-success"></i>全系統所有選單</span>';
+    }
+    const mIds = manageableMenus || [];
+    if (mIds.length === 0) {
+        return '<span class="text-muted small">無委派選單</span>';
+    }
+    const menus = getCustomMenus();
+    const badges = mIds.map(id => {
+        const m = menus.find(x => window.cleanId(x.id || x.MenuId) === window.cleanId(id));
+        const displayName = m ? (m.displayName || m.DisplayName || m.name || m.SysName || id) : id;
+        return `<span class="badge bg-light text-dark border me-1 mb-1"><i class="fas fa-folder me-1 text-warning"></i>${window.escapeHTML(displayName)}</span>`;
+    }).join('');
+    return `<div style="white-space: normal;">${badges}</div>`;
+}
+
+// 把一筆 /api/Accounts 列轉成 DataTable 的一列陣列（對齊 index.html 8 欄 thead）。
 function _accRowData(a) {
     const aId = a.empId || a.EmpId || '';
     const aName = window.escapeHTML(a.name || a.Name || '');
@@ -368,6 +403,8 @@ function _accRowData(a) {
     const lvlBadge = aLevel === 'admin' ? '<span class="badge bg-danger">Admin</span>' : '<span class="badge bg-secondary">User</span>';
     const fabBadges = _accFabBadges(a.assignedRoles || a.AssignedRoles || []);
     const defPagesHtml = _accDefaultPagesHtml(a.defaultPages || a.DefaultPages || {});
+    const delegationStatusHtml = _accDelegationStatusHtml(a.canEditOthers || a.CanEditOthers, a.manageableMenus || a.MapAccountManageMenus, aLevel);
+    const delegationMenusHtml = _accManageableMenusHtml(a.manageableMenus || a.MapAccountManageMenus, aLevel);
     const jsId = _jsArg(aId);
     const idCell = window.escapeHTML(aId);
     const actionBtns = `<div class="d-flex flex-nowrap justify-content-center gap-2"><button type="button" class="btn btn-sm btn-outline-primary" style="width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center;" onclick="event.stopPropagation(); editAccount('${jsId}');" title="編輯"><i class="fas fa-edit"></i></button><button type="button" class="btn btn-sm btn-outline-danger" style="width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center;" onclick="event.stopPropagation(); deleteAccount('${jsId}')" title="刪除"><i class="fas fa-trash-alt"></i></button></div>`;
@@ -377,6 +414,8 @@ function _accRowData(a) {
         lvlBadge,
         defPagesHtml,
         `<div style="white-space: normal;">${fabBadges}</div>`,
+        delegationStatusHtml,
+        delegationMenusHtml,
         actionBtns
     ];
 }
@@ -423,8 +462,8 @@ export function renderAccountTable() {
                 searching: true,
                 pageLength: getDtPageLen('dtAccount'), lengthMenu: [10, 25, 50, 100],
                 ordering: false, order: [], autoWidth: false, stateSave: false,
-                columns: [{ data: 0 }, { data: 1 }, { data: 2 }, { data: 3 }, { data: 4 }, { data: 5 }],
-                columnDefs: [{ targets: 5, className: 'text-center align-middle', width: '90px' }, { targets: [3, 4], className: 'text-start align-middle' }, { targets: [0, 1, 2], className: 'align-middle' }],
+                columns: [{ data: 0 }, { data: 1 }, { data: 2 }, { data: 3 }, { data: 4 }, { data: 5 }, { data: 6 }, { data: 7 }],
+                columnDefs: [{ targets: 7, className: 'text-center align-middle', width: '90px' }, { targets: 5, className: 'text-center align-middle' }, { targets: [3, 4, 6], className: 'text-start align-middle' }, { targets: [0, 1, 2], className: 'align-middle' }],
                 ajax: function (data, callback) {
                     const pageSize = data.length > 0 ? data.length : 10;
                     const page = Math.floor((data.start || 0) / pageSize) + 1;
