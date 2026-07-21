@@ -4,9 +4,9 @@
 //           GET /api/Analytics/details?page=...&pageSize=...
 // 對應頁面：#page-traffic-stats
 
-import { customAlert, skeletonRows } from '../ui/dialogs.js?v=20260721a';
-import { appState } from '../store.js?v=20260721a';
-import { t } from '../config.js?v=20260721a';
+import { customAlert, skeletonRows } from '../ui/dialogs.js?v=20260721c';
+import { appState } from '../store.js?v=20260721c';
+import { t } from '../config.js?v=20260721c';
 
 // XSS 防禦：對插入 innerHTML 的使用者資料做 HTML 實體跳脫
 function escHtml(s) {

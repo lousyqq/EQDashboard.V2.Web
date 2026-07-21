@@ -1,15 +1,15 @@
 ﻿// === admin/menu-manage.js - 個人選單 + 看板管理 + 選單結構樹 ===
 
-import { getCustomMenus, getPersonalSettings, savePersonalSettings, t } from '../config.js?v=20260721a';
+import { getCustomMenus, getPersonalSettings, savePersonalSettings, t } from '../config.js?v=20260721c';
 
 
-import { getSelectedIconVal, setIconValToModal } from './misc-manage.js?v=20260721a';
-import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260721a';
-import { batchDeleteMenusAPI, batchSaveMenusAPI, deleteMenuAPI, fetchInitialDataFromDB, saveMenuAPI } from '../api.js?v=20260721a';
-import { renderSidebarMenus } from '../render/sidebar.js?v=20260721a';
-import { renderMenuConfigTable, renderPersonalMenuManage, renderWebpageTable } from '../render/tables.js?v=20260721a';
-import { customAlert, customConfirm, showToast } from '../ui/dialogs.js?v=20260721a';
-import { appState } from '../store.js?v=20260721a';
+import { getSelectedIconVal, setIconValToModal } from './misc-manage.js?v=20260721c';
+import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260721c';
+import { batchDeleteMenusAPI, batchSaveMenusAPI, deleteMenuAPI, fetchInitialDataFromDB, saveMenuAPI } from '../api.js?v=20260721c';
+import { renderSidebarMenus } from '../render/sidebar.js?v=20260721c';
+import { renderMenuConfigTable, renderPersonalMenuManage, renderWebpageTable } from '../render/tables.js?v=20260721c';
+import { customAlert, customConfirm, showToast } from '../ui/dialogs.js?v=20260721c';
+import { appState } from '../store.js?v=20260721c';
 
 
 // 共用工具：把 ACL textarea 內容切行、trim、過濾空字串、去重

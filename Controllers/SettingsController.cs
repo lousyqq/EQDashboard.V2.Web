@@ -25,7 +25,7 @@ public class SettingsController : Controller
     private readonly AuthSettings _authSettings;
     private readonly ILogger<SettingsController> _logger;
 
-    public SettingsController(ISettingsService settingsService, IMenuAuthService menuAuthService, IOptions<AuthSettings> authSettings, ILogger<SettingsController> logger)
+    public SettingsController(ISettingsService settingsService, IMenuAuthService menuAuthService, IOptionsSnapshot<AuthSettings> authSettings, ILogger<SettingsController> logger)
     {
         _settingsService = settingsService;
         _menuAuthService = menuAuthService;

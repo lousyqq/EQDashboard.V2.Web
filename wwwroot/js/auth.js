@@ -6,11 +6,11 @@
 //   window.retryWhoAmI()     - 「重試偵測」按鈕
 //   window.logout()          - 右上頭像下拉的登出
 
-import { getAccounts } from './config.js?v=20260721a';
-import { fetchInitialDataFromDB } from './api.js?v=20260721a';
-import { initDashboardUI, restoreLoginFromStorage } from './main.js?v=20260721a';
-import { customAlert } from './ui/dialogs.js?v=20260721a';
-import { appState } from './store.js?v=20260721a';
+import { getAccounts } from './config.js?v=20260721c';
+import { fetchInitialDataFromDB } from './api.js?v=20260721c';
+import { initDashboardUI, restoreLoginFromStorage } from './main.js?v=20260721c';
+import { customAlert } from './ui/dialogs.js?v=20260721c';
+import { appState } from './store.js?v=20260721c';
 
 
 // 「使用者主動登出 → 別再自動登入」旗標
@@ -310,10 +310,9 @@ export async function completeLoginAfterAuth(empId, source, fallbackAccount) {
         try { await window.refreshCsrfToken(); } catch (e) { /* 失敗有 api.js 自我修復重試兜底 */ }
     }
 
-    // ⚠️ appState.accounts 只有在 fetchInitialDataFromDB 成功時才會被賦值；匿名載入頁面時
-    //    GetInitialData 回 401 → 該函式提前 return false、accounts 仍為 undefined。
-    //    這裡若直接讀 .length 會 TypeError 中斷整個登入流程，故須容錯為「未載入」。
-    if ((!window.appState.accounts || window.appState.accounts.length === 0) && typeof fetchInitialDataFromDB === 'function') {
+    // ⚠️ appState.accounts 只有在 fetchInitialDataFromDB 成功時才會被賦值；或者當登入身分改變時 (如切換模擬帳號)，
+    //    必須調用 fetchInitialDataFromDB 重新載入對應使用者的個人化選單與完整設定。
+    if ((!window.appState.accounts || window.appState.accounts.length === 0 || (window._currentServerEmpId && String(window._currentServerEmpId).toLowerCase() !== String(empId).toLowerCase())) && typeof fetchInitialDataFromDB === 'function') {
         const ok = await fetchInitialDataFromDB();
         if (!ok) {
             if (typeof customAlert === 'function') customAlert("無法載入資料庫，請重新整理網頁");

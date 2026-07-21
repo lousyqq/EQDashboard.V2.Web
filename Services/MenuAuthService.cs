@@ -43,7 +43,7 @@ public class MenuAuthService : IMenuAuthService
     private readonly Dictionary<string, bool> _canEditOthersCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, List<string>> _manageSetCache = new(StringComparer.OrdinalIgnoreCase);
 
-    public MenuAuthService(AppDbContext context, IMemoryCache cache, ISettingsService settingsService, IOptions<AuthSettings> authSettings)
+    public MenuAuthService(AppDbContext context, IMemoryCache cache, ISettingsService settingsService, IOptionsSnapshot<AuthSettings> authSettings)
     {
         _context = context;
         _cache = cache;

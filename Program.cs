@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -168,6 +169,29 @@ builder.Services
         {
             context.Response.StatusCode = 403;
             return Task.CompletedTask;
+        };
+        options.Events.OnValidatePrincipal = async context =>
+        {
+            var authSettings = context.HttpContext.RequestServices.GetRequiredService<Microsoft.Extensions.Options.IOptionsSnapshot<AuthSettings>>().Value;
+            var cookieEmpId = context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var loginSource = context.Principal?.FindFirst("LoginSource")?.Value;
+
+            // 若後端目前有啟用 SimulatedAccount，且 Cookie 身分與最新模擬帳號不符時作廢
+            if (!string.IsNullOrWhiteSpace(authSettings.SimulatedAccount))
+            {
+                var targetSimId = authSettings.SimulatedAccount.Trim();
+                if (!string.Equals(cookieEmpId, targetSimId, StringComparison.OrdinalIgnoreCase))
+                {
+                    context.RejectPrincipal();
+                    await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                }
+            }
+            // 若後端已關閉 SimulatedAccount (切回 Windows 偵測)，但 Cookie 是之前 simulated 產生的，也作廢重驗
+            else if (string.Equals(loginSource, "simulated", StringComparison.OrdinalIgnoreCase))
+            {
+                context.RejectPrincipal();
+                await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+            }
         };
     });
 
