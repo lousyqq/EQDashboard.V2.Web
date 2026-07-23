@@ -1,10 +1,10 @@
 ﻿// === ui/navigation.js - 語系切換、選單導航、路由、iframe ===
-import { getCustomMenus, getFabs, getRoles, t } from '../config.js?v=20260721c';
-import { loadActivityLogs } from '../admin/activity-log.js?v=20260721c';
-import { openAppGridPage } from '../admin/misc-manage.js?v=20260721c';
-import { renderSidebarMenus } from '../render/sidebar.js?v=20260721c';
-import { renderAccountTable, renderApplyTable, renderAuditTable, renderFabTable, renderMenuConfigTable, renderPersonalMenuManage, renderRoleTable, renderWebpageTable } from '../render/tables.js?v=20260721c';
-import { appState } from '../store.js?v=20260721c';
+import { getCustomMenus, getFabs, getRoles, t } from '../config.js?v=20260723w';
+import { loadActivityLogs } from '../admin/activity-log.js?v=20260723w';
+import { openAppGridPage } from '../admin/misc-manage.js?v=20260723w';
+import { renderSidebarMenus } from '../render/sidebar.js?v=20260723w';
+import { renderAccountTable, renderApplyTable, renderAuditTable, renderFabTable, renderMenuConfigTable, renderPersonalMenuManage, renderRoleTable, renderWebpageTable } from '../render/tables.js?v=20260723w';
+import { appState } from '../store.js?v=20260723w';
 
 
 export function changeLanguage(lang) {

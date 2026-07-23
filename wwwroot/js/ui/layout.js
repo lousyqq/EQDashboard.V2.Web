@@ -1,12 +1,42 @@
-﻿import { getCustomMenus } from '../config.js?v=20260721c';
+﻿import { getCustomMenus } from '../config.js?v=20260723w';
 
 
-import { renderSidebarMenus } from '../render/sidebar.js?v=20260721c';
-import { goDefaultHome, navTo } from './navigation.js?v=20260721c';
-import { appState } from '../store.js?v=20260721c';
+import { renderSidebarMenus } from '../render/sidebar.js?v=20260723w';
+import { goDefaultHome, navTo } from './navigation.js?v=20260723w';
+import { appState } from '../store.js?v=20260723w';
 
 
 ﻿// === ui/layout.js - 版面切換、側邊欄、全螢幕、釘選 ===
+
+// 佈景主題切換邏輯
+export function initTheme() {
+    const theme = localStorage.getItem('umc_theme_preference');
+    const icon = document.getElementById('theme-icon');
+    if (theme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        if (icon) { icon.classList.remove('fa-moon'); icon.classList.add('fa-sun'); }
+    } else {
+        document.documentElement.removeAttribute('data-theme');
+        if (icon) { icon.classList.remove('fa-sun'); icon.classList.add('fa-moon'); }
+    }
+}
+
+export function toggleTheme() {
+    const current = document.documentElement.getAttribute('data-theme');
+    const icon = document.getElementById('theme-icon');
+    if (current === 'dark') {
+        document.documentElement.removeAttribute('data-theme');
+        localStorage.setItem('umc_theme_preference', 'light');
+        if (icon) { icon.classList.remove('fa-sun'); icon.classList.add('fa-moon'); }
+    } else {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        localStorage.setItem('umc_theme_preference', 'dark');
+        if (icon) { icon.classList.remove('fa-moon'); icon.classList.add('fa-sun'); }
+    }
+}
+window.initTheme = initTheme;
+window.toggleTheme = toggleTheme;
+
 // 切換側邊欄
 export function toggleSidebar() {
     let hasChildren = false;

@@ -4,9 +4,9 @@
 //           GET /api/Analytics/details?page=...&pageSize=...
 // 對應頁面：#page-traffic-stats
 
-import { customAlert, skeletonRows } from '../ui/dialogs.js?v=20260721c';
-import { appState } from '../store.js?v=20260721c';
-import { t } from '../config.js?v=20260721c';
+import { customAlert, skeletonRows } from '../ui/dialogs.js?v=20260723w';
+import { appState } from '../store.js?v=20260723w';
+import { t } from '../config.js?v=20260723w';
 
 // XSS 防禦：對插入 innerHTML 的使用者資料做 HTML 實體跳脫
 function escHtml(s) {
@@ -85,7 +85,7 @@ export async function loadTrafficStats() {
                             <td class="fw-bold">${t('ts_times_fmt', '{0} 人次').replace('{0}', (item.visits || 0).toLocaleString())}</td>
                             <td style="min-width: 180px;">
                                 <div class="d-flex align-items-center gap-2">
-                                    <div class="progress flex-grow-1" style="height: 10px; background-color: #e2e8f0; border-radius: 5px;">
+                                    <div class="progress flex-grow-1" style="height: 10px; background-color: var(--border-color); border-radius: 5px;">
                                         <div class="progress-bar bg-primary" role="progressbar" style="width: ${pct}%;"></div>
                                     </div>
                                     <span class="small text-muted" style="width: 40px;">${pct}%</span>
@@ -113,7 +113,7 @@ export async function loadTrafficStats() {
                             <td class="fw-bold">${t('ts_times_fmt', '{0} 人次').replace('{0}', (item.visits || 0).toLocaleString())}</td>
                             <td style="min-width: 180px;">
                                 <div class="d-flex align-items-center gap-2">
-                                    <div class="progress flex-grow-1" style="height: 10px; background-color: #e2e8f0; border-radius: 5px;">
+                                    <div class="progress flex-grow-1" style="height: 10px; background-color: var(--border-color); border-radius: 5px;">
                                         <div class="progress-bar bg-success" role="progressbar" style="width: ${pct}%;"></div>
                                     </div>
                                     <span class="small text-muted" style="width: 40px;">${pct}%</span>
@@ -141,7 +141,7 @@ export async function loadTrafficStats() {
                             <td class="fw-bold">${t('ts_times_fmt', '{0} 人次').replace('{0}', (item.visits || 0).toLocaleString())}</td>
                             <td style="min-width: 180px;">
                                 <div class="d-flex align-items-center gap-2">
-                                    <div class="progress flex-grow-1" style="height: 10px; background-color: #e2e8f0; border-radius: 5px;">
+                                    <div class="progress flex-grow-1" style="height: 10px; background-color: var(--border-color); border-radius: 5px;">
                                         <div class="progress-bar bg-info" role="progressbar" style="width: ${pct}%;"></div>
                                     </div>
                                     <span class="small text-muted" style="width: 40px;">${pct}%</span>

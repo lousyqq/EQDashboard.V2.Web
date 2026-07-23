@@ -1,13 +1,13 @@
 ﻿// === admin/fab-manage.js - 廠區管理 CRUD ===
 
-import { getCustomMenus, getFabs } from '../config.js?v=20260721c';
+import { getCustomMenus, getFabs } from '../config.js?v=20260723w';
 
 
-import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260721c';
-import { deleteFabAPI, fetchInitialDataFromDB, saveFabAPI } from '../api.js?v=20260721c';
-import { renderFabTable } from '../render/tables.js?v=20260721c';
-import { customAlert, customConfirm } from '../ui/dialogs.js?v=20260721c';
-import { appState } from '../store.js?v=20260721c';
+import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260723w';
+import { deleteFabAPI, fetchInitialDataFromDB, saveFabAPI } from '../api.js?v=20260723w';
+import { renderFabTable } from '../render/tables.js?v=20260723w';
+import { customAlert, customConfirm } from '../ui/dialogs.js?v=20260723w';
+import { appState } from '../store.js?v=20260723w';
 
 
 // === 權限檢查輔助 ===
@@ -73,11 +73,20 @@ export async function saveFabItem(e) {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     else if (window.event && typeof window.event.preventDefault === 'function') window.event.preventDefault();
 
+    const btn = e ? e.currentTarget : null;
+
     try {
         const id = document.getElementById('editFabId').value;
         const fabName = document.getElementById('fabNameInput').value.trim();
         const displayName = document.getElementById('fabDisplayNameInput').value.trim();
         const lang = document.getElementById('fabLangSelect').value;
+
+        if (!fabName) {
+            window.shakeInput('fabNameInput');
+            return false;
+        }
+
+        if (btn) window.setButtonLoading(btn, true);
 
         // 一個廠區限選一個群組（radio 單選）；「無」選項 value="" 需過濾掉 → assignedRoles 為 0 或 1 個
         let assignedRoles = [];
@@ -89,6 +98,8 @@ export async function saveFabItem(e) {
         if (isNew) {
             let fabs = getFabs();
             if (fabs.some(f => window.cleanId(f.fabName) === window.cleanId(fabName))) {
+                if (btn) window.setButtonLoading(btn, false);
+                window.shakeInput('fabNameInput');
                 customAlert('廠區名稱已存在！'); 
                 return false; 
             }
@@ -104,6 +115,7 @@ export async function saveFabItem(e) {
 
         const result = await saveFabAPI(isNew, payload);
         if (!result.success) {
+            if (btn) window.setButtonLoading(btn, false);
             customAlert("儲存失敗: " + result.message);
             return false;
         }
@@ -112,6 +124,7 @@ export async function saveFabItem(e) {
         await window.fetchInitialDataFromDB();
 
         hideModalSafely('fabModal');
+        if (btn) window.setButtonLoading(btn, false);
         if (typeof renderFabTable === 'function') renderFabTable();
         if (typeof renderFabSwitcher === 'function') renderFabSwitcher();
     } catch (error) { console.error("[saveFabItem] 錯誤:", error); }

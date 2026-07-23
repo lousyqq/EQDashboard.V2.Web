@@ -1,6 +1,6 @@
-﻿import { enforceSystemModeUI } from './layout.js?v=20260721c';
-import { changeLanguage, renderLangSwitcher } from './navigation.js?v=20260721c';
-import { appState } from '../store.js?v=20260721c';
+﻿import { enforceSystemModeUI } from './layout.js?v=20260723w';
+import { changeLanguage, renderLangSwitcher } from './navigation.js?v=20260723w';
+import { appState } from '../store.js?v=20260723w';
 
 
 ﻿// === ui/dialogs.js - 同步按鈕、自訂 Alert/Confirm、語系更新 ===
@@ -76,10 +76,11 @@ export function showToast(msg, type = 'success', delay = 3200, isHtml = false) {
     const safeHtml = isHtml ? rawStr : (window.escapeHtml ? window.escapeHtml(rawStr) : rawStr.replace(/</g, "&lt;").replace(/>/g, "&gt;"));
 
     const el = document.createElement('div');
-    el.className = `toast align-items-center border-0 shadow ${style.bg}`;
+    // 加入 toast-${type} class 以便對應 progress 顏色
+    el.className = `toast align-items-center border-0 shadow ${style.bg} toast-${type}`;
     el.setAttribute('role', 'status');
     el.setAttribute('aria-live', 'polite');
-    el.innerHTML = `<div class="d-flex"><div class="toast-body fw-bold"><i class="fas ${style.icon} me-2"></i>${safeHtml}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="關閉"></button></div>`;
+    el.innerHTML = `<div class="d-flex position-relative pb-1"><div class="toast-body fw-bold position-relative z-1"><i class="fas ${style.icon} me-2"></i>${safeHtml}</div><button type="button" class="btn-close btn-close-white me-2 m-auto position-relative z-1" data-bs-dismiss="toast" aria-label="關閉"></button><div class="toast-progress" style="animation-duration: ${delay}ms;"></div></div>`;
     container.appendChild(el);
 
     if (typeof bootstrap !== 'undefined' && bootstrap.Toast) {
@@ -210,5 +211,36 @@ window.customAlert = customAlert;
 window.customConfirm = customConfirm;
 window.showToast = showToast;
 window.skeletonRows = skeletonRows;
-window.syncPinButtonUI = syncPinButtonUI;
 
+// =========================================================================
+// ⭐️ UI UX 工具函數
+// =========================================================================
+
+export function setButtonLoading(btnId, isLoading) {
+    const btn = typeof btnId === 'string' ? document.getElementById(btnId) : btnId;
+    if (!btn) return;
+    if (isLoading) {
+        btn.classList.add('btn-loading');
+        btn.disabled = true;
+    } else {
+        btn.classList.remove('btn-loading');
+        btn.disabled = false;
+    }
+}
+window.setButtonLoading = setButtonLoading;
+
+export function shakeInput(elementId) {
+    const el = typeof elementId === 'string' ? document.getElementById(elementId) : elementId;
+    if (!el) return;
+    el.classList.remove('shake-animation');
+    // 強制重繪以重置動畫
+    void el.offsetWidth;
+    el.classList.add('shake-animation', 'is-invalid');
+    
+    // 短暫延遲後可選擇性移除 shake class
+    setTimeout(() => {
+        el.classList.remove('shake-animation');
+    }, 500);
+}
+window.shakeInput = shakeInput;
+window.syncPinButtonUI = syncPinButtonUI;

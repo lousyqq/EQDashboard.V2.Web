@@ -1,5 +1,5 @@
-/* === navbar.css - 雙列導覽列樣式 === */
-/* ================= V27 雙列導覽列 - 極致壓縮空間 ================= */
+/* === navbar.css - ??撠汗?見撘?=== */
+/* ================= V27 ??撠汗??- 璆菔憯葬蝛粹? ================= */
 .top-navbar-group {
     background-color: var(--navbar-bg);
     z-index: 2000;
@@ -39,7 +39,7 @@ body.nav-hidden .top-navbar-group {
 }
 
 .nav-logo-text {
-    font-size: 0.95rem;
+    font-size: var(--fs-base);
     font-weight: 800;
     color: white;
     margin: 0;
@@ -54,7 +54,7 @@ body.nav-hidden .top-navbar-group {
     }
 
 .nav-breadcrumb-inline {
-    font-size: 0.75rem;
+    font-size: var(--fs-xs);
     color: rgba(255, 255, 255, 0.65);
     margin-left: 12px;
     padding-left: 12px;
@@ -75,7 +75,7 @@ body.nav-hidden .top-navbar-group {
         text-overflow: ellipsis;
     }
 
-/* 右側工具膠囊 */
+/* ?喳撌亙?? */
 .utility-cluster {
     display: flex;
     align-items: center;
@@ -86,7 +86,7 @@ body.nav-hidden .top-navbar-group {
 }
 
 .util-item {
-    font-size: 0.75rem;
+    font-size: var(--fs-xs);
     color: rgba(255,255,255,0.78);
     font-weight: 700;
     border: none;
@@ -116,7 +116,7 @@ body.nav-hidden .top-navbar-group {
     margin: 0 8px;
 }
 
-/* 主選單頁籤 */
+/* 銝駁?桅?蝐?*/
 .top-menus {
     display: flex;
     align-items: flex-end;
@@ -162,16 +162,16 @@ body.nav-hidden .top-navbar-group {
     gap: 12px;
     overflow-x: auto;
     padding: 12px;
-    background: #f8fafc;
-    border: 2px dashed #cbd5e1;
+    background: var(--body-bg);
+    border: 2px dashed var(--border-color);
     border-radius: 8px;
     min-height: 50px;
 }
 
 .sortable-root-item {
-    background: white;
-    border: 1px solid #0d6efd;
-    color: #0d6efd;
+    background: var(--card-bg);
+    border: 1px solid var(--primary-light);
+    color: var(--primary-light);
     padding: 6px 18px;
     border-radius: 20px;
     font-weight: bold;
@@ -189,17 +189,17 @@ body.nav-hidden .top-navbar-group {
 
     .sortable-root-item.dragging {
         opacity: 0.5;
-        background: #e2e8f0;
+        background: var(--table-hover);
     }
 
     .sortable-root-item.drag-over {
-        border-left: 5px solid #dc3545;
+        border-left: 5px solid var(--active-text);
         padding-left: 14px;
         margin-left: 5px;
     }
 
 .feedback-link {
-    font-size: 0.78rem;
+    font-size: var(--fs-xs);
     color: rgba(255,255,255,0.75);
     text-decoration: none;
     font-weight: bold;
@@ -213,6 +213,36 @@ body.nav-hidden .top-navbar-group {
 }
 
     .feedback-link:hover {
-        color: #38bdf8;
+        color: var(--navbar-accent);
     }
+
+/* ?單????澆?? */
+.monitoring-indicator {
+    display: flex;
+    align-items: center;
+    margin-left: 1rem;
+    cursor: default;
+}
+
+.monitoring-divider {
+    width: 1px;
+    height: 14px;
+    background: rgba(255, 255, 255, 0.2);
+    margin-right: 12px;
+}
+
+.monitoring-dot {
+    width: 8px;
+    height: 8px;
+    background-color: var(--navbar-accent);
+    border-radius: 50%;
+    box-shadow: 0 0 6px var(--navbar-accent);
+    animation: pulse-dot 1.5s infinite ease-in-out;
+}
+
+@keyframes pulse-dot {
+    0% { opacity: 0.5; box-shadow: 0 0 2px var(--navbar-accent); transform: scale(0.95); }
+    50% { opacity: 1; box-shadow: 0 0 10px var(--navbar-accent); transform: scale(1.1); }
+    100% { opacity: 0.5; box-shadow: 0 0 2px var(--navbar-accent); transform: scale(0.95); }
+}
 

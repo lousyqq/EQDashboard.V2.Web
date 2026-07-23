@@ -1,9 +1,9 @@
 ﻿// === render/sidebar-item.js - 選單項目產生器 ===
-import { getFabs, t } from '../config.js?v=20260721c';
-import { renderSidebarMenus } from './sidebar.js?v=20260721c';
-import { customAlert } from '../ui/dialogs.js?v=20260721c';
-import { changeLanguage, goDefaultHome } from '../ui/navigation.js?v=20260721c';
-import { appState } from '../store.js?v=20260721c';
+import { getFabs, t } from '../config.js?v=20260723w';
+import { renderSidebarMenus } from './sidebar.js?v=20260723w';
+import { customAlert } from '../ui/dialogs.js?v=20260723w';
+import { changeLanguage, goDefaultHome } from '../ui/navigation.js?v=20260723w';
+import { appState } from '../store.js?v=20260723w';
 
 
 export function generateSidebarMenuItem(menu, allMenus, level, forceExpand = true) {
@@ -103,7 +103,7 @@ window.renderUserDropdown = function () {
     setText('user-name', appState.currentUser.id || '');
     const loginCount = appState.currentUser.loginCount || 1;
     setHtml('user-role',
-        t('login_count_prefix', '這是您第 ') + '<span style="color:#38bdf8; font-weight:800; font-size:0.75rem;">' + loginCount + '</span>' + t('login_count_suffix', ' 次登入'));
+        t('login_count_prefix', '這是您第 ') + '<span style="color:var(--navbar-accent); font-weight:800; font-size:0.75rem;">' + loginCount + '</span>' + t('login_count_suffix', ' 次登入'));
 
     setHtml('dropdown-user-name', (appState.currentUser.name || '') + ' (' + (appState.currentUser.id || '') + ')' + srcBadge);
     setText('dropdown-user-dept', appState.currentUser.department || t('dept_unknown', '未設定部門'));

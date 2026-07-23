@@ -4,9 +4,9 @@
 // 對應頁面：#page-activity-log
 //
 
-import { customAlert, customConfirm, showToast, skeletonRows } from '../ui/dialogs.js?v=20260721c';
-import { appState } from '../store.js?v=20260721c';
-import { t } from '../config.js?v=20260721c';
+import { customAlert, customConfirm, showToast, skeletonRows } from '../ui/dialogs.js?v=20260723w';
+import { appState } from '../store.js?v=20260723w';
+import { t } from '../config.js?v=20260723w';
 
 
 window._activityLogPage = 1;
@@ -80,10 +80,10 @@ export function renderActivityRow(r) {
     const tsStr = tsLocal ? tsLocal.toLocaleString('zh-TW', { hour12: false }) : '';
     const isSuccess = r.isSuccess;
     const statusBadge = isSuccess === true
-        ? `<span class="badge bg-success bg-opacity-25 text-success border border-success border-opacity-50">${r.statusCode ?? '✓'}</span>`
+        ? `<span class="badge border border-success text-success">${r.statusCode ?? '✓'}</span>`
         : isSuccess === false
-            ? `<span class="badge bg-danger bg-opacity-25 text-danger border border-danger border-opacity-50">${r.statusCode ?? '✗'}</span>`
-            : `<span class="badge bg-secondary bg-opacity-25 text-secondary">${r.statusCode ?? '—'}</span>`;
+            ? `<span class="badge border border-danger text-danger">${r.statusCode ?? '✗'}</span>`
+            : `<span class="badge border border-secondary text-secondary">${r.statusCode ?? '—'}</span>`;
     const sourceBadge = r.loginSource
         ? `<span class="badge bg-light text-dark border">${window.escapeHTML(r.loginSource)}</span>`
         : '';
@@ -96,7 +96,7 @@ export function renderActivityRow(r) {
         <td class="small fw-bold">${window.escapeHTML(r.empId || '—')}</td>
         <td class="small">${window.escapeHTML(r.empName || '')}</td>
         <td class="small">${sourceBadge}</td>
-        <td class="small"><span class="badge bg-info bg-opacity-15 text-primary border">${window.escapeHTML(r.category || '')}</span></td>
+        <td class="small"><span class="badge border border-info text-info">${window.escapeHTML(r.category || '')}</span></td>
         <td class="small">${window.escapeHTML(r.action || '')}</td>
         <td class="small text-muted">${window.escapeHTML(r.httpMethod || '')}</td>
         <td class="small text-muted" style="max-width:300px; overflow:hidden; text-overflow:ellipsis;" title="${window.escapeHTML(r.path || '')}">${window.escapeHTML(r.path || '')}</td>

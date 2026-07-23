@@ -6,11 +6,11 @@
 //   window.retryWhoAmI()     - 「重試偵測」按鈕
 //   window.logout()          - 右上頭像下拉的登出
 
-import { getAccounts } from './config.js?v=20260721c';
-import { fetchInitialDataFromDB } from './api.js?v=20260721c';
-import { initDashboardUI, restoreLoginFromStorage } from './main.js?v=20260721c';
-import { customAlert } from './ui/dialogs.js?v=20260721c';
-import { appState } from './store.js?v=20260721c';
+import { getAccounts } from './config.js?v=20260723w';
+import { fetchInitialDataFromDB } from './api.js?v=20260723w';
+import { initDashboardUI, restoreLoginFromStorage } from './main.js?v=20260723w';
+import { customAlert } from './ui/dialogs.js?v=20260723w';
+import { appState } from './store.js?v=20260723w';
 
 
 // 「使用者主動登出 → 別再自動登入」旗標

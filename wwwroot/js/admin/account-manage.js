@@ -1,12 +1,12 @@
 ﻿// === admin/account-manage.js - 帳號管理 CRUD ===
 
-import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260721c';
-import { deleteAccountAPI, fetchInitialDataFromDB, saveAccountAPI } from '../api.js?v=20260721c';
-import { renderAccDefaultPagesUI, renderAccManageMenuCheckboxes, renderAccRoleCheckboxes } from '../render/account-ui.js?v=20260721c';
-import { renderSidebarMenus } from '../render/sidebar.js?v=20260721c';
-import { renderAccountTable } from '../render/tables.js?v=20260721c';
-import { customAlert, customConfirm } from '../ui/dialogs.js?v=20260721c';
-import { appState } from '../store.js?v=20260721c';
+import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260723w';
+import { deleteAccountAPI, fetchInitialDataFromDB, saveAccountAPI } from '../api.js?v=20260723w';
+import { renderAccDefaultPagesUI, renderAccManageMenuCheckboxes, renderAccRoleCheckboxes } from '../render/account-ui.js?v=20260723w';
+import { renderSidebarMenus } from '../render/sidebar.js?v=20260723w';
+import { renderAccountTable } from '../render/tables.js?v=20260723w';
+import { customAlert, customConfirm } from '../ui/dialogs.js?v=20260723w';
+import { appState } from '../store.js?v=20260723w';
 
 
 // === Accounts 帳號管理 ===
@@ -101,6 +101,8 @@ export async function editAccount(empId) {
 export async function saveAccountItem(e) {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     else if (window.event && typeof window.event.preventDefault === 'function') window.event.preventDefault();
+    
+    const btn = e ? e.currentTarget : null;
 
     try {
         const mode = document.getElementById('editAccMode').value; 
@@ -108,6 +110,18 @@ export async function saveAccountItem(e) {
         const name = document.getElementById('accName').value.trim(); 
         const dept = document.getElementById('accDept').value.trim();
         const lvl = document.getElementById('accRoleLevel').value;
+
+        // 防呆驗證
+        if (!empId) {
+            window.shakeInput('accEmpId');
+            return false;
+        }
+        if (!name) {
+            window.shakeInput('accName');
+            return false;
+        }
+
+        if (btn) window.setButtonLoading(btn, true);
 
         let assigned = []; document.querySelectorAll('.acc-role-cb:checked').forEach(cb => assigned.push(cb.value));
         let manageable = []; let canEditOthers = false;
@@ -154,6 +168,7 @@ export async function saveAccountItem(e) {
 
         const result = await saveAccountAPI(isNew, payload);
         if (!result.success) {
+            if (btn) window.setButtonLoading(btn, false);
             customAlert("儲存失敗: " + result.message);
             return false;
         }
@@ -162,6 +177,7 @@ export async function saveAccountItem(e) {
         await window.fetchInitialDataFromDB();
 
         hideModalSafely('accModal');
+        if (btn) window.setButtonLoading(btn, false);
         if (typeof renderAccountTable === 'function') renderAccountTable();
 
         if (appState.currentUser && window.cleanId(appState.currentUser.id) === window.cleanId(empId)) {

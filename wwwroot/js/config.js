@@ -1,4 +1,4 @@
-﻿import { appState } from './store.js?v=20260721c';
+﻿import { appState } from './store.js?v=20260723w';
 
 // === 資料庫 / LocalStorage 鍵值常數 (已棄用 LocalStorage，僅留作常數參考) ===
 const DB_MENUS = 'umc_menus_v1';
@@ -210,7 +210,8 @@ export function getDataTableLang() {
     return {
         "processing": t('dt_processing', '處理中...'),
         "lengthMenu": t('dt_lengthMenu', '顯示 _MENU_ 筆'),
-        "zeroRecords": t('dt_zeroRecords', '沒有符合的結果'),
+        "zeroRecords": `<div class="empty-state-card"><i class="fas fa-folder-open empty-state-icon"></i><div class="empty-state-title">${t('dt_zeroRecords', '沒有符合的結果')}</div></div>`,
+        "emptyTable": `<div class="empty-state-card"><i class="fas fa-folder-open empty-state-icon"></i><div class="empty-state-title">${t('dt_zeroRecords', '沒有符合的結果')}</div></div>`,
         "info": t('dt_info', '顯示第 _START_ 至 _END_ 筆，共 _TOTAL_ 筆'),
         "infoEmpty": t('dt_infoEmpty', '顯示第 0 至 0 筆，共 0 筆'),
         "infoFiltered": t('dt_infoFiltered', '(從 _MAX_ 筆結果過濾)'),

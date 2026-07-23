@@ -1,5 +1,5 @@
-/* === components.css - 表格、卡片、Badge、Modal、登入、工具列等 === */
-/* ================= 其他模組樣式 ================= */
+/* === components.css - 銵冽??adge?odal??乓極?瑕?蝑?=== */
+/* ================= ?嗡?璅∠?璅?? ================= */
 .page-section {
     display: none;
     animation: fadeIn 0.1s ease-in-out;
@@ -27,13 +27,13 @@
     border-radius: 6px;
     box-shadow: 0 2px 5px rgba(0,0,0,0.05);
     margin-bottom: 16px;
-    background: white;
+    background: var(--card-bg);
 }
 
 .home-card {
     border: none;
     border-radius: 8px;
-    background: #ffffff;
+    background: var(--card-bg);
     box-shadow: 0 4px 15px rgba(0,0,0,0.03);
     position: relative;
     overflow: hidden;
@@ -48,6 +48,16 @@
 
 .home-card-top-blue {
     border-top: 4px solid #3b82f6;
+}
+
+#theme-icon.fa-sun {
+    color: #fbbf24;
+    filter: drop-shadow(0 0 2px rgba(251, 191, 36, 0.5));
+}
+
+#theme-icon.fa-moon {
+    color: #93c5fd;
+    filter: drop-shadow(0 0 2px rgba(147, 197, 253, 0.4));
 }
 
 .home-icon-bg {
@@ -93,6 +103,12 @@
     box-shadow: 0 2px 5px rgba(0,0,0,0.02);
 }
 
+:root[data-theme="dark"] .home-welcome-alert {
+    background-color: rgba(5, 150, 105, 0.1);
+    border-color: rgba(5, 150, 105, 0.3);
+    color: var(--text-main);
+}
+
 .home-welcome-icon {
     width: 44px;
     height: 44px;
@@ -102,7 +118,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.25rem;
+    font-size: var(--fs-xl);
     margin-right: 18px;
     flex-shrink: 0;
     box-shadow: 0 2px 5px rgba(5, 150, 105, 0.3);
@@ -115,23 +131,29 @@
     border-radius: 4px;
     padding: 10px 14px;
     margin-bottom: 16px;
-    font-size: 0.85rem;
+    font-size: var(--fs-sm);
     display: flex;
     align-items: center;
 }
 
+:root[data-theme="dark"] .manage-alert {
+    background-color: rgba(3, 105, 161, 0.1);
+    color: var(--text-muted);
+    border-color: rgba(56, 189, 248, 0.3);
+}
+
 .table-custom {
     margin-bottom: 0;
-    font-size: 0.85rem;
+    font-size: var(--fs-sm);
     width: 100%;
     border-collapse: collapse;
 }
 
-    .table-custom th {
-        background-color: #f1f5f9;
-        color: #0f172a;
+.table-custom th {
+        background-color: var(--table-header-bg);
+        color: var(--text-main);
         font-weight: 800;
-        border-bottom: 2px solid #cbd5e1;
+        border-bottom: 2px solid var(--border-color);
         padding: 12px 16px;
         white-space: nowrap;
     }
@@ -139,16 +161,16 @@
     .table-custom td {
         padding: 12px 16px;
         vertical-align: middle;
-        border-bottom: 1px solid #e2e8f0;
-        color: #0f172a;
+        border-bottom: 1px solid var(--border-color);
+        color: var(--text-main);
     }
 
     .table-custom tbody tr:nth-child(even) {
-        background-color: #f8fafc;
+        background-color: var(--table-bg);
     }
 
     .table-custom tbody tr:hover td {
-        background-color: #f1f5f9 !important;
+        background-color: var(--table-hover) !important;
     }
 
 .badge {
@@ -160,28 +182,28 @@
 
 .badge-outline {
     background: transparent;
-    border: 1px solid #94a3b8;
-    color: #1e293b;
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
     font-weight: 600;
 }
 
 .badge-pill-outline {
     border-radius: 4px !important;
-    background: #ffffff;
-    border: 1px solid #94a3b8;
-    color: #0f172a;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
     padding: 4px 10px !important;
     font-weight: 600;
 }
 
 .badge-flat-list {
     border-radius: 4px !important;
-    background: #ffffff;
-    border: 1px solid #94a3b8;
-    color: #0f172a;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
     padding: 4px 8px !important;
     font-weight: 600;
-    font-size: 0.82rem;
+    font-size: var(--fs-sm);
     box-shadow: 0 1px 2px rgba(0,0,0,0.02);
     display: inline-block;
 }
@@ -196,19 +218,18 @@
 }
 
 .action-btn {
-    background-color: #ffffff;
-    border: 2px solid #cbd5e1;
+    background-color: var(--card-bg);
+    border: 2px solid var(--border-color);
     border-radius: 6px;
-    width: 32px;
-    height: 32px;
+    width: 28px; height: 28px;
     padding: 0;
-    font-size: 0.9rem;
-    transition: all 0.1s;
+    font-size: var(--fs-sm);
+    transition: all 0.2s ease;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: #475569;
+    color: var(--text-muted);
     box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 
@@ -243,7 +264,7 @@
 
     .draggable-row.dragging {
         opacity: 0.5;
-        background-color: #cbd5e1 !important;
+        background-color: var(--table-hover) !important;
     }
 
     .draggable-row.drag-over td {
@@ -256,7 +277,7 @@
 
 .tb-item.dragging {
     opacity: 0.5;
-    background-color: #e2e8f0;
+    background-color: var(--table-hover);
 }
 
 .tb-item.drag-over {
@@ -283,8 +304,8 @@
     width: 85px;
     height: 85px;
     border-radius: 16px;
-    background: #fff;
-    border: 1px solid #cbd5e1;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
     box-shadow: 0 4px 8px rgba(0,0,0,0.04);
     display: flex;
     align-items: center;
@@ -310,8 +331,8 @@
 
 .app-name {
     font-weight: 700;
-    font-size: 0.88rem;
-    color: #0f172a;
+    font-size: var(--fs-sm);
+    color: var(--text-main);
     text-align: center;
     word-break: break-all;
     cursor: pointer;
@@ -341,7 +362,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 11px;
+    font-size: var(--fs-xs);
     box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     transition: transform 0.1s;
     cursor: pointer;
@@ -366,24 +387,24 @@
     }
 
 .app-add-box {
-    background: #f8fafc;
-    border: 2px dashed #cbd5e1;
+    background: var(--body-bg);
+    border: 2px dashed var(--border-color);
     box-shadow: none;
 }
 
     .app-add-box i {
         font-size: 2rem;
-        color: #94a3b8;
+        color: var(--text-muted);
     }
 
 .app-card.app-add:hover .app-add-box {
-    background: #f1f5f9;
-    border-color: #94a3b8;
+    background: var(--table-hover);
+    border-color: var(--text-muted);
 }
 
 .iframe-header {
     padding: 6px 16px;
-    background: #f8fafc;
+    background: var(--table-header-bg);
     border-bottom: 1px solid var(--border-color);
     display: flex;
     justify-content: space-between;
@@ -438,7 +459,7 @@ body.fullscreen-mode .focus-exit-overlay {
     display: flex;
 }
 
-/* 登入區塊樣式 (修復跑掉的關鍵！) */
+/* ?餃?€憛見撘?(靽桀儔頝????蛛?) */
 #login-overlay {
     position: fixed;
     inset: 0;
@@ -470,8 +491,8 @@ div.dataTables_wrapper {
         display: inline-flex;
         align-items: center;
         font-weight: normal;
-        color: #475569;
-        font-size: 0.85rem;
+        color: var(--text-muted);
+        font-size: var(--fs-sm);
         margin-bottom: 0;
         white-space: nowrap;
     }
@@ -484,7 +505,7 @@ div.dataTables_wrapper {
         padding: 4px 30px 4px 10px;
         border-radius: 4px;
         border: 1px solid #cbd5e1;
-        font-size: 0.85rem;
+        font-size: var(--fs-sm);
     }
 
     div.dataTables_wrapper div.dataTables_filter label {
@@ -492,8 +513,8 @@ div.dataTables_wrapper {
         align-items: center;
         justify-content: flex-end;
         font-weight: normal;
-        color: #475569;
-        font-size: 0.85rem;
+        color: var(--text-muted);
+        font-size: var(--fs-sm);
         margin-bottom: 0;
         white-space: nowrap;
     }
@@ -503,9 +524,13 @@ div.dataTables_wrapper {
         display: inline-block;
         margin-left: 8px;
         border-radius: 4px;
-        border: 1px solid #cbd5e1;
+        border: 1px solid var(--border-color);
         padding: 4px 8px;
-        font-size: 0.85rem;
+        font-size: var(--fs-sm);
+    }
+
+    div.dataTables_wrapper .dt-paging .paginate_button.current, div.dataTables_wrapper .dt-paging .paginate_button.current:hover {
+        border-color: var(--navbar-accent);
     }
 
     div.dataTables_wrapper div.dataTables_paginate ul.pagination {
@@ -514,28 +539,255 @@ div.dataTables_wrapper {
         justify-content: flex-end;
     }
 
+.form-control, .form-select {
+    background-color: var(--input-bg);
+    color: var(--input-text);
+    border-color: var(--input-border);
+}
+
+.form-control:focus, .form-select:focus {
+    background-color: var(--input-bg);
+    color: var(--input-text);
+    border-color: var(--primary-light);
+    box-shadow: 0 0 0 0.25rem rgba(59, 130, 246, 0.25);
+}
+
+.form-control::placeholder,
+.form-select::placeholder {
+    color: var(--text-muted) !important;
+    opacity: 0.7;
+}
+
+.modal-content {
+    background-color: var(--card-bg);
+    color: var(--text-main);
+    border-color: var(--border-color);
+}
+
+.modal-header, .modal-footer {
+    border-color: var(--border-color);
+}
+
+.btn-close {
+    filter: var(--btn-close-filter, none);
+}
+
+:root[data-theme="dark"] .btn-close {
+    --btn-close-filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+.dropdown-menu {
+    background-color: var(--dropdown-bg);
+    border-color: var(--border-color);
+}
+
+.dropdown-item {
+    color: var(--text-main);
+}
+
+.dropdown-item:hover, .dropdown-item:focus {
+    background-color: var(--dropdown-hover);
+    color: var(--text-main);
+}
+
+.list-group-item {
+    background-color: var(--card-bg);
+    color: var(--text-main);
+    border-color: var(--border-color);
+}
+
+.text-muted {
+    color: var(--text-muted) !important;
+}
+
 .page-item.active .page-link {
     background-color: var(--primary-light);
     border-color: var(--primary-light);
-    color: white;
+}
+
+/* === DataTables 瘛望滓?脤??撖?=== */
+div.dataTables_wrapper div.dataTables_length label,
+div.dataTables_wrapper div.dataTables_filter label,
+.dataTables_info {
+    color: var(--text-muted) !important;
+}
+
+div.dataTables_wrapper div.dataTables_length select,
+div.dataTables_wrapper div.dataTables_filter input {
+    background-color: var(--input-bg);
+    color: var(--input-text);
+    border-color: var(--input-border);
+}
+
+.table.dataTable {
+    --bs-table-bg: var(--card-bg);
+    --bs-table-color: var(--text-main);
+    --bs-table-striped-bg: var(--table-bg);
+    --bs-table-hover-bg: var(--table-hover);
+    --bs-table-border-color: var(--border-color);
+}
+
+.table.dataTable > tbody > tr {
+    background-color: var(--bs-table-bg);
+    color: var(--bs-table-color);
+}
+
+.table.dataTable > tbody > tr > td {
+    border-color: var(--border-color);
+}
+
+.table.dataTable.table-striped > tbody > tr:nth-of-type(odd) > * {
+    background-color: var(--bs-table-striped-bg);
+    color: var(--bs-table-color);
+}
+
+.table.dataTable.table-hover > tbody > tr:hover > * {
+    background-color: var(--bs-table-hover-bg);
+    color: var(--bs-table-color);
 }
 
 .page-link {
-    color: var(--primary-bg);
-    padding: 4px 12px;
-    font-size: 0.85rem;
-    border-color: #cbd5e1;
+    font-size: var(--fs-sm);
+    background-color: var(--card-bg);
+    border-color: var(--border-color);
+    color: var(--text-main);
+    padding: 2px 8px;
+}
+
+:root[data-theme="dark"] .text-dark {
+    color: var(--text-main) !important;
+}
+
+:root[data-theme="dark"] .bg-white,
+:root[data-theme="dark"] .bg-light {
+    background-color: var(--card-bg) !important;
+    color: var(--text-main) !important;
+}
+
+:root[data-theme="dark"] .text-secondary {
+    color: var(--text-muted) !important;
+}
+
+:root[data-theme="dark"] .btn-light {
+    background-color: var(--card-bg) !important;
+    color: var(--text-main) !important;
+    border-color: var(--border-color) !important;
+}
+
+:root[data-theme="dark"] .btn-dark {
+    background-color: var(--primary-light) !important;
+    border-color: var(--primary-light) !important;
+    color: #fff !important;
+}
+
+:root[data-theme="dark"] .alert-light {
+    background-color: var(--card-bg) !important;
+    color: var(--text-main) !important;
+    border-color: var(--border-color) !important;
+}
+
+:root[data-theme="dark"] .alert-primary {
+    background-color: rgba(59,130,246,0.1) !important;
+    color: var(--text-main) !important;
+    border-color: rgba(59,130,246,0.3) !important;
+}
+
+:root[data-theme="dark"] .bg-info {
+    background-color: rgba(56, 189, 248, 0.15) !important;
+}
+
+:root[data-theme="dark"] .bg-warning {
+    background-color: rgba(251, 191, 36, 0.15) !important;
+}
+
+.text-purple {
+    color: #6f42c1;
+}
+:root[data-theme="dark"] .text-purple {
+    color: #a78bfa !important;
+}
+
+.btn-action-icon {
+    width: 28px !important;
+    height: 28px !important;
+    padding: 0 !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px !important;
+    box-shadow: var(--bs-box-shadow-sm) !important;
+}
+
+:root[data-theme="dark"] .border {
+    border-color: var(--border-color) !important;
+}
+
+:root[data-theme="dark"] .card {
+    background: var(--card-bg) !important;
+    color: var(--text-main) !important;
+    --bs-card-color: var(--text-main);
+}
+
+:root[data-theme="dark"] .table {
+    --bs-table-bg: transparent;
+    --bs-table-color: var(--text-main);
+    color: var(--text-main) !important;
+}
+
+:root[data-theme="dark"] .table-hover > tbody > tr:hover > * {
+    background-color: var(--table-hover) !important;
+    color: var(--text-main) !important;
+    --bs-table-hover-color: var(--text-main);
+}
+
+:root[data-theme="dark"] .table-light,
+:root[data-theme="dark"] .table-light th,
+:root[data-theme="dark"] .table-light td {
+    background-color: var(--table-header-bg) !important;
+    color: var(--text-main) !important;
+    border-color: var(--border-color) !important;
+}
+
+/* === 深色模式高對比顏色覆寫 (針對投影機與低亮度螢幕優化) === */
+:root[data-theme="dark"] .text-primary { color: #60a5fa !important; }
+:root[data-theme="dark"] .text-success { color: #4ade80 !important; }
+:root[data-theme="dark"] .text-danger { color: #f87171 !important; }
+:root[data-theme="dark"] .text-warning { color: #fbbf24 !important; }
+:root[data-theme="dark"] .text-info { color: #38bdf8 !important; }
+
+:root[data-theme="dark"] .btn-outline-primary {
+    color: #60a5fa;
+    border-color: #60a5fa;
+}
+:root[data-theme="dark"] .btn-outline-primary:hover {
+    background-color: #60a5fa;
+    color: #0f172a;
+}
+
+:root[data-theme="dark"] .btn-outline-danger {
+    color: #f87171;
+    border-color: #f87171;
+}
+:root[data-theme="dark"] .btn-outline-danger:hover {
+    background-color: #f87171;
+    color: #0f172a;
+}
+
+:root[data-theme="dark"] div.dataTables_wrapper div.dataTables_length label,
+:root[data-theme="dark"] div.dataTables_wrapper div.dataTables_filter label {
+    color: var(--text-main) !important;
+    font-weight: 500 !important;
 }
 
     .page-link:hover {
-        background-color: var(--active-bg);
-        color: var(--active-text);
+        background-color: var(--table-hover);
+        color: var(--text-main);
     }
 
 .dataTables_info {
-    font-size: 0.85rem;
+    font-size: var(--fs-sm);
     font-weight: 600;
-    color: #334155;
+    color: var(--text-muted);
     padding-top: 15px !important;
 }
 
@@ -558,7 +810,7 @@ div.dataTables_wrapper {
     }
 }
 
-/* 完美去邊滿版引擎 */
+/* 摰??駁?皛輻?撘? */
 body.iframe-mode #main-content {
     padding: 0 !important;
     overflow: hidden !important;
@@ -591,7 +843,7 @@ body.iframe-mode #page-iframe iframe {
     padding: 0 !important;
 }
 
-/* 版面滑動切換開關 */
+/* ?皛????? */
 .layout-toggle-wrapper {
     position: relative;
     display: flex;
@@ -629,7 +881,7 @@ body.iframe-mode #page-iframe iframe {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.75rem;
+    font-size: var(--fs-xs);
     font-weight: bold;
     z-index: 2;
     transition: color 0.3s;
@@ -643,7 +895,7 @@ body.iframe-mode #page-iframe iframe {
         color: #ffffff;
     }
 
-/* 選擇預設看板：側邊滑出抽屜 */
+/* ?豢??身?嚗???箸撅?*/
 .offcanvas-custom {
     width: 420px;
     border-left: none;
@@ -656,8 +908,8 @@ body.iframe-mode #page-iframe iframe {
 }
 
 .offcanvas-header-custom {
-    background: #ffffff;
-    border-bottom: 1px solid #e2e8f0;
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border-color);
     padding: 20px 24px 16px 24px;
 }
 
@@ -669,24 +921,29 @@ body.iframe-mode #page-iframe iframe {
     .drawer-search input {
         border-radius: 8px;
         padding: 10px 16px 10px 40px;
-        background: #f1f5f9;
+        background: var(--input-bg);
         border: 1px solid transparent;
-        font-size: 0.9rem;
+        font-size: var(--fs-sm);
         font-weight: 600;
+        color: var(--input-text);
     }
 
         .drawer-search input:focus {
-            background: white;
+            background: var(--input-bg);
             border-color: #38bdf8;
             box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
             outline: none;
+        }
+
+        .drawer-search input::placeholder {
+            color: var(--text-muted);
         }
 
     .drawer-search i {
         position: absolute;
         left: 14px;
         top: 12px;
-        color: #64748b;
+        color: var(--text-muted);
     }
 
 .drawer-group {
@@ -697,34 +954,34 @@ body.iframe-mode #page-iframe iframe {
     display: flex;
     align-items: center;
     padding: 10px 16px;
-    font-size: 0.86rem;
+    font-size: var(--fs-sm);
     font-weight: 800;
-    color: #0f172a;
-    background: #f1f5f9;
+    color: var(--text-main);
+    background: var(--table-header-bg);
     border-radius: 6px;
     cursor: pointer;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--border-color);
     transition: background 0.2s;
 }
 
     .drawer-group-title:hover {
-        background: #e2e8f0;
+        background: var(--dropdown-hover);
     }
 
     .drawer-group-title i {
         margin-right: 10px;
-        font-size: 1rem;
+        font-size: var(--fs-base);
         width: 20px;
         text-align: center;
     }
 
 .drawer-item {
     padding: 10px 16px 10px 46px;
-    font-size: 0.88rem;
-    color: #0f172a;
+    font-size: var(--fs-sm);
+    color: var(--text-main);
     font-weight: 700;
     cursor: pointer;
-    border-bottom: 1px dashed #cbd5e1;
+    border-bottom: 1px dashed var(--border-color);
     transition: all 0.15s;
     display: flex;
     align-items: center;
@@ -736,21 +993,21 @@ body.iframe-mode #page-iframe iframe {
     }
 
     .drawer-item:hover {
-        color: #0284c7;
-        background: #f0f9ff;
+        color: var(--active-text);
+        background: var(--active-bg);
         padding-left: 50px;
     }
 
     .drawer-item i.item-icon {
         margin-right: 8px;
-        color: #cbd5e1;
-        font-size: 0.75rem;
+        color: var(--text-muted);
+        font-size: var(--fs-xs);
         width: 14px;
         text-align: center;
     }
 
-/* === 帳號 Modal：強制 header/footer 固定、body 內部捲動，避免內容過長時看不到標題或儲存按鈕 === */
-/* 用 !important 蓋掉 Bootstrap modal-dialog-centered 與 modal-dialog-scrollable 在某些情境下互相干擾的問題 */
+/* === 撣唾? Modal嚗撥??header/footer ?箏??ody ?折?脣?嚗?摰寥??瑟????唳?憿??脣??? === */
+/* ??!important ?? Bootstrap modal-dialog-centered ??modal-dialog-scrollable ?冽?鈭?憓?鈭撟脫??憿?*/
 #accModal .modal-dialog {
     max-height: calc(100vh - 1rem) !important;
     height: calc(100vh - 1rem) !important;
@@ -782,11 +1039,124 @@ body.iframe-mode #page-iframe iframe {
     min-height: 0;
 }
 
-/* 操作紀錄表格 sticky 表頭（唯一宣告處 — index.html 勿再以內嵌 style 或 th inline style 重複定義） */
+/* ??蝝€?”??sticky 銵券嚗銝€摰??????index.html ?踹?隞亙撋?style ??th inline style ??摰儔嚗?*/
 #page-activity-log .table-responsive thead th {
     position: sticky;
     top: 0;
     z-index: 10;
-    background-color: #f8fafc;
-    box-shadow: inset 0 -2px 0 #cbd5e1; /* 以陰影繪製底線，避免捲動時 border 消失 */
+    background-color: var(--table-header-bg);
+    box-shadow: inset 0 -2px 0 var(--border-color);
 }
+
+/* ================= UI/UX UX Enhancements ================= */
+
+/* 1. ?? Loading ?€??*/
+.btn-loading {
+    position: relative;
+    pointer-events: none;
+    opacity: 0.8;
+}
+.btn-loading .btn-text {
+    visibility: hidden; /* ?梯????雿??征??*/
+}
+.btn-loading::after {
+    content: "";
+    position: absolute;
+    width: 1rem;
+    height: 1rem;
+    top: 0; left: 0; right: 0; bottom: 0;
+    margin: auto;
+    border: 2px solid transparent;
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: btn-spin 0.6s linear infinite;
+}
+@keyframes btn-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* 2. 蝎曄溶蝛箇???(Empty State) */
+.empty-state-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 1rem;
+    color: var(--text-muted);
+    text-align: center;
+}
+.empty-state-icon {
+    font-size: 3.5rem;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+}
+.empty-state-title {
+    font-size: var(--fs-lg);
+    font-weight: 600;
+    color: var(--text-main);
+    margin-bottom: 0.25rem;
+}
+.empty-state-desc {
+    font-size: var(--fs-sm);
+}
+
+/* 3. DataTable Sticky Header & Hover */
+div.dataTables_wrapper .table-responsive {
+    max-height: calc(100vh - 250px);
+    overflow-y: auto;
+}
+div.dataTables_wrapper table.dataTable thead th {
+    position: sticky;
+    top: 0;
+    background-color: var(--table-header-bg);
+    z-index: 10;
+    box-shadow: 0 1px 0 var(--border-color); /* 摨?? */
+}
+table.dataTable tbody tr {
+    transition: background-color 0.15s ease-in-out;
+}
+table.dataTable.table-hover tbody tr:hover {
+    background-color: var(--table-hover) !important;
+}
+
+/* 4. Toast ??脣漲璇?*/
+.toast-container .toast {
+    overflow: hidden;
+    border: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes slideInRight {
+    from { opacity: 0; transform: translateX(100%); }
+    to { opacity: 1; transform: translateX(0); }
+}
+.toast-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 3px;
+    background-color: rgba(255,255,255,0.7);
+    width: 100%;
+    animation: toast-shrink linear forwards;
+}
+.toast-success .toast-progress { background-color: rgba(255,255,255,0.7); }
+.toast-danger .toast-progress { background-color: rgba(255,255,255,0.7); }
+.toast-warning .toast-progress { background-color: rgba(0,0,0,0.2); }
+@keyframes toast-shrink {
+    from { width: 100%; }
+    to { width: 0%; }
+}
+
+/* 5. 銵典?脣??? (Shake) */
+.shake-animation {
+    animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
+}
+@keyframes shake {
+    10%, 90% { transform: translate3d(-1px, 0, 0); }
+    20%, 80% { transform: translate3d(2px, 0, 0); }
+    30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+    40%, 60% { transform: translate3d(4px, 0, 0); }
+}
+
+
+

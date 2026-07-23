@@ -1,17 +1,17 @@
 ﻿// === render/tables.js - 管理表格渲染 (Fab, Role, Account, Webpage, MenuConfig, Apply, Audit, AppGrid) ===
 
-import { getCustomMenus, getDataTableLang, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings, t } from '../config.js?v=20260721c';
+import { getCustomMenus, getDataTableLang, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings, t } from '../config.js?v=20260723w';
 
 
-import { deleteAccount, editAccount } from '../admin/account-manage.js?v=20260721c';
-import { deleteFab, editFab } from '../admin/fab-manage.js?v=20260721c';
-import { deleteMenuNodeItem, deleteWebpageItem, editPersonalMenu, openAddMenuNodeModal, openAddWebpageModal } from '../admin/menu-manage.js?v=20260721c';
-import { handleDragLeave, handleDragOver, handleDragStart, handleDrop, openAuditModal, withdrawApply } from '../admin/misc-manage.js?v=20260721c';
-import { deleteRole, editRole } from '../admin/role-manage.js?v=20260721c';
-import { getDtPageLen, initDataTable, rememberDtPageLen, renderSidebarMenus, safeDestroyDataTable } from './sidebar.js?v=20260721c';
-import { generateIconHtml } from '../ui/dialogs.js?v=20260721c';
-import { getFullMenuPathStr } from '../ui/navigation.js?v=20260721c';
-import { appState } from '../store.js?v=20260721c';
+import { deleteAccount, editAccount } from '../admin/account-manage.js?v=20260723w';
+import { deleteFab, editFab } from '../admin/fab-manage.js?v=20260723w';
+import { deleteMenuNodeItem, deleteWebpageItem, editPersonalMenu, openAddMenuNodeModal, openAddWebpageModal } from '../admin/menu-manage.js?v=20260723w';
+import { handleDragLeave, handleDragOver, handleDragStart, handleDrop, openAuditModal, withdrawApply } from '../admin/misc-manage.js?v=20260723w';
+import { deleteRole, editRole } from '../admin/role-manage.js?v=20260723w';
+import { getDtPageLen, initDataTable, rememberDtPageLen, renderSidebarMenus, safeDestroyDataTable } from './sidebar.js?v=20260723w';
+import { generateIconHtml } from '../ui/dialogs.js?v=20260723w';
+import { getFullMenuPathStr } from '../ui/navigation.js?v=20260723w';
+import { appState } from '../store.js?v=20260723w';
 
 
 // ⚠️ Stored XSS 防護：判斷 URL 是否安全到可以放進 href 或 window.open。
@@ -131,7 +131,7 @@ export function renderPersonalMenuManage() {
             // 實際變更走右側「編輯」按鈕 → 個人選單設定 Modal 內的「開啟偏好」下拉
             const targetTextMap = {
                 'iframe': '<span class="text-primary fw-bold small">畫面內嵌</span>',
-                'iframe_fullscreen': '<span class="text-purple fw-bold small" style="color:#6f42c1;">內嵌全螢幕</span>',
+                'iframe_fullscreen': '<span class="text-purple fw-bold small">內嵌全螢幕</span>',
                 'blank': '<span class="text-info fw-bold small">另開新分頁</span>',
                 'ie': '<span class="text-info fw-bold small">另開分頁 (IE)</span>',
                 'fullscreen': '<span class="text-success fw-bold small">新視窗開啟(全螢幕)</span>',
@@ -292,7 +292,7 @@ export function renderFabTable() {
         }).join('');
         if (!roleBadges) roleBadges = '<span class="text-muted small">未綁定</span>';
 
-        let actionBtns = `<div class="d-flex flex-nowrap justify-content-center gap-2"><button type="button" class="btn btn-sm btn-outline-primary" style="width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center;" onclick="event.stopPropagation(); editFab('${fId}');" title="編輯"><i class="fas fa-edit"></i></button><button type="button" class="btn btn-sm btn-outline-danger" style="width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center;" onclick="event.stopPropagation(); deleteFab('${fId}')" title="刪除"><i class="fas fa-trash-alt"></i></button></div>`;
+        let actionBtns = `<div class="d-flex flex-nowrap justify-content-center gap-2"><button type="button" class="btn btn-sm btn-outline-primary btn-action-icon" onclick="event.stopPropagation(); editFab('${fId}');" title="編輯"><i class="fas fa-edit"></i></button><button type="button" class="btn btn-sm btn-outline-danger btn-action-icon" onclick="event.stopPropagation(); deleteFab('${fId}')" title="刪除"><i class="fas fa-trash-alt"></i></button></div>`;
         htmlBuffer.push(`<tr><td class="text-start ps-3 fw-bold align-middle">${fName}</td><td class="align-middle">${dName}</td><td class="align-middle">${dLang === 'en' ? 'English' : (dLang === 'ja' ? '日本語' : '繁體中文')}</td><td class="text-start align-middle">${roleBadges}</td><td class="text-center align-middle" style="white-space: nowrap; width: 1%;">${actionBtns}</td></tr>`);
     });
     tbody.innerHTML = htmlBuffer.join('');
@@ -311,7 +311,7 @@ export function renderRoleTable() {
         }).join('');
         if (!menuBadges) menuBadges = '<span class="text-muted small">無綁定看板</span>';
         const rId = r.id || r.roleId || r.RoleId || ''; const rName = window.escapeHTML(r.groupName || r.GroupName || rId);
-        let actionBtns = `<div class="d-flex flex-nowrap justify-content-center gap-2"><button type="button" class="btn btn-sm btn-outline-primary" style="width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center;" onclick="event.stopPropagation(); editRole('${rId}');" title="編輯"><i class="fas fa-edit"></i></button><button type="button" class="btn btn-sm btn-outline-danger" style="width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center;" onclick="event.stopPropagation(); deleteRole('${rId}')" title="刪除"><i class="fas fa-trash-alt"></i></button></div>`;
+        let actionBtns = `<div class="d-flex flex-nowrap justify-content-center gap-2"><button type="button" class="btn btn-sm btn-outline-primary btn-action-icon" onclick="event.stopPropagation(); editRole('${rId}');" title="編輯"><i class="fas fa-edit"></i></button><button type="button" class="btn btn-sm btn-outline-danger btn-action-icon" onclick="event.stopPropagation(); deleteRole('${rId}')" title="刪除"><i class="fas fa-trash-alt"></i></button></div>`;
         htmlBuffer.push(`<tr><td class="text-start ps-3 fw-bold text-primary align-middle">${rName}</td><td class="text-start align-middle" style="max-width: 400px; white-space: normal;">${menuBadges}</td><td class="text-center align-middle" style="white-space: nowrap; width: 1%;">${actionBtns}</td></tr>`);
     });
     tbody.innerHTML = htmlBuffer.join('');
@@ -429,7 +429,7 @@ function _accRowData(a) {
     const scopeManagedHtml = _accScopeAndManagedHtml(a.assignedRoles || a.AssignedRoles, a.manageableMenus || a.MapAccountManageMenus, aLevel);
     const jsId = _jsArg(aId);
     const idCell = window.escapeHTML(aId);
-    const actionBtns = `<div class="d-flex flex-nowrap justify-content-center gap-2"><button type="button" class="btn btn-sm btn-outline-primary" style="width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center;" onclick="event.stopPropagation(); editAccount('${jsId}');" title="編輯"><i class="fas fa-edit"></i></button><button type="button" class="btn btn-sm btn-outline-danger" style="width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center;" onclick="event.stopPropagation(); deleteAccount('${jsId}')" title="刪除"><i class="fas fa-trash-alt"></i></button></div>`;
+    const actionBtns = `<div class="d-flex flex-nowrap justify-content-center gap-2"><button type="button" class="btn btn-sm btn-outline-primary btn-action-icon" onclick="event.stopPropagation(); editAccount('${jsId}');" title="編輯"><i class="fas fa-edit"></i></button><button type="button" class="btn btn-sm btn-outline-danger btn-action-icon" onclick="event.stopPropagation(); deleteAccount('${jsId}')" title="刪除"><i class="fas fa-trash-alt"></i></button></div>`;
     return [
         `<span class="fw-bold">${idCell}</span>`,
         `<div class="fw-bold text-dark">${aName}</div><div class="small text-muted">${aDept}</div>`,
@@ -546,7 +546,7 @@ export function renderWebpageTable() {
         // 開啟模式（第一行）
         const targetMap = {
             'iframe': '<span class="text-secondary fw-bold small"><i class="fas fa-columns me-1"></i> 畫面內嵌</span>',
-            'iframe_fullscreen': '<span class="fw-bold small" style="color:#6f42c1;"><i class="fas fa-tv me-1"></i> 內嵌全螢幕</span>',
+            'iframe_fullscreen': '<span class="fw-bold small text-purple"><i class="fas fa-tv me-1"></i> 內嵌全螢幕</span>',
             'blank': '<span class="text-primary fw-bold small"><i class="fas fa-external-link-alt me-1"></i> 另開新分頁</span>',
             'ie': '<span class="text-info fw-bold small"><i class="fab fa-internet-explorer me-1"></i> 另開分頁 (IE)</span>',
             'fullscreen': '<span class="text-success fw-bold small"><i class="fas fa-expand me-1"></i> 新視窗開啟(全螢幕)</span>',
@@ -576,10 +576,10 @@ export function renderWebpageTable() {
         // 按鈕依權限顯示：admin / 自己建立 一律 OK；委派 user 需 canEditOthers
         let btnsHtml = '';
         if (perms.canEdit) {
-            btnsHtml += `<button type="button" class="btn btn-sm btn-outline-primary" style="width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center;" onclick="event.stopPropagation(); openAddWebpageModal('${mId}');" title="編輯"><i class="fas fa-edit"></i></button>`;
+            btnsHtml += `<button type="button" class="btn btn-sm btn-outline-primary btn-action-icon" onclick="event.stopPropagation(); openAddWebpageModal('${mId}');" title="編輯"><i class="fas fa-edit"></i></button>`;
         }
         if (perms.canDelete) {
-            btnsHtml += `<button type="button" class="btn btn-sm btn-outline-danger" style="width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center;" onclick="event.stopPropagation(); deleteWebpageItem('${mId}')" title="刪除"><i class="fas fa-trash-alt"></i></button>`;
+            btnsHtml += `<button type="button" class="btn btn-sm btn-outline-danger btn-action-icon" onclick="event.stopPropagation(); deleteWebpageItem('${mId}')" title="刪除"><i class="fas fa-trash-alt"></i></button>`;
         }
         if (!btnsHtml) btnsHtml = '<span class="badge bg-light text-muted border">僅檢視</span>';
         let actionBtns = `<div class="d-flex flex-nowrap justify-content-center gap-2">${btnsHtml}</div>`;
@@ -634,7 +634,7 @@ export function renderMenuConfigTable() {
 
         const tMap = {
             'iframe': '<span class="text-secondary fw-bold small"><i class="fas fa-columns me-1"></i> 內部嵌入</span>',
-            'iframe_fullscreen': '<span class="fw-bold small" style="color:#6f42c1;"><i class="fas fa-tv me-1"></i> 內嵌全螢幕</span>',
+            'iframe_fullscreen': '<span class="fw-bold small text-purple"><i class="fas fa-tv me-1"></i> 內嵌全螢幕</span>',
             'blank': '<span class="text-primary fw-bold small"><i class="fas fa-external-link-alt me-1"></i> 另開分頁</span>',
             'ie': '<span class="text-info fw-bold small"><i class="fab fa-internet-explorer me-1"></i> 另開分頁 (IE)</span>',
             'fullscreen': '<span class="text-success fw-bold small"><i class="fas fa-expand me-1"></i> 新視窗開啟(全螢幕)</span>',
@@ -657,11 +657,11 @@ export function renderMenuConfigTable() {
         let actionBtnsHtml = '';
         // 編輯：可編輯 或 可管理結構（後者讓被委派的祖先可以調整內部組合）
         if (perms.canEdit || perms.canManageStructure) {
-            actionBtnsHtml += `<button type="button" class="btn btn-sm btn-outline-primary shadow-sm" style="width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px;" onclick="event.stopPropagation(); openAddMenuNodeModal('${m.id}');" title="編輯"><i class="fas fa-edit"></i></button>`;
+            actionBtnsHtml += `<button type="button" class="btn btn-sm btn-outline-primary shadow-sm btn-action-icon" onclick="event.stopPropagation(); openAddMenuNodeModal('${m.id}');" title="編輯"><i class="fas fa-edit"></i></button>`;
         }
         // 刪除：必須擁有 canDelete (admin / 自己 / 委派且 canEditOthers)
         if (perms.canDelete) {
-            actionBtnsHtml += `<button type="button" class="btn btn-sm btn-outline-danger shadow-sm" style="width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px;" onclick="event.stopPropagation(); deleteMenuNodeItem('${m.id}')" title="刪除"><i class="fas fa-trash-alt"></i></button>`;
+            actionBtnsHtml += `<button type="button" class="btn btn-sm btn-outline-danger shadow-sm btn-action-icon" onclick="event.stopPropagation(); deleteMenuNodeItem('${m.id}')" title="刪除"><i class="fas fa-trash-alt"></i></button>`;
         }
         if (!actionBtnsHtml) actionBtnsHtml = '<span class="badge bg-light text-muted border">僅檢視</span>';
         let actionBtns = `<div class="d-flex flex-nowrap justify-content-center gap-2">${actionBtnsHtml}</div>`;
@@ -681,9 +681,13 @@ export function renderMenuConfigTable() {
             <tr class="draggable-row" draggable="true" ondragstart="handleDragStart(event, '${m.id}', null)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, '${m.id}', null, 'system')">
                 <td class="text-start ps-3 align-middle">${sysNameHtml}</td>
                 <td class="align-middle">${typeBadge}</td>
-                <td class="align-middle">${targetBadge}</td>
                 <td class="align-middle">${statusSwitch}</td>
-                <td class="text-start align-middle" style="max-width: 400px; white-space: normal;">${contentTxt}</td>
+                <td class="text-start align-middle" style="max-width: 400px; white-space: normal;">
+                    <div class="d-flex flex-column align-items-start gap-1">
+                        <div>${targetBadge}</div>
+                        <div class="text-start" style="word-break:break-all;">${contentTxt}</div>
+                    </div>
+                </td>
                 <td class="text-center align-middle" style="white-space: nowrap; width: 1%;">${actionBtns}</td>
             </tr>`);
     });
@@ -832,4 +836,5 @@ window.renderMenuConfigTable = renderMenuConfigTable;
 window.renderApplyTable = renderApplyTable;
 window.renderAuditTable = renderAuditTable;
 window.renderAppGrid = renderAppGrid;
+
 

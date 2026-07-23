@@ -1,13 +1,13 @@
 ﻿// === admin/role-manage.js - 群組管理 CRUD ===
 
-import { getCustomMenus, getRoles } from '../config.js?v=20260721c';
+import { getCustomMenus, getRoles } from '../config.js?v=20260723w';
 
 
-import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260721c';
-import { deleteRoleAPI, fetchInitialDataFromDB, saveRoleAPI } from '../api.js?v=20260721c';
-import { renderSidebarMenus } from '../render/sidebar.js?v=20260721c';
-import { renderAccountTable, renderFabTable, renderRoleTable } from '../render/tables.js?v=20260721c';
-import { customAlert, customConfirm } from '../ui/dialogs.js?v=20260721c';
+import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260723w';
+import { deleteRoleAPI, fetchInitialDataFromDB, saveRoleAPI } from '../api.js?v=20260723w';
+import { renderSidebarMenus } from '../render/sidebar.js?v=20260723w';
+import { renderAccountTable, renderFabTable, renderRoleTable } from '../render/tables.js?v=20260723w';
+import { customAlert, customConfirm } from '../ui/dialogs.js?v=20260723w';
 
 // === Roles 群組管理 ===
 export function openAddRoleModal() {
@@ -150,10 +150,19 @@ window.rmDrop = function (e, targetId) {
 export async function saveRoleItem(e) {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     else if (window.event && typeof window.event.preventDefault === 'function') window.event.preventDefault();
+    
+    const btn = e ? e.currentTarget : null;
 
     try {
         const id = document.getElementById('editRoleId').value;
         const name = document.getElementById('roleName').value.trim();
+
+        if (!name) {
+            window.shakeInput('roleName');
+            return false;
+        }
+
+        if (btn) window.setButtonLoading(btn, true);
 
         let allowed = [];
         document.querySelectorAll('.role-menu-item').forEach(el => {
@@ -172,6 +181,7 @@ export async function saveRoleItem(e) {
 
         const result = await saveRoleAPI(isNew, payload);
         if (!result.success) {
+            if (btn) window.setButtonLoading(btn, false);
             customAlert("儲存失敗: " + result.message);
             return false;
         }
@@ -180,6 +190,7 @@ export async function saveRoleItem(e) {
         await window.fetchInitialDataFromDB();
 
         hideModalSafely('roleModal');
+        if (btn) window.setButtonLoading(btn, false);
         if (typeof renderRoleTable === 'function') renderRoleTable();
         if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
     } catch (error) { console.error("[saveRoleItem] 錯誤:", error); }

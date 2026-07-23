@@ -1,6 +1,13 @@
 /* === variables.css - CSS 變數、全域 reset、scrollbar === */
 :root {
-    /* V27 極致空間美化配色 */
+    /* === 字體大小階層系統 (Typography Scale) === */
+    --fs-xs: 0.8rem;    /* 徽章、輔助提示文字、麵包屑 */
+    --fs-sm: 0.9rem;    /* 表格內容、次要選單、分頁按鈕 */
+    --fs-base: 1rem;  /* 主要導覽列、卡片內文、一般按鈕 */
+    --fs-lg: 1.1rem;     /* 卡片標題、Modal 標題 */
+    --fs-xl: 1.25rem;    /* 頁面主標題 */
+
+    /* 主色調與基礎背景 (Light Mode) */
     --navbar-bg: #0b1120;
     --navbar-accent: #38bdf8;
     --body-bg: #f8fafc;
@@ -9,7 +16,67 @@
     --primary-light: #0d6efd;
     --active-bg: #eff6ff;
     --active-text: #2563eb;
+    
+    /* 介面與文字顏色 */
+    --card-bg: #ffffff;
     --border-color: #e2e8f0;
+    --text-main: #0f172a;
+    --text-muted: #64748b;
+    --input-bg: #ffffff;
+    --input-border: #cbd5e1;
+    --input-text: #0f172a;
+    
+    /* 表格專屬 */
+    --table-bg: #ffffff;
+    --table-hover: rgba(0, 0, 0, 0.02);
+    --table-border: #e2e8f0;
+    --table-header-bg: #f8fafc;
+    
+    /* 懸浮卡片 (Dropdown/Modal) */
+    --dropdown-bg: #ffffff;
+    --dropdown-hover: #f1f5f9;
+
+    /* 捲軸 (Scrollbar) */
+    --scrollbar-track: #f1f5f9;
+    --scrollbar-track-border: #e2e8f0;
+    --scrollbar-thumb: #94a3b8;
+    --scrollbar-thumb-hover: #64748b;
+}
+
+:root[data-theme="dark"] {
+    /* 深色模式變數覆寫 (Dark Mode) */
+    --body-bg: #0f172a;
+    --navbar-bg: #020617;
+    --navbar-accent: #38bdf8; /* 維持科技藍 */
+    --primary-bg: #1e3a8a;
+    --primary-light: #3b82f6;
+    --active-bg: rgba(56, 189, 248, 0.15);
+    --active-text: #38bdf8;
+    
+    /* 介面與文字顏色 */
+    --card-bg: #1e293b;
+    --border-color: #334155;
+    --text-main: #f8fafc;
+    --text-muted: #cbd5e1; /* 調亮為 Slate 300，提升投影機對比度 */
+    --input-bg: #0f172a;
+    --input-border: #475569;
+    --input-text: #f8fafc;
+    
+    /* 表格專屬 */
+    --table-bg: #1e293b;
+    --table-hover: rgba(255, 255, 255, 0.05);
+    --table-border: #334155;
+    --table-header-bg: #0f172a;
+    
+    /* 懸浮卡片 (Dropdown/Modal) */
+    --dropdown-bg: #1e293b;
+    --dropdown-hover: #334155;
+
+    /* 捲軸 (Scrollbar) */
+    --scrollbar-track: #0f172a;
+    --scrollbar-track-border: #1e293b;
+    --scrollbar-thumb: #475569;
+    --scrollbar-thumb-hover: #64748b;
 }
 
 body {
@@ -20,8 +87,9 @@ body {
     flex-direction: column;
     height: 100vh;
     overflow: hidden;
-    font-size: 0.88rem;
-    color: #0f172a;
+    font-size: var(--fs-base);
+    color: var(--text-main);
+    transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 ::-webkit-scrollbar {
@@ -30,17 +98,17 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-    background: #f1f5f9;
-    border-left: 1px solid #e2e8f0;
+    background: var(--scrollbar-track);
+    border-left: 1px solid var(--scrollbar-track-border);
 }
 
 ::-webkit-scrollbar-thumb {
-    background: #94a3b8;
+    background: var(--scrollbar-thumb);
     border-radius: 4px;
 }
 
     ::-webkit-scrollbar-thumb:hover {
-        background: #64748b;
+        background: var(--scrollbar-thumb-hover);
     }
 
 .inner-scroll::-webkit-scrollbar {
@@ -48,11 +116,11 @@ body {
 }
 
 .inner-scroll::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
+    background: var(--scrollbar-thumb);
     border-radius: 3px;
 }
 
     .inner-scroll::-webkit-scrollbar-thumb:hover {
-        background: #94a3b8;
+        background: var(--scrollbar-thumb-hover);
     }
 

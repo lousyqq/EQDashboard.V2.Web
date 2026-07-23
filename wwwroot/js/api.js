@@ -2,9 +2,9 @@
 
 // ⭐️ ES Module imports：fetch 覆寫攔截 401/403 時會用到 logout()/customAlert()。
 //    其餘 getter / 渲染函式皆透過 window.* 呼叫，毋須在此 import。
-import { logout } from './auth.js?v=20260721c';
-import { customAlert, showToast } from './ui/dialogs.js?v=20260721c';
-import { appState } from './store.js?v=20260721c';
+import { logout } from './auth.js?v=20260723w';
+import { customAlert, showToast } from './ui/dialogs.js?v=20260723w';
+import { appState } from './store.js?v=20260723w';
 
 
 // ⭐️ IIS 子目錄部署自適應：把絕對路徑 URL 自動 prepend APP_BASE。

@@ -1,5 +1,5 @@
-/* === sidebar.css - 側邊欄與內容區樣式 === */
-/* ================= V27 側邊欄與內容區 ================= */
+/* === sidebar.css - ?湧?甈??批捆?璅?? === */
+/* ================= V27 ?湧?甈??批捆? ================= */
 #wrapper {
     display: flex;
     width: 100%;
@@ -7,13 +7,13 @@
     overflow: hidden;
 }
 
-/* ⭐ 側邊欄模組 Header（index.html 使用此 class，原 style.css 缺少定義） */
+/* 潃??湧?甈芋蝯?Header嚗ndex.html 雿輻甇?class嚗? style.css 蝻箏?摰儔嚗?*/
 .sidebar-module-header {
-    background: #f1f5f9;
+    background: var(--table-header-bg);
     padding: 10px 16px;
-    font-size: 0.8rem;
+    font-size: var(--fs-sm);
     font-weight: 800;
-    color: #0b1120;
+    color: var(--text-main);
     border-bottom: 1px solid var(--border-color);
     display: flex;
     align-items: center;
@@ -23,7 +23,7 @@
 
     .sidebar-module-header i {
         color: var(--navbar-accent);
-        font-size: 0.9rem;
+        font-size: var(--fs-sm);
     }
 
 .module-title-text {
@@ -33,7 +33,7 @@
     white-space: nowrap;
 }
 
-/* ⭐ 看板搜尋框（task a）：跨「目前可見看板」即時過濾 */
+/* 潃????獢?task a嚗?頝具?閬??踴??瞈?*/
 .sidebar-search-box {
     position: relative;
     padding: 8px 10px;
@@ -46,18 +46,18 @@
     left: 20px;
     top: 50%;
     transform: translateY(-50%);
-    font-size: 0.8rem;
-    color: #64748b;
+    font-size: var(--fs-sm);
+    color: var(--text-muted);
     pointer-events: none;
 }
 
 .sidebar-search-input {
     width: 100%;
     padding: 6px 28px 6px 28px;
-    font-size: 0.82rem;
-    color: #0f172a;
+    font-size: var(--fs-sm);
+    color: var(--input-text);
     font-weight: 600;
-    background: #f8fafc;
+    background: var(--input-bg);
     border: 1px solid var(--border-color);
     border-radius: 6px;
     outline: none;
@@ -67,11 +67,11 @@
     .sidebar-search-input:focus {
         border-color: var(--navbar-accent);
         box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.18);
-        background: #fff;
+        background: var(--input-bg);
     }
 
     .sidebar-search-input::placeholder {
-        color: #94a3b8;
+        color: var(--text-muted);
     }
 
 .sidebar-search-clear {
@@ -86,7 +86,7 @@
     align-items: center;
     justify-content: center;
     border: none;
-    background: #cbd5e1;
+    background: var(--text-muted);
     color: #fff;
     border-radius: 50%;
     font-size: 0.6rem;
@@ -95,10 +95,10 @@
 }
 
     .sidebar-search-clear:hover {
-        background: #94a3b8;
+        background: var(--text-main);
     }
 
-/* 搜尋結果（扁平清單）容器 */
+/* ??蝯?嚗?撟單??殷?摰孵 */
 #sidebar-search-results .sidebar-search-item {
     align-items: flex-start;
 }
@@ -115,9 +115,9 @@
 }
 
 .sidebar-search-crumb {
-    font-size: 0.72rem;
+    font-size: var(--fs-xs);
     font-weight: 600;
-    color: #64748b;
+    color: var(--text-muted);
     margin-top: 2px;
     max-width: 100%;
 }
@@ -125,13 +125,13 @@
 .sidebar-search-empty {
     padding: 16px;
     text-align: center;
-    font-size: 0.75rem;
-    color: #94a3b8;
+    font-size: var(--fs-xs);
+    color: var(--text-muted);
 }
 
 #sidebar {
     width: var(--sidebar-width);
-    background: white;
+    background: var(--card-bg);
     border-right: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
@@ -147,11 +147,11 @@ body.sidebar-hidden #sidebar {
 }
 
 .sidebar-header {
-    background: #f1f5f9;
+    background: var(--table-header-bg);
     padding: 12px 16px;
-    font-size: 0.8rem;
+    font-size: var(--fs-sm);
     font-weight: 800;
-    color: #0b1120;
+    color: var(--text-main);
     border-bottom: 1px solid var(--border-color);
     position: sticky;
     top: 0;
@@ -162,9 +162,9 @@ body.sidebar-hidden #sidebar {
 
 .menu-item {
     padding: 8px 16px;
-    font-size: 0.84rem;
+    font-size: var(--fs-sm);
     font-weight: 700;
-    color: #1e293b;
+    color: var(--text-main);
     display: flex;
     align-items: center;
     cursor: pointer;
@@ -175,17 +175,17 @@ body.sidebar-hidden #sidebar {
 
     .menu-item i.menu-icon {
         margin-right: 10px;
-        font-size: 0.9rem;
+        font-size: var(--fs-sm);
         width: 16px;
         text-align: center;
-        color: #64748b;
+        color: var(--text-muted);
     }
 
     .menu-item i.dropdown-arrow {
         margin-left: auto;
-        font-size: 0.72rem;
+        font-size: var(--fs-xs);
         font-weight: bold;
-        color: #94a3b8;
+        color: var(--text-muted);
         transition: transform 0.2s;
     }
 
@@ -207,7 +207,7 @@ body.sidebar-hidden #sidebar {
 
     .menu-item[aria-expanded="true"] .dropdown-arrow {
         transform: rotate(90deg);
-        color: #64748b;
+        color: var(--text-muted);
     }
 
 .sub-menu-container {
@@ -218,9 +218,9 @@ body.sidebar-hidden #sidebar {
 
 .menu-item.sub-item {
     padding: 6px 16px 6px 40px;
-    font-size: 0.82rem;
+    font-size: var(--fs-sm);
     font-weight: 600;
-    color: #334155;
+    color: var(--text-main);
     position: relative;
 }
 
@@ -267,7 +267,7 @@ body.sidebar-hidden #sidebar {
     background-color: var(--body-bg);
 }
 
-/* 隱形喚醒邊緣 */
+/* ?勗耦???楠 */
 .edge-trigger {
     position: fixed;
     z-index: 9999;
@@ -296,4 +296,5 @@ body.nav-hidden .trigger-top, body.sidebar-hidden .trigger-left {
     pointer-events: auto;
     opacity: 1;
 }
+
 

@@ -1,15 +1,15 @@
 ﻿// === admin/menu-manage.js - 個人選單 + 看板管理 + 選單結構樹 ===
 
-import { getCustomMenus, getPersonalSettings, savePersonalSettings, t } from '../config.js?v=20260721c';
+import { getCustomMenus, getPersonalSettings, savePersonalSettings, t } from '../config.js?v=20260723w';
 
 
-import { getSelectedIconVal, setIconValToModal } from './misc-manage.js?v=20260721c';
-import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260721c';
-import { batchDeleteMenusAPI, batchSaveMenusAPI, deleteMenuAPI, fetchInitialDataFromDB, saveMenuAPI } from '../api.js?v=20260721c';
-import { renderSidebarMenus } from '../render/sidebar.js?v=20260721c';
-import { renderMenuConfigTable, renderPersonalMenuManage, renderWebpageTable } from '../render/tables.js?v=20260721c';
-import { customAlert, customConfirm, showToast } from '../ui/dialogs.js?v=20260721c';
-import { appState } from '../store.js?v=20260721c';
+import { getSelectedIconVal, setIconValToModal } from './misc-manage.js?v=20260723w';
+import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260723w';
+import { batchDeleteMenusAPI, batchSaveMenusAPI, deleteMenuAPI, fetchInitialDataFromDB, saveMenuAPI } from '../api.js?v=20260723w';
+import { renderSidebarMenus } from '../render/sidebar.js?v=20260723w';
+import { renderMenuConfigTable, renderPersonalMenuManage, renderWebpageTable } from '../render/tables.js?v=20260723w';
+import { customAlert, customConfirm, showToast } from '../ui/dialogs.js?v=20260723w';
+import { appState } from '../store.js?v=20260723w';
 
 
 // 共用工具：把 ACL textarea 內容切行、trim、過濾空字串、去重
@@ -167,6 +167,7 @@ export function openAddWebpageModal(id = null) {
 export async function saveWebpageItem(e) {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     else if (window.event && typeof window.event.preventDefault === 'function') window.event.preventDefault();
+    const btn = e ? e.currentTarget : null;
 
     try {
         const id = document.getElementById('editWpId').value;
@@ -187,8 +188,18 @@ export async function saveWebpageItem(e) {
             };
         }
 
-        mObj.name = document.getElementById('wpSysName').value.trim();
-        mObj.displayName = document.getElementById('wpDisplayName').value.trim();
+        const sysName = document.getElementById('wpSysName').value.trim();
+        const dispName = document.getElementById('wpDisplayName').value.trim();
+
+        if (!sysName) {
+            window.shakeInput('wpSysName');
+            return false;
+        }
+
+        if (btn) window.setButtonLoading(btn, true);
+
+        mObj.name = sysName;
+        mObj.displayName = dispName;
         mObj.menuMode = isAppGrid ? 'app_grid' : 'link';
         mObj.icon = getSelectedIconVal('wp');
         if (!id) mObj.enabled = true;
@@ -218,8 +229,9 @@ export async function saveWebpageItem(e) {
 
         const result = await saveMenuAPI(!id, mObj);
         if (!result.success) {
+            if (btn) window.setButtonLoading(btn, false);
             customAlert("儲存失敗: " + (result.message || '未知錯誤'));
-            return false; // ← 失敗時不關 modal、不刷新，保留輸入讓使用者重試
+            return false; 
         }
 
         // 成功 → 刷新資料 + 關 modal + 重畫；任一階段若噴錯也不能讓畫面卡住
@@ -231,6 +243,7 @@ export async function saveWebpageItem(e) {
             if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
         } catch (e) { console.error('render 失敗', e); }
     } catch (error) {
+        if (btn) window.setButtonLoading(btn, false);
         console.error("[saveWebpageItem] 錯誤:", error);
         // 最外層噴錯也要彈訊息 + 確保 modal 不會永遠卡住
         try { customAlert("儲存發生未預期錯誤：" + (error?.message || error)); } catch (_) { }

@@ -1,27 +1,28 @@
-﻿import { appState, escHtml } from './store.js?v=20260721c';
-import './config.js?v=20260721c';
-import './api.js?v=20260721c';
-import './auth.js?v=20260721c';
-import './ui/layout.js?v=20260721c';
-import './ui/navigation.js?v=20260721c';
-import './ui/dialogs.js?v=20260721c';
-import './render/sidebar.js?v=20260721c';
-import './render/sidebar-item.js?v=20260721c';
-import './render/tables.js?v=20260721c';
-import './render/account-ui.js?v=20260721c';
-import './admin/modal-utils.js?v=20260721c';
-import './admin/fab-manage.js?v=20260721c';
-import './admin/role-manage.js?v=20260721c';
-import './admin/account-manage.js?v=20260721c';
-import './admin/menu-manage.js?v=20260721c';
-import './admin/misc-manage.js?v=20260721c';
-import './admin/activity-log.js?v=20260721c';
+﻿import { appState, escHtml } from './store.js?v=20260723w';
+import './config.js?v=20260723w';
+import './api.js?v=20260723w';
+import './auth.js?v=20260723w';
+import './ui/layout.js?v=20260723w';
+import './ui/navigation.js?v=20260723w';
+import './ui/dialogs.js?v=20260723w';
+import './render/sidebar.js?v=20260723w';
+import './render/sidebar-item.js?v=20260723w';
+import './render/tables.js?v=20260723w';
+import './render/account-ui.js?v=20260723w';
+import './admin/modal-utils.js?v=20260723w';
+import './admin/fab-manage.js?v=20260723w';
+import './admin/role-manage.js?v=20260723w';
+import './admin/account-manage.js?v=20260723w';
+import './admin/menu-manage.js?v=20260723w';
+import './admin/misc-manage.js?v=20260723w';
+import './admin/activity-log.js?v=20260723w';
 import './admin/traffic-stats.js?v=20260718';
 
 export function initModalSafely(id) { const el = document.getElementById(id); return el ? new bootstrap.Modal(el) : null; }
 
 export function initDashboardUI(stayOnCurrentPage = false) {
     if (!appState.currentUser) return;
+    if (typeof window.initTheme === 'function') window.initTheme();
 
     // 校正 appState.currentFab 一律為 fabName，並套用該廠區的預設語言
     if (typeof getFabs === 'function') {
