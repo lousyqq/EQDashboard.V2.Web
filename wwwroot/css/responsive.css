@@ -1,12 +1,12 @@
-﻿/* === responsive.css - RWD ?琿?嚗992px 撟單 / ??68px ??嚗?== */
-/* 獢??見撘?敺雁??瑼?variables/navbar/sidebar/components嚗?甇斗??????Ｗ?閬神??*/
+﻿/* === responsive.css - RWD 斷點（≤992px 平板 / ≤768px 手機）=== */
+/* 桌機版樣式一律維持原檔（variables/navbar/sidebar/components），此檔僅疊加小螢幕覆寫。 */
 
-/* ?湔?瘚桀惜?桃蔗嚗?閮哨?獢?嚗偶???? ??92px 銝甈???憿舐內 */
+/* 側欄浮層遮罩：預設（桌機）永遠隱藏，僅於 ≤992px 且側欄展開時顯示 */
 #sidebar-backdrop {
     display: none;
 }
 
-/* ---------- ??92px嚗甈?箸筑撅?(overlay) + ??桃蔗 ---------- */
+/* ---------- ≤992px：側欄改為浮層 (overlay) + 背景遮罩 ---------- */
 @media (max-width: 992px) {
     #sidebar {
         position: fixed;
@@ -14,11 +14,11 @@
         bottom: 0;
         left: 0;
         height: 100%;
-        z-index: 3000; /* 擃 top-navbar(2000)嚗???modal backdrop 銋?撅斗?蝷?*/
+        z-index: 3000; /* 高於 top-navbar(2000)，低於 modal backdrop 之上層提示 */
         box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25);
     }
 
-    /* ??桃蔗嚗甈????芣遛?恍嚗?? layout.js ?嗅??湔? */
+    /* 背景遮罩：側欄展開時鋪滿畫面，點擊由 layout.js 收合側欄 */
     #sidebar-backdrop {
         display: none;
         position: fixed;
@@ -31,7 +31,7 @@
         display: block;
     }
 
-    /* 撠汗??蝮殷?撠撟璉熊??嚗?????撌亙??*/
+    /* 導覽列壓縮：小螢幕捨棄麵包屑，保留品牌與工具列 */
     .nav-breadcrumb-inline {
         display: none;
     }
@@ -56,12 +56,12 @@
         font-size: var(--fs-sm);
     }
 
-    /* 隤??????啁??內嚗??隞?摰隤??迂嚗?*/
+    /* 語言切換僅留地球圖示（下拉內仍有完整語言名稱） */
     #current-lang-display {
         display: none;
     }
 
-    /* ??蝞勗??縑撠?蝷?*/
+    /* 意見箱僅留信封圖示 */
     .feedback-link span {
         display: none;
     }
@@ -70,7 +70,7 @@
         padding: 10px;
     }
 
-    /* 擐?憭批??鋆ˇ摨?蝮桀?嚗??雿?摮?*/
+    /* 首頁大卡片的裝飾底圖縮小，避免蓋住文字 */
     .home-icon-bg,
     .home-icon-bg.shield,
     .home-icon-bg.building {
@@ -94,9 +94,9 @@
     }
 }
 
-/* ---------- ??80px嚗??? ---------- */
+/* ---------- ≤480px：窄手機 ---------- */
 @media (max-width: 480px) {
-    /* ?身???賢??寧餈撖?*/
+    /* 預設看板挑選抽屜改為近全寬 */
     .offcanvas-custom {
         width: 88vw;
     }
@@ -106,7 +106,7 @@
         padding: 22px;
     }
 
-    /* Toast 鞎潮?閬?撖砍漲 */
+    /* Toast 貼齊視窗寬度 */
     #toast-container {
         left: 0;
         right: 0;

@@ -1,5 +1,5 @@
-/* === navbar.css - ??撠汗?見撘?=== */
-/* ================= V27 ??撠汗??- 璆菔憯葬蝛粹? ================= */
+/* === navbar.css - 雙列導覽列樣式 === */
+/* ================= V27 雙列導覽列 - 極致壓縮空間 ================= */
 .top-navbar-group {
     background-color: var(--navbar-bg);
     z-index: 2000;
@@ -75,7 +75,7 @@ body.nav-hidden .top-navbar-group {
         text-overflow: ellipsis;
     }
 
-/* ?喳撌亙?? */
+/* 右側工具膠囊 */
 .utility-cluster {
     display: flex;
     align-items: center;
@@ -116,7 +116,7 @@ body.nav-hidden .top-navbar-group {
     margin: 0 8px;
 }
 
-/* 銝駁?桅?蝐?*/
+/* 主選單頁籤 */
 .top-menus {
     display: flex;
     align-items: flex-end;
@@ -216,7 +216,7 @@ body.nav-hidden .top-navbar-group {
         color: var(--navbar-accent);
     }
 
-/* ?單????澆?? */
+/* 系統狀態監控指示燈 */
 .monitoring-indicator {
     display: flex;
     align-items: center;

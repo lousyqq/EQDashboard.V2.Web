@@ -39,122 +39,95 @@ public class IconStorageService : IIconStorageService
         _logger = logger;
     }
 
-    public async Task<string?> SaveAsync(string? icon)
+    public Task<string?> SaveAsync(string? icon)
     {
-        if (string.IsNullOrWhiteSpace(icon)) return icon;
+        if (string.IsNullOrWhiteSpace(icon)) return Task.FromResult(icon);
         var trimmed = icon.Trim();
 
-        // 1) data: URI —— base64 圖片寫實體檔；非白名單 / 解析失敗 → 丟棄（回空字串，不存危險內容）
+        // 1) data: URI —— 驗證 base64 格式，直接存入 DB
         if (trimmed.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
         {
-            return await ConvertDataUriToFileAsync(trimmed) ?? "";
+            var match = DataUriRegex.Match(trimmed);
+            if (!match.Success) return Task.FromResult<string?>(null);
+            var mime = match.Groups["mime"].Value.Trim();
+            if (!MimeToExt.TryGetValue(mime, out _)) return Task.FromResult<string?>(null); // 白名單之外拒絕
+            return Task.FromResult<string?>(trimmed); // 直接回傳完整的 data: URI 存入 DB
         }
 
         // 2) 既有本站 icon 路徑（相對或自我參照的絕對 URL）→ 正規化成相對路徑
         var normalized = TryNormalizeLocalPath(trimmed);
-        if (normalized != null) return normalized;
+        if (normalized != null) return Task.FromResult<string?>(normalized);
 
         // 3) 其餘（FontAwesome class、外部 URL 等）→ 原值回傳
-        return icon;
+        return Task.FromResult(icon);
     }
 
-    public async Task DeleteIfLocalUnreferencedAsync(string? oldIcon)
+    public Task DeleteIfLocalUnreferencedAsync(string? oldIcon)
     {
-        if (string.IsNullOrWhiteSpace(oldIcon)) return;
-
-        var normalized = TryNormalizeLocalPath(oldIcon.Trim());
-        if (normalized == null) return; // 非本站 icon 檔（FA class / data: / 外部 URL）→ 沒有實體檔可刪
-
-        var fileName = Path.GetFileName(normalized); // path traversal 防護
-        if (string.IsNullOrWhiteSpace(fileName)) return;
-
-        // 參照檢查：DB 中是否仍有任何 Menu.Icon / App.IconBase64 指向同一個檔名（含 update 後 old==new 的情況）
-        var stillUsed =
-            await _context.Menus.AsNoTracking().AnyAsync(m => m.Icon != null && m.Icon.Contains(fileName))
-            || await _context.Apps.AsNoTracking().AnyAsync(a => a.IconBase64 != null && a.IconBase64.Contains(fileName));
-        if (stillUsed) return;
-
-        try
-        {
-            var webRoot = !string.IsNullOrEmpty(_env.WebRootPath)
-                ? _env.WebRootPath
-                : Path.Combine(_env.ContentRootPath, "wwwroot");
-            var path = Path.Combine(webRoot, "images", "icons", fileName);
-            if (File.Exists(path)) File.Delete(path);
-        }
-        catch (Exception ex)
-        {
-            // 刪檔失敗不該影響主流程（DB 已正確），只記 warning
-            _logger.LogWarning(ex, "刪除孤兒 icon 檔 {File} 失敗（DB 已更新，僅磁碟未清）", fileName);
-        }
+        // 為了支援 Web Farm，圖示改存 DB，不再刪除實體檔案。
+        // 此函式僅保留空殼以符合介面。
+        return Task.CompletedTask;
     }
 
     public async Task<int> MigrateBase64IconsAsync()
     {
         int converted = 0;
 
+        // 這次遷移是：讀取 DB 內的相對路徑（images/icons/xxx.ext），
+        // 找到硬碟中的實體檔案，轉成 data: URI 回寫 DB。
         var menus = await _context.Menus
-            .Where(m => m.Icon != null && m.Icon.StartsWith("data:"))
+            .Where(m => m.Icon != null && m.Icon.Contains("images/icons/"))
             .ToListAsync();
         foreach (var m in menus)
         {
-            var saved = await SaveAsync(m.Icon);
-            if (saved != m.Icon) { m.Icon = saved; converted++; }
+            var dataUri = await ConvertFileToDataUriAsync(m.Icon);
+            if (dataUri != null) { m.Icon = dataUri; converted++; }
         }
 
         var apps = await _context.Apps
-            .Where(a => a.IconBase64 != null && a.IconBase64.StartsWith("data:"))
+            .Where(a => a.IconBase64 != null && a.IconBase64.Contains("images/icons/"))
             .ToListAsync();
         foreach (var a in apps)
         {
-            var saved = await SaveAsync(a.IconBase64);
-            if (saved != a.IconBase64) { a.IconBase64 = saved; converted++; }
+            var dataUri = await ConvertFileToDataUriAsync(a.IconBase64);
+            if (dataUri != null) { a.IconBase64 = dataUri; converted++; }
         }
 
         if (converted > 0)
         {
             await _context.SaveChangesAsync();
-            _logger.LogInformation("✅ IconStorage 一次性遷移：{Count} 筆 base64 icon 已轉為實體檔", converted);
+            _logger.LogInformation("✅ IconStorage 反向遷移：{Count} 筆實體檔 icon 已轉為 DB Base64", converted);
         }
         return converted;
     }
 
-    /// <summary>把 base64 data URI 寫成實體檔，回傳 "images/icons/{guid}.{ext}"；非白名單/解析失敗回 null。</summary>
-    private async Task<string?> ConvertDataUriToFileAsync(string dataUri)
+    /// <summary>把實體檔案讀出轉為 base64 data URI</summary>
+    private async Task<string?> ConvertFileToDataUriAsync(string? iconPath)
     {
-        var match = DataUriRegex.Match(dataUri);
-        if (!match.Success) return null;
+        if (string.IsNullOrWhiteSpace(iconPath)) return null;
+        var normalized = TryNormalizeLocalPath(iconPath);
+        if (normalized == null) return null;
 
-        var mime = match.Groups["mime"].Value.Trim();
-        if (!MimeToExt.TryGetValue(mime, out var ext)) return null; // 白名單之外一律拒絕
+        var fileName = Path.GetFileName(normalized);
+        var ext = Path.GetExtension(fileName).TrimStart('.').ToLowerInvariant();
+        var mime = MimeToExt.FirstOrDefault(x => x.Value == ext).Key ?? "image/png";
 
-        byte[] data;
-        try
-        {
-            data = Convert.FromBase64String(match.Groups["data"].Value);
-        }
-        catch
-        {
-            return null; // base64 壞掉
-        }
-        if (data.Length == 0) return null;
+        var webRoot = !string.IsNullOrEmpty(_env.WebRootPath)
+            ? _env.WebRootPath
+            : Path.Combine(_env.ContentRootPath, "wwwroot");
+        var path = Path.Combine(webRoot, "images", "icons", fileName);
+
+        if (!File.Exists(path)) return null;
 
         try
         {
-            var webRoot = !string.IsNullOrEmpty(_env.WebRootPath)
-                ? _env.WebRootPath
-                : Path.Combine(_env.ContentRootPath, "wwwroot");
-            var folder = Path.Combine(webRoot, "images", "icons");
-            Directory.CreateDirectory(folder);
-
-            var fileName = $"{Guid.NewGuid():N}.{ext}";
-            await File.WriteAllBytesAsync(Path.Combine(folder, fileName), data);
-
-            return IconUrlPrefix + fileName;
+            var bytes = await File.ReadAllBytesAsync(path);
+            var base64 = Convert.ToBase64String(bytes);
+            return $"data:{mime};base64,{base64}";
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "寫入自訂圖示實體檔案失敗（請確認 IIS/工作目錄對 wwwroot/images/icons 有寫入權限）");
+            _logger.LogError(ex, "讀取實體檔案轉為 Base64 失敗: {Path}", path);
             return null;
         }
     }

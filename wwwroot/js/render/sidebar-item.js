@@ -1,9 +1,9 @@
 ﻿// === render/sidebar-item.js - 選單項目產生器 ===
-import { getFabs, t } from '../config.js?v=20260723w';
-import { renderSidebarMenus } from './sidebar.js?v=20260723w';
-import { customAlert } from '../ui/dialogs.js?v=20260723w';
-import { changeLanguage, goDefaultHome } from '../ui/navigation.js?v=20260723w';
-import { appState } from '../store.js?v=20260723w';
+import { getFabs, t } from '../config.js?v=20260725e';
+import { renderSidebarMenus } from './sidebar.js?v=20260725e';
+import { customAlert } from '../ui/dialogs.js?v=20260725e';
+import { changeLanguage, goDefaultHome } from '../ui/navigation.js?v=20260725e';
+import { appState } from '../store.js?v=20260725e';
 
 
 export function generateSidebarMenuItem(menu, allMenus, level, forceExpand = true) {

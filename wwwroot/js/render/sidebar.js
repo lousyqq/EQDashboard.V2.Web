@@ -1,9 +1,9 @@
 ﻿// === render/sidebar.js - 側邊欄選單渲染 ===
 // ====== render.js 最上方的修復 ======
-import { getCustomMenus, getDataTableLang, getFabs, getPersonalSettings, getRoles, t } from '../config.js?v=20260723w';
-import { generateSidebarMenuItem } from './sidebar-item.js?v=20260723w';
-import { navTo, selectTopMenu } from '../ui/navigation.js?v=20260723w';
-import { appState } from '../store.js?v=20260723w';
+import { getCustomMenus, getDataTableLang, getFabs, getPersonalSettings, getRoles, t } from '../config.js?v=20260725e';
+import { generateSidebarMenuItem } from './sidebar-item.js?v=20260725e';
+import { navTo, selectTopMenu } from '../ui/navigation.js?v=20260725e';
+import { appState } from '../store.js?v=20260725e';
 
 
 window.cleanId = function (id) {
@@ -555,7 +555,8 @@ export function renderSidebarMenus() {
             if (activeRoot) {
                 const titleEl = document.getElementById('sidebar-module-title');
                 if (titleEl) titleEl.innerText = activeRoot.displayName || activeRoot.name || '未命名選單';
-                const subMenus = menus.filter(m => m.id !== activeRoot.id && (window.isParentMatch(m.parentId, activeRoot) || (m.parentIds || []).some(pid => window.isParentMatch(pid, activeRoot))));
+                const isFolder = (activeRoot.menuMode || activeRoot.MenuMode) === 'folder';
+                const subMenus = isFolder ? menus.filter(m => m.id !== activeRoot.id && (window.isParentMatch(m.parentId, activeRoot) || (m.parentIds || []).some(pid => window.isParentMatch(pid, activeRoot)))) : [];
 
                 if (subMenus.length === 0) {
                     setTimeout(() => { document.body.classList.add('sidebar-hidden'); if (triggerLeft) triggerLeft.style.display = 'none'; }, 10);

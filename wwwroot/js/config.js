@@ -1,4 +1,4 @@
-﻿import { appState } from './store.js?v=20260723w';
+﻿import { appState } from './store.js?v=20260725e';
 
 // === 資料庫 / LocalStorage 鍵值常數 (已棄用 LocalStorage，僅留作常數參考) ===
 const DB_MENUS = 'umc_menus_v1';

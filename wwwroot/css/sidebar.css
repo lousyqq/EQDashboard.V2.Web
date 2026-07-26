@@ -1,5 +1,5 @@
-/* === sidebar.css - ?湧?甈??批捆?璅?? === */
-/* ================= V27 ?湧?甈??批捆? ================= */
+/* === sidebar.css - 側邊欄與內容區樣式 === */
+/* ================= V27 側邊欄與內容區 ================= */
 #wrapper {
     display: flex;
     width: 100%;
@@ -7,7 +7,7 @@
     overflow: hidden;
 }
 
-/* 潃??湧?甈芋蝯?Header嚗ndex.html 雿輻甇?class嚗? style.css 蝻箏?摰儔嚗?*/
+/* ⭐ 側邊欄模組 Header（index.html 使用此 class，原 style.css 缺少定義） */
 .sidebar-module-header {
     background: var(--table-header-bg);
     padding: 10px 16px;
@@ -33,7 +33,7 @@
     white-space: nowrap;
 }
 
-/* 潃????獢?task a嚗?頝具?閬??踴??瞈?*/
+/* ⭐ 看板搜尋框（task a）：跨「目前可見看板」即時過濾 */
 .sidebar-search-box {
     position: relative;
     padding: 8px 10px;
@@ -98,7 +98,7 @@
         background: var(--text-main);
     }
 
-/* ??蝯?嚗?撟單??殷?摰孵 */
+/* 搜尋結果（扁平清單）容器 */
 #sidebar-search-results .sidebar-search-item {
     align-items: flex-start;
 }
@@ -267,7 +267,7 @@ body.sidebar-hidden #sidebar {
     background-color: var(--body-bg);
 }
 
-/* ?勗耦???楠 */
+/* 隱形喚醒邊緣 */
 .edge-trigger {
     position: fixed;
     z-index: 9999;

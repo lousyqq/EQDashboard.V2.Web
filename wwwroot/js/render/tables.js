@@ -1,17 +1,17 @@
 ﻿// === render/tables.js - 管理表格渲染 (Fab, Role, Account, Webpage, MenuConfig, Apply, Audit, AppGrid) ===
 
-import { getCustomMenus, getDataTableLang, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings, t } from '../config.js?v=20260723w';
+import { getCustomMenus, getDataTableLang, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings, t } from '../config.js?v=20260725e';
 
 
-import { deleteAccount, editAccount } from '../admin/account-manage.js?v=20260723w';
-import { deleteFab, editFab } from '../admin/fab-manage.js?v=20260723w';
-import { deleteMenuNodeItem, deleteWebpageItem, editPersonalMenu, openAddMenuNodeModal, openAddWebpageModal } from '../admin/menu-manage.js?v=20260723w';
-import { handleDragLeave, handleDragOver, handleDragStart, handleDrop, openAuditModal, withdrawApply } from '../admin/misc-manage.js?v=20260723w';
-import { deleteRole, editRole } from '../admin/role-manage.js?v=20260723w';
-import { getDtPageLen, initDataTable, rememberDtPageLen, renderSidebarMenus, safeDestroyDataTable } from './sidebar.js?v=20260723w';
-import { generateIconHtml } from '../ui/dialogs.js?v=20260723w';
-import { getFullMenuPathStr } from '../ui/navigation.js?v=20260723w';
-import { appState } from '../store.js?v=20260723w';
+import { deleteAccount, editAccount } from '../admin/account-manage.js?v=20260725e';
+import { deleteFab, editFab } from '../admin/fab-manage.js?v=20260725e';
+import { deleteMenuNodeItem, deleteWebpageItem, editPersonalMenu, openAddMenuNodeModal, openAddWebpageModal } from '../admin/menu-manage.js?v=20260725e';
+import { handleDragLeave, handleDragOver, handleDragStart, handleDrop, openAuditModal, withdrawApply } from '../admin/misc-manage.js?v=20260725e';
+import { deleteRole, editRole } from '../admin/role-manage.js?v=20260725e';
+import { getDtPageLen, initDataTable, rememberDtPageLen, renderSidebarMenus, safeDestroyDataTable } from './sidebar.js?v=20260725e';
+import { generateIconHtml } from '../ui/dialogs.js?v=20260725e';
+import { getFullMenuPathStr } from '../ui/navigation.js?v=20260725e';
+import { appState } from '../store.js?v=20260725e';
 
 
 // ⚠️ Stored XSS 防護：判斷 URL 是否安全到可以放進 href 或 window.open。

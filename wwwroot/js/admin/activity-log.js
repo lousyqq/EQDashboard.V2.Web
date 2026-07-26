@@ -4,9 +4,9 @@
 // 對應頁面：#page-activity-log
 //
 
-import { customAlert, customConfirm, showToast, skeletonRows } from '../ui/dialogs.js?v=20260723w';
-import { appState } from '../store.js?v=20260723w';
-import { t } from '../config.js?v=20260723w';
+import { customAlert, customConfirm, showToast, skeletonRows } from '../ui/dialogs.js?v=20260725e';
+import { appState } from '../store.js?v=20260725e';
+import { t } from '../config.js?v=20260725e';
 
 
 window._activityLogPage = 1;
