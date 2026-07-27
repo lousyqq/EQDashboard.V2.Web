@@ -1,16 +1,16 @@
 ﻿// === admin/misc-manage.js - AppGrid + 需求申請 + 審核 + Excel 匯出 + 圖示工具 ===
 
-import { getAppItems, getCustomMenus, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings } from '../config.js?v=20260725e';
+import { getAppItems, getCustomMenus, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings } from '../config.js?v=20260727b';
 
 
-import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260725e';
-import { batchSaveMenusAPI, deleteAppAPI, fetchInitialDataFromDB, saveAppAPI, syncDataToDB } from '../api.js?v=20260725e';
-import { initDashboardUI } from '../main.js?v=20260725e';
-import { renderSidebarMenus } from '../render/sidebar.js?v=20260725e';
-import { renderAppGrid, renderApplyTable, renderAuditTable, renderMenuConfigTable, renderPersonalMenuManage, renderWebpageTable } from '../render/tables.js?v=20260725e';
-import { customAlert, customConfirm, showToast, updateSyncButtonUI } from '../ui/dialogs.js?v=20260725e';
-import { navTo } from '../ui/navigation.js?v=20260725e';
-import { appState } from '../store.js?v=20260725e';
+import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260727b';
+import { batchSaveMenusAPI, deleteAppAPI, fetchInitialDataFromDB, saveAppAPI, syncDataToDB } from '../api.js?v=20260727b';
+import { initDashboardUI } from '../main.js?v=20260727b';
+import { renderSidebarMenus } from '../render/sidebar.js?v=20260727b';
+import { renderAppGrid, renderApplyTable, renderAuditTable, renderMenuConfigTable, renderPersonalMenuManage, renderWebpageTable } from '../render/tables.js?v=20260727b';
+import { customAlert, customConfirm, showToast, updateSyncButtonUI } from '../ui/dialogs.js?v=20260727b';
+import { navTo } from '../ui/navigation.js?v=20260727b';
+import { appState } from '../store.js?v=20260727b';
 
 
 // === 拖曳全域輔助 (表格重新排序使用) ===

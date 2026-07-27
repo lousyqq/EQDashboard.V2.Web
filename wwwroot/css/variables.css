@@ -21,7 +21,7 @@
     --card-bg: #ffffff;
     --border-color: #e2e8f0;
     --text-main: #0f172a;
-    --text-muted: #64748b;
+    --text-muted: #475569; /* 調暗為 Slate 600，提升淺色模式投影機對比度 */
     --input-bg: #ffffff;
     --input-border: #cbd5e1;
     --input-text: #0f172a;
@@ -29,7 +29,7 @@
     /* 表格專屬 */
     --table-bg: #ffffff;
     --table-hover: rgba(0, 0, 0, 0.02);
-    --table-border: #e2e8f0;
+    --table-border: #cbd5e1; /* 調暗邊框提升投影機顯示 */
     --table-header-bg: #f8fafc;
     
     /* 懸浮卡片 (Dropdown/Modal) */
@@ -55,9 +55,9 @@
     
     /* 介面與文字顏色 */
     --card-bg: #1e293b;
-    --border-color: #334155;
+    --border-color: #475569; /* 調亮為 Slate 600，提升深色邊框對比 */
     --text-main: #f8fafc;
-    --text-muted: #cbd5e1; /* 調亮為 Slate 300，提升投影機對比度 */
+    --text-muted: #e2e8f0; /* 調亮為 Slate 200，極大化深色模式投影機對比度 */
     --input-bg: #0f172a;
     --input-border: #475569;
     --input-text: #f8fafc;

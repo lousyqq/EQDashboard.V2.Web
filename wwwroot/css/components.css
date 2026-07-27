@@ -798,7 +798,7 @@ div.dataTables_wrapper div.dataTables_filter input {
 
 /* 管理頁面的 table-responsive 需要垂直滾動容器，以支援 sticky 表頭 */
 .page-section .table-responsive {
-    max-height: calc(100vh - 240px);
+    max-height: calc(100vh - 170px);
     overflow-y: auto;
 }
 

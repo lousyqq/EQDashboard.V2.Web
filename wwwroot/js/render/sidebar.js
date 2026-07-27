@@ -1,9 +1,9 @@
-﻿// === render/sidebar.js - 側邊欄選單渲染 ===
+// === render/sidebar.js - 側邊欄選單渲染 ===
 // ====== render.js 最上方的修復 ======
-import { getCustomMenus, getDataTableLang, getFabs, getPersonalSettings, getRoles, t } from '../config.js?v=20260725e';
-import { generateSidebarMenuItem } from './sidebar-item.js?v=20260725e';
-import { navTo, selectTopMenu } from '../ui/navigation.js?v=20260725e';
-import { appState } from '../store.js?v=20260725e';
+import { getCustomMenus, getDataTableLang, getFabs, getPersonalSettings, getRoles, t } from '../config.js?v=20260727b';
+import { generateSidebarMenuItem } from './sidebar-item.js?v=20260727b';
+import { navTo, selectTopMenu } from '../ui/navigation.js?v=20260727b';
+import { appState } from '../store.js?v=20260727b';
 
 
 window.cleanId = function (id) {
@@ -162,6 +162,32 @@ window.toggleSubMenu = function (e, targetId, element) {
     if (e) { e.preventDefault(); e.stopPropagation(); }
     const target = document.getElementById(targetId);
     if (!target || !element) return;
+    
+    // == Lazy-loading 攔截與即時渲染 ==
+    if (target.getAttribute('data-lazy') === 'true') {
+        const menuId = target.getAttribute('data-menu-id');
+        const level = parseInt(target.getAttribute('data-level'), 10) || 2;
+        const allMenus = (window.appState && window.appState._currentValidMenus) ? window.appState._currentValidMenus : [];
+        
+        const parentMenu = allMenus.find(m => window.cleanId(m.id) === window.cleanId(menuId));
+        if (parentMenu) {
+            const subMenus = allMenus.filter(m => m.id !== parentMenu.id && (window.isParentMatch(m.parentId, parentMenu) || (m.parentIds || []).some(pid => window.isParentMatch(pid, parentMenu))));
+            subMenus.sort((a, b) => (a.parentOrders?.[parentMenu.id] ?? a.order ?? 0) - (b.parentOrders?.[parentMenu.id] ?? b.order ?? 0));
+            
+            let html = '';
+            subMenus.forEach(child => {
+                if (typeof window.generateSidebarMenuItem === 'function') {
+                    html += window.generateSidebarMenuItem(child, allMenus, level, false);
+                }
+            });
+            const container = target.querySelector('.sub-menu-container');
+            if (container) container.innerHTML = html;
+        }
+        
+        // 標記已載入，避免重複渲染
+        target.removeAttribute('data-lazy');
+    }
+
     if (target.classList.contains('show')) {
         target.classList.remove('show');
         target.style.display = 'none';

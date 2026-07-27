@@ -1,9 +1,9 @@
-﻿// === render/sidebar-item.js - 選單項目產生器 ===
-import { getFabs, t } from '../config.js?v=20260725e';
-import { renderSidebarMenus } from './sidebar.js?v=20260725e';
-import { customAlert } from '../ui/dialogs.js?v=20260725e';
-import { changeLanguage, goDefaultHome } from '../ui/navigation.js?v=20260725e';
-import { appState } from '../store.js?v=20260725e';
+// === render/sidebar-item.js - 選單項目產生器 ===
+import { getFabs, t } from '../config.js?v=20260727b';
+import { renderSidebarMenus } from './sidebar.js?v=20260727b';
+import { customAlert } from '../ui/dialogs.js?v=20260727b';
+import { changeLanguage, goDefaultHome } from '../ui/navigation.js?v=20260727b';
+import { appState } from '../store.js?v=20260727b';
 
 
 export function generateSidebarMenuItem(menu, allMenus, level, forceExpand = true) {
@@ -53,11 +53,19 @@ export function generateSidebarMenuItem(menu, allMenus, level, forceExpand = tru
         let html = `<div class="menu-item ${collapsedClass}" ${actionAttr} title="${safeDName}" aria-expanded="${ariaAttr}" style="cursor:pointer;">
                         ${iconHtml}<span class="text-truncate">${safeDName}</span>
                         <i class="fas fa-chevron-right dropdown-arrow"></i>
-                    </div>
-                    <div class="collapse ${expClass}" id="${safeDomId}">
+                    </div>`;
+
+        if (isExpanded) {
+            html += `<div class="collapse ${expClass}" id="${safeDomId}">
                         <div class="sub-menu-container">`;
-        subMenus.forEach(child => html += generateSidebarMenuItem(child, allMenus, level + 1, forceExpand));
-        html += `</div></div>`;
+            subMenus.forEach(child => html += generateSidebarMenuItem(child, allMenus, level + 1, forceExpand));
+            html += `</div></div>`;
+        } else {
+            // Lazy-loading 佔位符
+            html += `<div class="collapse" id="${safeDomId}" data-lazy="true" data-menu-id="${window.escapeHTML(String(menu.id))}" data-level="${level + 1}">
+                        <div class="sub-menu-container"></div>
+                     </div>`;
+        }
         return html;
     } else {
         const itemClass = level > 1 ? 'menu-item sub-item' : 'menu-item';
