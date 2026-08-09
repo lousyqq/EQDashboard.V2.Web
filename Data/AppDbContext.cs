@@ -33,6 +33,7 @@ public class AppDbContext : DbContext
     // 操作紀錄
     public DbSet<UserActivityLog> UserActivityLogs { get; set; }
     public DbSet<DailyUserVisit> DailyUserVisits { get; set; }
+    public DbSet<DailyMenuClick> DailyMenuClicks { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

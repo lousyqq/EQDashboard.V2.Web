@@ -1,4 +1,4 @@
-﻿// === auth.js - 雙模式登入流程：Windows 自動偵測 + 手動帳密 ===
+// === auth.js - 雙模式登入流程：Windows 自動偵測 + 手動帳密 ===
 // 公開全域：
 //   window.tryAutoLogin()    - 主流程進入點 (main.js DOMContentLoaded 會呼叫)
 //   window.doWindowsLogin()  - 「以此身份進入」按鈕
@@ -388,6 +388,24 @@ export async function completeLoginAfterAuth(empId, source, fallbackAccount) {
                 if (result.lastLoginTime) {
                     displayLoginTime = formatLoginTimeFromDb(result.lastLoginTime);
                 }
+                
+                // 記錄當前 Server 端的最新帳號資訊
+                window._currentServerEmpId = accEmpId;
+                window._currentServerProfile = result;
+
+                // ⭐️ 同步載入 preferences 到 localStorage
+                if (result.preferences) {
+                    try {
+                        const prefs = JSON.parse(result.preferences);
+                        if (prefs.recent_menus && Array.isArray(prefs.recent_menus)) {
+                            const hKey = `recent_menus_${accEmpId}`;
+                            localStorage.setItem(hKey, JSON.stringify(prefs.recent_menus));
+                        }
+                    } catch(e) {
+                        console.error("Failed to parse preferences from MyProfile", e);
+                    }
+                }
+
                 backendSucceeded = true;
             } else {
                 // 後端有回應但失敗 (e.g. admin TestAccount 不在 Accounts 表)

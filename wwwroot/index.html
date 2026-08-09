@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
     <script>
@@ -136,6 +136,10 @@
                 </button>
                 <div class="util-divider"></div>
 
+                <button id="btn-recent-menus" class="util-item" onclick="if(window.openRecentOffcanvas) window.openRecentOffcanvas()" title="最近瀏覽" style="position:relative;">
+                    <i class="fas fa-history" style="font-size: 0.95rem;"></i>
+                </button>
+
                 <button id="btn-system-settings" class="util-item" onclick="selectTopMenu('system_settings')" title="系統設定">
                     <i class="fas fa-cog" style="font-size: 0.95rem;"></i>
                 </button>
@@ -216,6 +220,18 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- ========== 最近瀏覽頁 ========== -->
+                <div id="page-recent" class="page-section">
+                    <div class="d-flex align-items-center mb-4">
+                        <i class="fas fa-history me-2 text-secondary fs-5"></i>
+                        <h5 class="mb-0 fw-bold text-dark" data-i18n="lbl_recent">最近瀏覽</h5>
+                        <span class="badge bg-secondary bg-opacity-10 text-secondary ms-2 fw-normal" id="recent-count-badge"></span>
+                    </div>
+                    <div id="page-recent-list" class="row g-3">
+                        <!-- 動態載入 -->
                     </div>
                 </div>
 
@@ -739,27 +755,27 @@
     <script src="appbase.js"></script>
 
     <!-- __APP_VER__ 已在 modals.html fetch 之前定義；以下 <script src> 共用同一版本碼 -->
-    <script type="module" src="js/config.js?v=20260727b"></script>
-    <script type="module" src="js/api.js?v=20260727b"></script>
-    <script type="module" src="js/auth.js?v=20260727b"></script>
+    <script type="module" src="js/config.js?v=20260809u"></script>
+    <script type="module" src="js/api.js?v=20260809u"></script>
+    <script type="module" src="js/auth.js?v=20260809u"></script>
     <!-- ui 模組 (從 ui.js 拆分) -->
-    <script type="module" src="js/ui/layout.js?v=20260727b"></script>
-    <script type="module" src="js/ui/navigation.js?v=20260727b"></script>
-    <script type="module" src="js/ui/dialogs.js?v=20260727b"></script>
+    <script type="module" src="js/ui/layout.js?v=20260809u"></script>
+    <script type="module" src="js/ui/navigation.js?v=20260809u"></script>
+    <script type="module" src="js/ui/dialogs.js?v=20260809u"></script>
     <!-- render 模組 (從 render.js 拆分) -->
-    <script type="module" src="js/render/sidebar.js?v=20260727b"></script>
-    <script type="module" src="js/render/sidebar-item.js?v=20260727b"></script>
-    <script type="module" src="js/render/tables.js?v=20260727b"></script>
-    <script type="module" src="js/render/account-ui.js?v=20260727b"></script>
+    <script type="module" src="js/render/sidebar.js?v=20260809u"></script>
+    <script type="module" src="js/render/sidebar-item.js?v=20260809u"></script>
+    <script type="module" src="js/render/tables.js?v=20260809u"></script>
+    <script type="module" src="js/render/account-ui.js?v=20260809u"></script>
     <!-- admin 模組 (從 admin.js 拆分) -->
-    <script type="module" src="js/admin/modal-utils.js?v=20260727b"></script>
-    <script type="module" src="js/admin/fab-manage.js?v=20260727b"></script>
-    <script type="module" src="js/admin/role-manage.js?v=20260727b"></script>
-    <script type="module" src="js/admin/account-manage.js?v=20260727b"></script>
-    <script type="module" src="js/admin/menu-manage.js?v=20260727b"></script>
-    <script type="module" src="js/admin/activity-log.js?v=20260727b"></script>
-    <script type="module" src="js/admin/misc-manage.js?v=20260727b"></script>
-    <script type="module" src="js/main.js?v=20260727b"></script>
+    <script type="module" src="js/admin/modal-utils.js?v=20260809u"></script>
+    <script type="module" src="js/admin/fab-manage.js?v=20260809u"></script>
+    <script type="module" src="js/admin/role-manage.js?v=20260809u"></script>
+    <script type="module" src="js/admin/account-manage.js?v=20260809u"></script>
+    <script type="module" src="js/admin/menu-manage.js?v=20260809u"></script>
+    <script type="module" src="js/admin/activity-log.js?v=20260809u"></script>
+    <script type="module" src="js/admin/misc-manage.js?v=20260809u"></script>
+    <script type="module" src="js/main.js?v=20260809u"></script>
 
 </body>
 </html>

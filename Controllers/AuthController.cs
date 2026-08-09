@@ -196,6 +196,10 @@ public class AuthController : ControllerBase
             new(ClaimTypes.Role, (account.RoleLevel ?? "user").ToLower()),
             new("LoginSource", loginSource)
         };
+        if (account.CanEditOthers == true)
+        {
+            claims.Add(new Claim("CanEditOthers", "true"));
+        }
         var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
         await HttpContext.SignInAsync(
             CookieAuthenticationDefaults.AuthenticationScheme,
@@ -231,7 +235,8 @@ public class AuthController : ControllerBase
                 canEditOthers = account.CanEditOthers,
                 assignedRoles = assignedRoles,
                 manageableMenus = Array.Empty<string>(),
-                defaultPages = defaultPages
+                defaultPages = defaultPages,
+                preferences = account.Preferences ?? "{}"
             }
         });
     }
@@ -273,7 +278,8 @@ public class AuthController : ControllerBase
             // per-fab：以 FabId 分組成 { fabId: [menuId,...] }
             extraMenus = GroupOverridesByFab(a.MapAccountExtraMenus?.Select(m => (m.FabId, m.MenuId))),
             denyMenus = GroupOverridesByFab(a.MapAccountDenyMenus?.Select(m => (m.FabId, m.MenuId))),
-            defaultPages = a.MapAccountDefaultPages?.ToDictionary(m => m.FabId, m => m.MenuId ?? "") ?? new Dictionary<string, string>()
+            defaultPages = a.MapAccountDefaultPages?.ToDictionary(m => m.FabId, m => m.MenuId ?? "") ?? new Dictionary<string, string>(),
+            preferences = a.Preferences ?? "{}"
         });
     }
 

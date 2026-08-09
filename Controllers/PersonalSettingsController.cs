@@ -60,6 +60,7 @@ public class PersonalSettingsController : ControllerBase
                 EmpId = currentUserId, // 🛡️ 強制綁定，不信任前端傳來的 EmpId
                 MenuId = dto.MenuId,
                 IsHidden = dto.IsHidden,
+                IsFavorite = dto.IsFavorite,
                 OpenTarget = dto.OpenTarget,
                 Icon = dto.Icon,
                 SortOrder = dto.SortOrder
@@ -98,6 +99,28 @@ public class PersonalSettingsController : ControllerBase
         _settingsService.InvalidateVolatileDataCache();
         return Ok(new { success = true, message = "個人設定已儲存" });
     }
+
+    /// <summary>
+    /// 儲存跨裝置同步之個人化設定 (JSON 字串)
+    /// </summary>
+    [HttpPost("Preferences")]
+    public async Task<IActionResult> SavePreferences([FromBody] PreferencesDto dto)
+    {
+        var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(currentUserId)) return Unauthorized();
+
+        var account = await _context.Accounts.FirstOrDefaultAsync(a => a.EmpId == currentUserId);
+        if (account == null) return NotFound();
+
+        account.Preferences = dto.Preferences;
+        await _context.SaveChangesAsync();
+        return Ok(new { success = true });
+    }
+}
+
+public class PreferencesDto
+{
+    public string? Preferences { get; set; }
 }
 
 public class PersonalSettingDto
@@ -114,4 +137,5 @@ public class PersonalSettingDto
     public string? Icon { get; set; }
     
     public int? SortOrder { get; set; }
+    public bool? IsFavorite { get; set; }
 }

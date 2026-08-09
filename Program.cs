@@ -204,6 +204,9 @@ builder.Services.AddAuthorization(options =>
 {
     // 預設不強制要求認證 — 保留與舊行為相容，每支 Controller/Action 個別決定。
     options.FallbackPolicy = null;
+    options.AddPolicy("CanManageAccounts", policy =>
+        policy.RequireAssertion(context =>
+            context.User.IsInRole("admin") || context.User.HasClaim(c => c.Type == "CanEditOthers" && c.Value == "true")));
 });
 
 // === Rate Limiting (Round-3 P1 #4) ===

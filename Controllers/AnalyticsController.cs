@@ -3,12 +3,13 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using EQDashboard.V2.Web.Data;
 using System.Data;
+using System.Security.Claims;
 
 namespace EQDashboard.V2.Web.Controllers;
 
 [Route("api/[controller]")]
 [ApiController]
-[Authorize(Roles = "admin")]
+[Authorize] // Allow all authenticated users; restrict admin methods individually
 public class AnalyticsController : ControllerBase
 {
     private readonly AppDbContext _context;
@@ -24,6 +25,7 @@ public class AnalyticsController : ControllerBase
     /// 取得全站瀏覽與活躍統計趨勢 (DAU / MAU / 各部門分布)
     /// </summary>
     [HttpGet("UsageStats")]
+    [Authorize(Roles = "admin")]
     public async Task<IActionResult> GetUsageStats([FromQuery] int days = 30)
     {
         if (days < 7 || days > 180) days = 30;
@@ -152,6 +154,7 @@ public class AnalyticsController : ControllerBase
     /// 分頁查詢每日帳號活躍造訪明細
     /// </summary>
     [HttpGet("details")]
+    [Authorize(Roles = "admin")]
     public async Task<IActionResult> GetDetails(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
@@ -211,4 +214,104 @@ public class AnalyticsController : ControllerBase
             return StatusCode(500, new { error = "查詢失敗，請稍後重試" });
         }
     }
+
+    /// <summary>
+    /// 看板使用排行 (Menu Usage Rank)
+    /// </summary>
+    [HttpGet("MenuClickStats")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> GetMenuClickStats([FromQuery] int days = 30)
+    {
+        if (days < 7 || days > 180) days = 30;
+        try
+        {
+            var sqlToday = await _context.Database
+                .SqlQueryRaw<DateTime>("SELECT CONVERT(date, GETDATE()) AS [Value]")
+                .FirstOrDefaultAsync();
+            var today = sqlToday != default ? sqlToday.Date : DateTime.Now.Date;
+            var cutoffDate = today.AddDays(-days + 1);
+
+            var query = await _context.DailyMenuClicks.AsNoTracking()
+                .Where(x => x.ClickDate >= cutoffDate)
+                .GroupBy(x => x.MenuId)
+                .Select(g => new
+                {
+                    MenuId = g.Key,
+                    TotalClicks = g.Sum(x => x.ClickCount),
+                    ActiveUsers = g.Select(x => x.EmpId).Distinct().Count(),
+                    LastClick = g.Max(x => x.LastClickTime)
+                })
+                .OrderByDescending(x => x.TotalClicks)
+                .ToListAsync();
+
+            var menus = await _context.Menus.AsNoTracking().ToDictionaryAsync(m => m.MenuId, m => m.DisplayName);
+
+            var items = query.Select(x => new
+            {
+                menuId = x.MenuId,
+                menuName = menus.TryGetValue(x.MenuId, out var name) ? name : "已刪除看板",
+                totalClicks = x.TotalClicks,
+                activeUsers = x.ActiveUsers,
+                lastClick = x.LastClick.ToString("yyyy-MM-dd HH:mm:ss")
+            }).ToList();
+
+            return Ok(new { items });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "查詢看板使用排行失敗");
+            return StatusCode(500, new { error = "查詢失敗，請稍後重試" });
+        }
+    }
+
+    /// <summary>
+    /// 殭屍看板清單 (Zombie Menus)
+    /// 定義：指定天數內完全無人點擊的有效看板 (不含目錄)
+    /// </summary>
+    [HttpGet("ZombieMenus")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> GetZombieMenus([FromQuery] int days = 90)
+    {
+        if (days < 30 || days > 365) days = 90;
+        try
+        {
+            var sqlToday = await _context.Database
+                .SqlQueryRaw<DateTime>("SELECT CONVERT(date, GETDATE()) AS [Value]")
+                .FirstOrDefaultAsync();
+            var today = sqlToday != default ? sqlToday.Date : DateTime.Now.Date;
+            var cutoffDate = today.AddDays(-days + 1);
+
+            // 取得近 N 天有被點擊過的 MenuId
+            var activeMenuIds = await _context.DailyMenuClicks.AsNoTracking()
+                .Where(x => x.ClickDate >= cutoffDate)
+                .Select(x => x.MenuId)
+                .Distinct()
+                .ToListAsync();
+
+            // 取得有效的看板 (不包含 AppGrid, Folder, Pool 項目與停用看板)
+            var zombieMenus = await _context.Menus.AsNoTracking()
+                .Where(m => m.IsEnabled == true && 
+                            m.IsPoolItem != true && 
+                            m.MenuMode != "folder" && 
+                            m.MenuMode != "app_grid")
+                .Where(m => !activeMenuIds.Contains(m.MenuId))
+                .Select(m => new
+                {
+                    menuId = m.MenuId,
+                    menuName = m.DisplayName,
+                    creator = m.CreatedBy,
+                    createTime = "-", // Menus 表無建立時間欄位
+                    url = m.Url
+                })
+                .ToListAsync();
+
+            return Ok(new { items = zombieMenus, thresholdDays = days });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "查詢殭屍看板清單失敗");
+            return StatusCode(500, new { error = "查詢失敗，請稍後重試" });
+        }
+    }
+
 }

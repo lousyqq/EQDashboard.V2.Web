@@ -298,3 +298,4 @@ body.nav-hidden .trigger-top, body.sidebar-hidden .trigger-left {
 }
 
 
+body.viewing-recent #sidebar { display: none !important; }

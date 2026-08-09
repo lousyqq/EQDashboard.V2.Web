@@ -25,12 +25,14 @@ public class SchemaBootstrap : ISchemaBootstrap
             await conn.OpenAsync();
 
             await EnsureAccountStatsColumnsAsync(conn);
+            await EnsurePersonalSettingsColumnsAsync(conn);
             await EnsureOverrideTableAsync(conn, "Map_Account_ExtraMenu");
             await EnsureOverrideTableAsync(conn, "Map_Account_DenyMenu");
             await EnsureMenuAclTableAsync(conn, "Map_Menu_AllowAccount");
             await EnsureMenuAclTableAsync(conn, "Map_Menu_DenyAccount");
             await EnsureUserActivityLogsAsync(conn);
             await EnsureDailyUserVisitsAsync(conn);
+            await EnsureDailyMenuClicksAsync(conn);
             await EnsureIndexesAsync(conn);
             await SeedTestAccountsAsync(conn);
 
@@ -57,7 +59,19 @@ public class SchemaBootstrap : ISchemaBootstrap
             IF COL_LENGTH('Accounts','LoginCount') IS NULL
                 ALTER TABLE Accounts ADD LoginCount INT NULL;
             IF COL_LENGTH('Accounts','LastLoginTime') IS NULL
-                ALTER TABLE Accounts ADD LastLoginTime DATETIME NULL;";
+                ALTER TABLE Accounts ADD LastLoginTime DATETIME NULL;
+            IF COL_LENGTH('Accounts','Preferences') IS NULL
+                ALTER TABLE Accounts ADD Preferences NVARCHAR(MAX) NULL;";
+        using var cmd = new SqlCommand(sql, conn);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>確保 PersonalSettings 有 IsFavorite 欄位 (我的最愛功能)</summary>
+    private async Task EnsurePersonalSettingsColumnsAsync(SqlConnection conn)
+    {
+        const string sql = @"
+            IF COL_LENGTH('dbo.PersonalSettings','IsFavorite') IS NULL
+                ALTER TABLE dbo.PersonalSettings ADD IsFavorite BIT NULL;";
         using var cmd = new SqlCommand(sql, conn);
         await cmd.ExecuteNonQueryAsync();
     }
@@ -217,6 +231,32 @@ public class SchemaBootstrap : ISchemaBootstrap
         }
     }
 
+    /// <summary>確保 DailyMenuClicks 每日看板點擊統計表存在</summary>
+    private async Task EnsureDailyMenuClicksAsync(SqlConnection conn)
+    {
+        using (var checkCmd = new SqlCommand(
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'DailyMenuClicks'", conn))
+        {
+            var exists = (int)(await checkCmd.ExecuteScalarAsync())! > 0;
+            if (!exists)
+            {
+                var createSql = @"
+                    CREATE TABLE DailyMenuClicks (
+                        ClickDate      DATE NOT NULL,
+                        MenuId         NVARCHAR(50)  NOT NULL,
+                        EmpId          NVARCHAR(50)  NOT NULL,
+                        ClickCount     INT           NOT NULL DEFAULT 1,
+                        FirstClickTime DATETIME2     NOT NULL,
+                        LastClickTime  DATETIME2     NOT NULL,
+                        CONSTRAINT PK_DailyMenuClicks PRIMARY KEY (ClickDate, MenuId, EmpId)
+                    );";
+                using var createCmd = new SqlCommand(createSql, conn);
+                await createCmd.ExecuteNonQueryAsync();
+                _logger.LogInformation("✅ SchemaBootstrap 建立資料表 DailyMenuClicks（索引稍後由 EnsureIndexesAsync 建立）");
+            }
+        }
+    }
+
     /// <summary>
     /// 效能索引的「單一事實來源」(single source of truth)。
     /// 本專案無 EF Migrations、啟動也不呼叫 EnsureCreated/Migrate，
@@ -237,6 +277,7 @@ public class SchemaBootstrap : ISchemaBootstrap
             ("IX_Map_Menu_AllowAccount_EmpId",       "Map_Menu_AllowAccount", "EmpId"),
             ("IX_Map_Menu_DenyAccount_EmpId",        "Map_Menu_DenyAccount",  "EmpId"),
             ("IX_DailyUserVisits_Date_Dept",         "DailyUserVisits",       "VisitDate, Department"),
+            ("IX_DailyMenuClicks_Date_MenuId",       "DailyMenuClicks",       "ClickDate, MenuId"),
         };
 
         foreach (var ix in indexes)

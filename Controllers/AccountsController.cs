@@ -7,7 +7,7 @@ namespace EQDashboard.V2.Web.Controllers;
 
 [Route("api/[controller]")]
 [ApiController]
-[Authorize(Roles = "admin")]
+[Authorize(Policy = "CanManageAccounts")]
 public class AccountsController : ControllerBase
 {
     private readonly IAccountService _accountService;

@@ -12,4 +12,5 @@ public class PersonalSetting
     public string? OpenTarget { get; set; }
     public string? Icon { get; set; }
     public int? SortOrder { get; set; }
+    public bool? IsFavorite { get; set; }
 }

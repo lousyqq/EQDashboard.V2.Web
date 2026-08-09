@@ -1,10 +1,10 @@
 // === ui/navigation.js - 語系切換、選單導航、路由、iframe ===
-import { getCustomMenus, getFabs, getRoles, t } from '../config.js?v=20260727b';
-import { loadActivityLogs } from '../admin/activity-log.js?v=20260727b';
-import { openAppGridPage } from '../admin/misc-manage.js?v=20260727b';
-import { renderSidebarMenus } from '../render/sidebar.js?v=20260727b';
-import { renderAccountTable, renderApplyTable, renderAuditTable, renderFabTable, renderMenuConfigTable, renderPersonalMenuManage, renderRoleTable, renderWebpageTable } from '../render/tables.js?v=20260727b';
-import { appState } from '../store.js?v=20260727b';
+import { getCustomMenus, getFabs, getRoles, t } from '../config.js?v=20260809t';
+import { loadActivityLogs } from '../admin/activity-log.js?v=20260809t';
+import { openAppGridPage } from '../admin/misc-manage.js?v=20260809t';
+import { renderSidebarMenus } from '../render/sidebar.js?v=20260809t';
+import { renderAccountTable, renderApplyTable, renderAuditTable, renderFabTable, renderMenuConfigTable, renderPersonalMenuManage, renderRoleTable, renderWebpageTable } from '../render/tables.js?v=20260809t';
+import { appState } from '../store.js?v=20260809t';
 
 
 export function changeLanguage(lang) {
@@ -257,6 +257,11 @@ export function selectTopMenu(menuId) {
             }
         } else if (firstLeafEl) {
             // 側邊欄有東西，代表這是一個群組，自動點擊群組內的第一個網頁
+            // ⭐️ 若目前停在「最近瀏覽」頁，先切換離開，避免 page-recent 殘留
+            const activePage = document.querySelector('.page-section.active');
+            if (activePage && activePage.id === 'page-recent') {
+                navTo('page-home');
+            }
             firstLeafEl.click();
         }
     }, 50);
@@ -586,6 +591,7 @@ export function navTo(pageId, element, subTitle = '') {
         document.body.classList.remove('viewing-recent');
     }
     document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active'));
+
     if (element) element.classList.add('active');
     document.querySelectorAll('.page-section').forEach(el => el.classList.remove('active'));
     const targetPage = document.getElementById(pageId);
@@ -790,6 +796,23 @@ export function openRecentPage() {
 
     navTo('page-recent', null, '最近瀏覽');
 }
-window.openRecentOffcanvas = openRecentPage; // 保持向下相容
+window.openRecentOffcanvas = openRecentPage; // 保持向下相容（按鈕 onclick 仍用舊名）
 window.openRecentPage = openRecentPage;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

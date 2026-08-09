@@ -13,6 +13,7 @@ public class Account
     public bool? CanEditOthers { get; set; }
     public int? LoginCount { get; set; }
     public DateTime? LastLoginTime { get; set; }
+    public string? Preferences { get; set; }
 
     public ICollection<MapAccountRole>? MapAccountRoles { get; set; }
     public ICollection<MapAccountManageMenu>? MapAccountManageMenus { get; set; }
