@@ -193,66 +193,14 @@ export function selectTopMenu(menuId) {
         const firstLeafEl = document.querySelector('#dynamic-sidebar-menus .menu-item:not([aria-expanded])');
 
         if (!hasSidebarItems) {
-            // 側邊欄沒有東西，代表這是一個獨立的主選單網頁，直接執行開啟動作
+            // 側邊欄沒有東西，代表這是一個獨立的主選單網頁，交給 activateMenu 處理以留下瀏覽紀錄
             const menus = getCustomMenus();
             const activeRoot = menus.find(m => window.cleanId(m.id || m.MenuId || m.menuId) === window.cleanId(menuId));
 
             if (activeRoot) {
-                let mId = activeRoot.id || activeRoot.MenuId || activeRoot.menuId;
-                let dName = activeRoot.displayName || activeRoot.DisplayName || activeRoot.sysName || activeRoot.SysName;
-                let mMode = activeRoot.menuMode || activeRoot.MenuMode;
-                let mUrl = activeRoot.url || activeRoot.Url;
-                let mTarget = activeRoot.target || activeRoot.Target || activeRoot.openTarget || activeRoot.OpenTarget;
-                let mTargetPage = activeRoot.targetPage || activeRoot.TargetPage;
-                let isEdited = activeRoot.isEdited || activeRoot.IsEdited;
-
-                if (typeof i18n !== 'undefined' && i18n[appState.currentLang] && i18n[appState.currentLang]['dyn_' + mId] && !isEdited) {
-                    dName = i18n[appState.currentLang]['dyn_' + mId];
-                }
-
-                if (mMode === 'app_grid') openAppGridPage(mId, dName, null);
-                else if (mUrl) {
-                    // ⚠️ XSS 防護：window.open 對 `javascript:` URL 在 same-origin 下會執行；
-                    let safeUrl = (typeof window.safeExternalUrl === 'function') ? window.safeExternalUrl(mUrl) : mUrl;
-                    safeUrl = normalizeTargetUrl(safeUrl);
-                    if (safeUrl !== '#') {
-                        if (mTarget === 'blank') {
-                            window.open(safeUrl, '_blank', 'noopener,noreferrer');
-                        } else if (mTarget === 'ie') {
-                            openInIE(safeUrl);
-                        } else if (mTarget === 'fullscreen') {
-                            const w = screen.availWidth || window.screen.width || 1920;
-                            const h = screen.availHeight || window.screen.height || 1080;
-                            window.open(safeUrl, '_blank', `width=${w},height=${h},top=0,left=0,resizable=yes,scrollbars=yes,status=yes`);
-                        } else if (mTarget === 'popup') {
-                            const w = Math.min(1024, (screen.availWidth || 1280) - 100);
-                            const h = Math.min(768, (screen.availHeight || 800) - 100);
-                            const left = Math.round(((screen.availWidth || 1280) - w) / 2);
-                            const top = Math.round(((screen.availHeight || 800) - h) / 2);
-                            window.open(safeUrl, '_blank', `width=${w},height=${h},top=${top},left=${left},resizable=yes,scrollbars=yes,status=yes`);
-                        } else if (mTarget === 'iframe_fullscreen') {
-                            openDynamicIframe(safeUrl, dName, null, true);
-                        } else {
-                            openDynamicIframe(safeUrl, dName, null, false);
-                        }
-                    }
-                }
-                else if (mTargetPage) navTo(mTargetPage, null, dName);
-                else {
-                    let underConstructionPage = document.getElementById('page-under-construction');
-                    const mainContent = document.getElementById('main-content');
-                    if (!underConstructionPage) {
-                        underConstructionPage = document.createElement('div');
-                        underConstructionPage.id = 'page-under-construction';
-                        underConstructionPage.className = 'page-section';
-                        underConstructionPage.innerHTML = `<div class="manage-alert" id="under-construction-text"></div>`;
-                        if (mainContent) mainContent.appendChild(underConstructionPage);
-                    } else if (underConstructionPage.parentElement && underConstructionPage.parentElement.id !== 'main-content') {
-                        if (mainContent) mainContent.appendChild(underConstructionPage);
-                    }
-                    const textEl = document.getElementById('under-construction-text');
-                    if (textEl) textEl.innerText = `${dName} 內容建置中`;
-                    navTo('page-under-construction', null, dName);
+                const mId = activeRoot.id || activeRoot.MenuId || activeRoot.menuId;
+                if (typeof window.activateMenu === 'function') {
+                    window.activateMenu(mId);
                 }
             }
         } else if (firstLeafEl) {

@@ -1,4 +1,4 @@
-﻿// === admin/traffic-stats.js — 總瀏覽統計與使用率 (DAU/MAU/部門熱度) 查詢頁 (admin only) ===
+// === admin/traffic-stats.js — 總瀏覽統計與使用率 (DAU/MAU/部門熱度) 查詢頁 (admin only) ===
 //
 // 對應後端：GET /api/Analytics/UsageStats?days=N
 //           GET /api/Analytics/details?page=...&pageSize=...
@@ -155,6 +155,60 @@ export async function loadTrafficStats() {
 
         // 當點擊進入統計時，順便載入第一頁每日明細
         loadTrafficDetails(1);
+
+        // 5. Popular Menus (常用看板)
+        const popularBody = document.getElementById('tsPopularBody');
+        if (popularBody) {
+            popularBody.innerHTML = skeletonRows(4, 5);
+            fetch(`/api/Analytics/MenuClickStats?days=${days}`)
+                .then(r => r.ok ? r.json() : Promise.reject('HTTP ' + r.status))
+                .then(d => {
+                    if (!d.items || d.items.length === 0) {
+                        popularBody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-muted">目前無看板點擊紀錄</td></tr>`;
+                    } else {
+                        popularBody.innerHTML = d.items.map(item => `
+                            <tr>
+                                <td class="fw-bold text-dark"><i class="fas fa-desktop text-primary me-2"></i>${escHtml(item.menuName)}</td>
+                                <td><span class="badge bg-primary px-3 py-1">${(item.totalClicks || 0).toLocaleString()} 次</span></td>
+                                <td><span class="badge bg-info text-dark px-3 py-1">${(item.activeUsers || 0).toLocaleString()} 人</span></td>
+                                <td class="text-muted small">${escHtml(item.lastClick)}</td>
+                            </tr>
+                        `).join('');
+                    }
+                })
+                .catch(e => {
+                    console.error('載入常用看板失敗', e);
+                    popularBody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-danger">載入失敗: ${escHtml(e.message || e)}</td></tr>`;
+                });
+        }
+
+        // 6. Zombie Menus (殭屍看板)
+        const zombieBody = document.getElementById('tsZombieBody');
+        const zombieDesc = document.getElementById('tsZombieDesc');
+        if (zombieBody) {
+            zombieBody.innerHTML = skeletonRows(4, 5);
+            fetch(`/api/Analytics/ZombieMenus?days=${days}`)
+                .then(r => r.ok ? r.json() : Promise.reject('HTTP ' + r.status))
+                .then(d => {
+                    if (zombieDesc) zombieDesc.innerText = `以下看板在過去 ${d.thresholdDays || days} 天內從未被點擊過。`;
+                    if (!d.items || d.items.length === 0) {
+                        zombieBody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-muted">恭喜！目前沒有殭屍看板</td></tr>`;
+                    } else {
+                        zombieBody.innerHTML = d.items.map(item => `
+                            <tr>
+                                <td class="text-muted small">${escHtml(item.menuId)}</td>
+                                <td class="fw-bold text-dark"><i class="fas fa-ghost text-warning me-2"></i>${escHtml(item.menuName)}</td>
+                                <td>${escHtml(item.creator)}</td>
+                                <td class="text-muted small">${escHtml(item.createDate)}</td>
+                            </tr>
+                        `).join('');
+                    }
+                })
+                .catch(e => {
+                    console.error('載入殭屍看板失敗', e);
+                    zombieBody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-danger">載入失敗: ${escHtml(e.message || e)}</td></tr>`;
+                });
+        }
 
     } catch (err) {
         console.error('[loadTrafficStats] 載入統計失敗:', err);

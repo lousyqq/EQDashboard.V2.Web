@@ -558,6 +558,12 @@
                         <li class="nav-item" role="presentation">
                             <button class="nav-link fw-bold" id="ts-tab-details-btn" data-bs-toggle="tab" data-bs-target="#ts-tab-details" type="button" role="tab"><i class="fas fa-list me-1"></i><span data-i18n="ts_tab_details">每日造訪明細</span></button>
                         </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link fw-bold" id="ts-tab-popular-btn" data-bs-toggle="tab" data-bs-target="#ts-tab-popular" type="button" role="tab"><i class="fas fa-fire me-1"></i><span data-i18n="ts_tab_popular">常用看板</span></button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link fw-bold" id="ts-tab-zombie-btn" data-bs-toggle="tab" data-bs-target="#ts-tab-zombie" type="button" role="tab"><i class="fas fa-ghost me-1"></i><span data-i18n="ts_tab_zombie">殭屍看板</span></button>
+                        </li>
                     </ul>
 
                     <!-- Tab Contents -->
@@ -679,6 +685,51 @@
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Tab 5: Popular Menus -->
+                        <div class="tab-pane fade" id="ts-tab-popular" role="tabpanel">
+                            <div class="card border-0 shadow-sm p-3 mb-3">
+                                <div class="table-responsive" style="max-height: 55vh; overflow-y: auto;">
+                                    <table class="table table-sm table-hover align-middle text-nowrap mb-0">
+                                        <thead class="table-light sticky-top">
+                                            <tr>
+                                                <th style="width: 250px;">看板名稱</th>
+                                                <th style="width: 150px;">累計點擊次數</th>
+                                                <th style="width: 150px;">獨立活躍人數</th>
+                                                <th>最後點擊時間</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="tsPopularBody">
+                                            <tr><td colspan="4" class="text-center py-4 text-muted" data-i18n="loading">載入中...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tab 6: Zombie Menus -->
+                        <div class="tab-pane fade" id="ts-tab-zombie" role="tabpanel">
+                            <div class="card border-0 shadow-sm p-3 mb-3">
+                                <div class="alert alert-warning py-2 mb-3">
+                                    <i class="fas fa-info-circle me-1"></i> <span id="tsZombieDesc">以下看板在過去 N 天內從未被點擊過。</span>
+                                </div>
+                                <div class="table-responsive" style="max-height: 50vh; overflow-y: auto;">
+                                    <table class="table table-sm table-hover align-middle text-nowrap mb-0">
+                                        <thead class="table-light sticky-top">
+                                            <tr>
+                                                <th style="width: 120px;">看板 ID</th>
+                                                <th style="width: 250px;">看板名稱</th>
+                                                <th style="width: 150px;">建立者</th>
+                                                <th>建立日期</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="tsZombieBody">
+                                            <tr><td colspan="4" class="text-center py-4 text-muted" data-i18n="loading">載入中...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -755,27 +806,28 @@
     <script src="appbase.js"></script>
 
     <!-- __APP_VER__ 已在 modals.html fetch 之前定義；以下 <script src> 共用同一版本碼 -->
-    <script type="module" src="js/config.js?v=20260809u"></script>
-    <script type="module" src="js/api.js?v=20260809u"></script>
-    <script type="module" src="js/auth.js?v=20260809u"></script>
+    <script type="module" src="js/config.js?v=20260810a"></script>
+    <script type="module" src="js/api.js?v=20260810a"></script>
+    <script type="module" src="js/auth.js?v=20260810a"></script>
     <!-- ui 模組 (從 ui.js 拆分) -->
-    <script type="module" src="js/ui/layout.js?v=20260809u"></script>
-    <script type="module" src="js/ui/navigation.js?v=20260809u"></script>
-    <script type="module" src="js/ui/dialogs.js?v=20260809u"></script>
+    <script type="module" src="js/ui/layout.js?v=20260810a"></script>
+    <script type="module" src="js/ui/navigation.js?v=20260810a"></script>
+    <script type="module" src="js/ui/dialogs.js?v=20260810a"></script>
     <!-- render 模組 (從 render.js 拆分) -->
-    <script type="module" src="js/render/sidebar.js?v=20260809u"></script>
-    <script type="module" src="js/render/sidebar-item.js?v=20260809u"></script>
-    <script type="module" src="js/render/tables.js?v=20260809u"></script>
-    <script type="module" src="js/render/account-ui.js?v=20260809u"></script>
+    <script type="module" src="js/render/sidebar.js?v=20260810a"></script>
+    <script type="module" src="js/render/sidebar-item.js?v=20260810a"></script>
+    <script type="module" src="js/render/tables.js?v=20260810a"></script>
+    <script type="module" src="js/render/account-ui.js?v=20260810a"></script>
     <!-- admin 模組 (從 admin.js 拆分) -->
-    <script type="module" src="js/admin/modal-utils.js?v=20260809u"></script>
-    <script type="module" src="js/admin/fab-manage.js?v=20260809u"></script>
-    <script type="module" src="js/admin/role-manage.js?v=20260809u"></script>
-    <script type="module" src="js/admin/account-manage.js?v=20260809u"></script>
-    <script type="module" src="js/admin/menu-manage.js?v=20260809u"></script>
-    <script type="module" src="js/admin/activity-log.js?v=20260809u"></script>
-    <script type="module" src="js/admin/misc-manage.js?v=20260809u"></script>
-    <script type="module" src="js/main.js?v=20260809u"></script>
+    <script type="module" src="js/admin/modal-utils.js?v=20260810a"></script>
+    <script type="module" src="js/admin/fab-manage.js?v=20260810a"></script>
+    <script type="module" src="js/admin/role-manage.js?v=20260810a"></script>
+    <script type="module" src="js/admin/account-manage.js?v=20260810a"></script>
+    <script type="module" src="js/admin/menu-manage.js?v=20260810a"></script>
+    <script type="module" src="js/admin/activity-log.js?v=20260810a"></script>
+    <script type="module" src="js/admin/traffic-stats.js?v=20260810a"></script>
+    <script type="module" src="js/admin/misc-manage.js?v=20260810a"></script>
+    <script type="module" src="js/main.js?v=20260810a"></script>
 
 </body>
 </html>
