@@ -1,13 +1,13 @@
 ﻿// === admin/role-manage.js - 群組管理 CRUD ===
 
-import { getCustomMenus, getRoles } from '../config.js?v=20260727b';
+import { getCustomMenus, getRoles, t } from '../config.js';
 
 
-import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260727b';
-import { deleteRoleAPI, fetchInitialDataFromDB, saveRoleAPI } from '../api.js?v=20260727b';
-import { renderSidebarMenus } from '../render/sidebar.js?v=20260727b';
-import { renderAccountTable, renderFabTable, renderRoleTable } from '../render/tables.js?v=20260727b';
-import { customAlert, customConfirm } from '../ui/dialogs.js?v=20260727b';
+import { hideModalSafely, showModalSafely } from './modal-utils.js';
+import { deleteRoleAPI, fetchInitialDataFromDB, saveRoleAPI } from '../api.js';
+import { renderSidebarMenus } from '../render/sidebar.js';
+import { renderAccountTable, renderFabTable, renderRoleTable } from '../render/tables.js';
+import { customAlert, customConfirm } from '../ui/dialogs.js';
 
 // === Roles 群組管理 ===
 export function openAddRoleModal() {
@@ -103,8 +103,8 @@ window.renderRoleMenuCheckboxes = function (selectedIds) {
                  onclick="toggleRoleMenuSelection(this)">
                 <i class="fas fa-grip-vertical me-2 opacity-50" title="拖曳排序" onclick="event.stopPropagation()"></i>
                 <i class="role-check-icon ${chkClass} me-1"></i>
-                <span class="fw-bold tracking-wide">${mDName}</span>
-                <input type="checkbox" class="d-none role-menu-cb" value="${mId}" ${isSelected ? 'checked' : ''}>
+                <span class="fw-bold tracking-wide">${window.escapeHTML(mDName)}</span>
+                <input type="checkbox" class="d-none role-menu-cb" value="${window.escapeHTML(mId)}" ${isSelected ? 'checked' : ''}>
             </div>
         `);
     });
@@ -181,8 +181,7 @@ export async function saveRoleItem(e) {
 
         const result = await saveRoleAPI(isNew, payload);
         if (!result.success) {
-            if (btn) window.setButtonLoading(btn, false);
-            customAlert("儲存失敗: " + result.message);
+            customAlert(t('err_save_failed', '儲存失敗：') + result.message);
             return false;
         }
 
@@ -190,28 +189,39 @@ export async function saveRoleItem(e) {
         await window.fetchInitialDataFromDB();
 
         hideModalSafely('roleModal');
-        if (btn) window.setButtonLoading(btn, false);
         if (typeof renderRoleTable === 'function') renderRoleTable();
         if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
-    } catch (error) { console.error("[saveRoleItem] 錯誤:", error); }
+    } catch (error) {
+        // loading 解除統一移到 finally，例外時按鈕不會再卡住；同時給使用者明確回饋（2026-08-15 修）
+        console.error("[saveRoleItem] 錯誤:", error);
+        customAlert(t('err_unexpected', '發生非預期的錯誤：') + (error.message || error));
+    } finally {
+        if (btn) window.setButtonLoading(btn, false);
+    }
     return false;
 }
 
 export async function deleteRole(id) {
     try {
         customConfirm('確定要刪除此群組嗎？(若有廠區或帳號綁定此群組將自動解除)', async () => {
-            const result = await deleteRoleAPI(id);
-            if (!result.success) {
-                customAlert("刪除失敗: " + result.message);
-                return;
+            try {
+                const result = await deleteRoleAPI(id);
+                if (!result.success) {
+                    customAlert(t('err_delete_failed', '刪除失敗：') + result.message);
+                    return;
+                }
+
+                // 儲存成功後，重新從後端拉取全部資料以更新前端記憶體
+                await window.fetchInitialDataFromDB();
+
+                if (typeof renderRoleTable === 'function') renderRoleTable();
+                if (typeof renderFabTable === 'function') renderFabTable();
+                if (typeof renderAccountTable === 'function') renderAccountTable();
+            } catch (err) {
+                // ⚠️ callback 內的例外不會被外層 try 接到 → 必須自帶 try
+                console.error("[deleteRole] 回呼錯誤:", err);
+                customAlert(t('err_unexpected', '發生非預期的錯誤：') + (err.message || err));
             }
-
-            // 儲存成功後，重新從後端拉取全部資料以更新前端記憶體
-            await window.fetchInitialDataFromDB();
-
-            if (typeof renderRoleTable === 'function') renderRoleTable();
-            if (typeof renderFabTable === 'function') renderFabTable();
-            if (typeof renderAccountTable === 'function') renderAccountTable();
         });
     } catch (e) { console.error("[deleteRole] 錯誤:", e); }
 }

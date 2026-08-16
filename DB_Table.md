@@ -97,6 +97,9 @@ CREATE TABLE dbo.Menus (
     IsPoolItem  BIT           NULL,
     IsEdited    BIT           NULL,
     GlobalOrder INT           NULL,
+    CreatedAt   DATETIME2     NULL,
+    Description NVARCHAR(255) NULL,
+    Keywords    NVARCHAR(255) NULL,
     CONSTRAINT PK_Menus PRIMARY KEY (MenuId)
 );
 GO
@@ -415,3 +418,5 @@ GO
 - **2026-07-30 [新增每日看板點擊統計表]** (`sql/2026-07-30_Add_DailyMenuClicks.sql`)：新增 `DailyMenuClicks` 實體表與對應索引 (`IX_DailyMenuClicks_Date_MenuId`)，同步修正本檔快照區表清單總表數 19→20。
 - **2026-08-09 [新增我的最愛功能欄位]** (`sql/2026-08-09_Add_PersonalSettings_IsFavorite.sql`)：於 `PersonalSettings` 表新增 `IsFavorite` 欄位供釘選常用看板功能使用，已同步於 `SchemaBootstrap.cs` 自動冪等建立。
 - **2026-08-09 [新增帳號偏好設定欄位]** (`sql/2026-08-09_Add_Accounts_Preferences.sql`)：於 `Accounts` 表新增 `Preferences` 欄位供存放跨裝置同步之個人化設定 (如最近瀏覽紀錄 JSON)，已同步於 `SchemaBootstrap.cs` 自動冪等建立。
+- **2026-08-11 [新增看板 Metadata 欄位]** (`sql/2026-08-11_Add_Menus_Metadata.sql`)：於 `Menus` 表新增 `CreatedAt`、`Description`、`Keywords` 欄位供過濾殭屍看板與優化搜尋體驗使用，已同步於 `SchemaBootstrap.cs` 自動冪等建立。
+- **2026-08-16 [資料修正：清除 Department 內的角色名稱污染]** (`sql/2026-08-16_Fix_Account_Department_RoleNamePollution.sql`)：**無 Schema 變更，純資料清理**。`AuthController` 四個自動建帳分支在查不到部門時，曾把角色名稱（`一般使用者` / `系統管理員`）當成部門寫入 `Accounts.Department`，並經 `UpdateLoginStats` 抄進 `DailyUserVisits.Department` → 「各部門活躍比率」報表長出不存在的部門。程式面已於同日改為「查不到就留 `NULL`」；本腳本把既有的兩表髒資料一併改回 `NULL`（冪等，含稽核與驗收查詢）。⚠️ 此腳本**不在** `SchemaBootstrap` 的冪等修復範圍內（它只補表/欄位/索引，不做資料清理），**必須手動執行一次**。

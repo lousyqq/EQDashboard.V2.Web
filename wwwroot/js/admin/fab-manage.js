@@ -1,13 +1,13 @@
 ﻿// === admin/fab-manage.js - 廠區管理 CRUD ===
 
-import { getCustomMenus, getFabs } from '../config.js?v=20260727b';
+import { getCustomMenus, getFabs, t } from '../config.js';
 
 
-import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260727b';
-import { deleteFabAPI, fetchInitialDataFromDB, saveFabAPI } from '../api.js?v=20260727b';
-import { renderFabTable } from '../render/tables.js?v=20260727b';
-import { customAlert, customConfirm } from '../ui/dialogs.js?v=20260727b';
-import { appState } from '../store.js?v=20260727b';
+import { hideModalSafely, showModalSafely } from './modal-utils.js';
+import { deleteFabAPI, fetchInitialDataFromDB, saveFabAPI } from '../api.js';
+import { renderFabTable } from '../render/tables.js';
+import { customAlert, customConfirm } from '../ui/dialogs.js';
+import { appState } from '../store.js';
 
 
 // === 權限檢查輔助 ===
@@ -98,10 +98,9 @@ export async function saveFabItem(e) {
         if (isNew) {
             let fabs = getFabs();
             if (fabs.some(f => window.cleanId(f.fabName) === window.cleanId(fabName))) {
-                if (btn) window.setButtonLoading(btn, false);
                 window.shakeInput('fabNameInput');
-                customAlert('廠區名稱已存在！'); 
-                return false; 
+                customAlert('廠區名稱已存在！');
+                return false;
             }
         }
 
@@ -115,8 +114,7 @@ export async function saveFabItem(e) {
 
         const result = await saveFabAPI(isNew, payload);
         if (!result.success) {
-            if (btn) window.setButtonLoading(btn, false);
-            customAlert("儲存失敗: " + result.message);
+            customAlert(t('err_save_failed', '儲存失敗：') + result.message);
             return false;
         }
 
@@ -124,27 +122,38 @@ export async function saveFabItem(e) {
         await window.fetchInitialDataFromDB();
 
         hideModalSafely('fabModal');
-        if (btn) window.setButtonLoading(btn, false);
         if (typeof renderFabTable === 'function') renderFabTable();
         if (typeof renderFabSwitcher === 'function') renderFabSwitcher();
-    } catch (error) { console.error("[saveFabItem] 錯誤:", error); }
+    } catch (error) {
+        // loading 解除統一移到 finally，例外時按鈕不會再卡住；同時給使用者明確回饋（2026-08-15 修）
+        console.error("[saveFabItem] 錯誤:", error);
+        customAlert(t('err_unexpected', '發生非預期的錯誤：') + (error.message || error));
+    } finally {
+        if (btn) window.setButtonLoading(btn, false);
+    }
     return false;
 }
 
 export async function deleteFab(id) {
     try {
         customConfirm('確定要刪除此廠區嗎？', async () => {
-            const result = await deleteFabAPI(id);
-            if (!result.success) {
-                customAlert("刪除失敗: " + result.message);
-                return;
+            try {
+                const result = await deleteFabAPI(id);
+                if (!result.success) {
+                    customAlert(t('err_delete_failed', '刪除失敗：') + result.message);
+                    return;
+                }
+
+                // 儲存成功後，重新從後端拉取全部資料以更新前端記憶體
+                await window.fetchInitialDataFromDB();
+
+                if (typeof renderFabTable === 'function') renderFabTable();
+                if (typeof renderFabSwitcher === 'function') renderFabSwitcher();
+            } catch (err) {
+                // ⚠️ callback 內的例外不會被外層 try 接到 → 必須自帶 try
+                console.error("[deleteFab] 回呼錯誤:", err);
+                customAlert(t('err_unexpected', '發生非預期的錯誤：') + (err.message || err));
             }
-
-            // 儲存成功後，重新從後端拉取全部資料以更新前端記憶體
-            await window.fetchInitialDataFromDB();
-
-            if (typeof renderFabTable === 'function') renderFabTable();
-            if (typeof renderFabSwitcher === 'function') renderFabSwitcher();
         });
     } catch (e) { console.error("[deleteFab] 錯誤:", e); }
 }

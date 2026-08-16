@@ -1,9 +1,9 @@
 // === render/sidebar.js - 側邊欄選單渲染 ===
 // ====== render.js 最上方的修復 ======
-import { getCustomMenus, getDataTableLang, getFabs, getPersonalSettings, getRoles, t } from '../config.js?v=20260727b';
-import { generateSidebarMenuItem } from './sidebar-item.js?v=20260727b';
-import { navTo, selectTopMenu } from '../ui/navigation.js?v=20260727b';
-import { appState } from '../store.js?v=20260727b';
+import { getCustomMenus, getDataTableLang, getFabs, getPersonalSettings, getRoles, t } from '../config.js';
+import { generateSidebarMenuItem } from './sidebar-item.js';
+import { navTo, selectTopMenu } from '../ui/navigation.js';
+import { appState } from '../store.js';
 
 
 window.cleanId = function (id) {
@@ -222,6 +222,38 @@ export function getDtPageLen(tableId, fallback = 10) {
     return (typeof len === 'number' && len > 0) ? len : fallback;
 }
 
+// 管理頁 DataTable 的「剛新增置頂」機制（記憶體，整頁重整即消失）。
+//   問題：新增一筆主選單配置/看板時，order 是接在最後面 → 新資料會掉到最後一頁，使用者按完新增後看不到成果。
+//   規則：新增成功後，該筆固定顯示在第一頁最上方（多筆連續新增時最新的在最上），
+//         直到使用者整頁重整才回歸原本的 order 排序。
+const _dtForceFirstPage = {};
+
+export function pinNewRow(tableId, id) {
+    const cid = window.cleanId(id);
+    if (!cid) return;
+    if (!appState.dtPinnedNewIds) appState.dtPinnedNewIds = {};
+    const list = appState.dtPinnedNewIds[tableId] || [];
+    appState.dtPinnedNewIds[tableId] = [cid, ...list.filter(x => x !== cid)];
+    // 光把列搬到最前面還不夠：safeDestroyDataTable 會把「使用者原本停留的頁次」記下來還原，
+    // 若不一併要求回到第 1 頁，置頂的那列會在畫面外。
+    _dtForceFirstPage[tableId] = true;
+}
+
+// 將被 pinNewRow 標記過的項目搬到陣列最前面，其餘維持呼叫端原本的排序。
+//   rows：已排序好的資料陣列；getId：可選，取出該筆 id 的函式（預設吃 id / MenuId）。
+export function applyPinnedNewFirst(tableId, rows, getId) {
+    const pinned = (appState.dtPinnedNewIds && appState.dtPinnedNewIds[tableId]) || [];
+    if (!pinned.length || !Array.isArray(rows) || rows.length === 0) return rows;
+    const idOf = getId || (r => window.cleanId(r.id || r.MenuId));
+    const head = [];
+    pinned.forEach(pid => {
+        const hit = rows.find(r => idOf(r) === pid);
+        if (hit && !head.includes(hit)) head.push(hit);   // 已被刪除的 pinned id 找不到 → 自然略過
+    });
+    if (!head.length) return rows;
+    return head.concat(rows.filter(r => !head.includes(r)));
+}
+
 // 防呆小幫手：安全摧毀 DataTable（摧毀前先記住目前所在分頁＋每頁筆數，供重建後還原，避免狀態啟用/禁用、編輯、刪除後跳回第一頁/預設筆數）
 export function safeDestroyDataTable(tableId) {
     try {
@@ -249,8 +281,11 @@ export function initDataTable(tableId, sortable = true) {
             });
             appState.dtInstances[tableId] = dt;
             // 還原摧毀前的分頁；資料列變少導致頁數縮減時 clamp 到最後一頁，避免落在空白頁（draw(false) 不重置分頁）。
+            // ⭐️ 例外：剛按過新增（pinNewRow）時「不還原分頁」，讓畫面留在第 1 頁 —— 置頂的新資料才看得到。
+            const forceFirstPage = _dtForceFirstPage[tableId] === true;
+            delete _dtForceFirstPage[tableId];
             const savedPage = _dtPageMemory[tableId];
-            if (typeof savedPage === 'number' && savedPage > 0) {
+            if (!forceFirstPage && typeof savedPage === 'number' && savedPage > 0) {
                 try {
                     const info = dt.page.info();
                     const targetPage = Math.min(savedPage, Math.max(0, info.pages - 1));
@@ -266,17 +301,6 @@ export function initDataTable(tableId, sortable = true) {
 export function renderSidebarMenus() {
     try {
         if (!appState.currentUser) return;
-
-        // 切換模組 / 廠區 / 重新載入時，自動清掉看板搜尋狀態，避免目錄樹被搜尋結果蓋住。
-        // （打字本身只呼叫 filterSidebarMenus，不會進到這裡，所以不影響搜尋中的即時過濾。）
-        const _searchInput = document.getElementById('sidebar-search-input');
-        if (_searchInput && _searchInput.value) _searchInput.value = '';
-        const _searchClear = document.getElementById('sidebar-search-clear');
-        if (_searchClear) _searchClear.style.display = 'none';
-        const _searchResults = document.getElementById('sidebar-search-results');
-        if (_searchResults) { _searchResults.style.display = 'none'; _searchResults.innerHTML = ''; }
-        const _treeEl = document.getElementById('dynamic-sidebar-menus');
-        if (_treeEl) _treeEl.style.display = '';
 
         let rawMenus = getCustomMenus();
         if (!Array.isArray(rawMenus)) rawMenus = [];
@@ -535,7 +559,8 @@ export function renderSidebarMenus() {
                 let dName = root.displayName || root.name || '未命名選單';
                 if (typeof i18n !== 'undefined' && i18n[appState.currentLang] && i18n[appState.currentLang]['dyn_' + root.id] && !root.isEdited) dName = i18n[appState.currentLang]['dyn_' + root.id];
                 const isActive = window.cleanId(root.id) === window.cleanId(appState.currentActiveTopMenuId) ? 'active' : '';
-                topLinksHtml += `<a class="top-menu-link text-truncate ${isActive}" onclick="selectTopMenu('${root.id}')" title="${window.escapeHTML(dName)}">${window.escapeHTML(dName)}</a>`;
+                // ⚠️ ID 進 JS onclick 一律 _jsArg()（CLAUDE.md §4-前端-5）：看板 ID 是管理者自由輸入
+                topLinksHtml += `<a class="top-menu-link text-truncate ${isActive}" onclick="selectTopMenu('${window._jsArg(root.id)}')" title="${window.escapeHTML(dName)}">${window.escapeHTML(dName)}</a>`;
             });
         }
         const topMenusContainer = document.getElementById('top-dynamic-menus');
@@ -574,7 +599,9 @@ export function renderSidebarMenus() {
                 { id: 'page-config-manage', icon: 'fas fa-database', i18nKey: 'db_sync', fallback: '資料庫與同步', display: role === 'admin' }
             ];
             sysMenus.forEach(sm => {
-                if (sm.display) { const smName = t(sm.i18nKey, sm.fallback); html += `<div class="menu-item" onclick="navTo('${sm.id}', this, '${smName}')"><i class="${sm.icon} menu-icon"></i> <span class="text-truncate">${smName}</span></div>`; }
+                // role/tabindex 必留：這是 <div> 不是 <button>，沒有它就完全 Tab 不到、Enter 也沒反應。
+                // Enter/Space 的實際啟動由 main.js 的委派 keydown 統一處理（子選單是 lazy 插入的，逐處綁定會漏）。
+                if (sm.display) { const smName = t(sm.i18nKey, sm.fallback); html += `<div class="menu-item" role="button" tabindex="0" onclick="navTo('${sm.id}', this, '${smName}')"><i class="${sm.icon} menu-icon" aria-hidden="true"></i> <span class="text-truncate">${smName}</span></div>`; }
             });
         } else {
             const activeRoot = rootMenus.find(m => window.cleanId(m.id) === window.cleanId(appState.currentActiveTopMenuId));
@@ -624,9 +651,6 @@ export function renderSidebarMenus() {
             }
         }
 
-        // 看板搜尋：初次渲染後綁定一次事件（內部以 dataset.bound 防重複綁定）
-        if (typeof window.setupSidebarSearch === 'function') window.setupSidebarSearch();
-
         // ⭐️ App Shell Caching：將渲染結果存入 localStorage，供 Ctrl+F5 瞬間恢復畫面使用
         if (topMenusContainer) localStorage.setItem('app_shell_top_menus', topMenusContainer.innerHTML);
         if (sidebarContainer) localStorage.setItem('app_shell_sidebar_menus', sidebarContainer.innerHTML);
@@ -634,126 +658,8 @@ export function renderSidebarMenus() {
     } catch (err) { console.error("renderSidebarMenus error", err); }
 }
 
-// === 看板搜尋（task a）=====================================================
-//  - 跨「目前可見看板」(appState._currentValidMenus，已由 renderSidebarMenus 做完權限過濾) 即時過濾，
-//    不只搜尋目前選到的模組 → 解決「看板太多、跨模組找不到」的痛點。
-//  - 只列「可開啟的看板」(有 url / targetPage / app_grid)，排除純資料夾。
-//  - 點結果用 window.activateMenu(id) 導航，它會自動切到正確的上方模組並開啟看板。
-//  - 安全性：只讀 appState._currentValidMenus（已過濾），絕不退回未過濾的 getCustomMenus()，避免洩漏無權看板。
-export function filterSidebarMenus(term) {
-    const treeEl = document.getElementById('dynamic-sidebar-menus');
-    const resultsEl = document.getElementById('sidebar-search-results');
-    if (!resultsEl) return;
-
-    const kw = (term || '').trim().toLowerCase();
-
-    if (!kw) {
-        resultsEl.style.display = 'none';
-        resultsEl.innerHTML = '';
-        if (treeEl) treeEl.style.display = '';
-        return;
-    }
-
-    const all = Array.isArray(appState._currentValidMenus) ? appState._currentValidMenus : [];
-
-    const isOpenable = (m) => !!(m.url || m.targetPage || (m.menuMode === 'app_grid'));
-    const nameOf = (m) => {
-        let n = m.displayName || m.name || '未命名看板';
-        if (typeof i18n !== 'undefined' && i18n[appState.currentLang] && i18n[appState.currentLang]['dyn_' + m.id] && !m.isEdited) n = i18n[appState.currentLang]['dyn_' + m.id];
-        return n;
-    };
-
-    const matches = all
-        .filter(m => m && window.cleanId(m.id) !== '' && isOpenable(m) && nameOf(m).toLowerCase().includes(kw))
-        .slice(0, 50);
-
-    if (treeEl) treeEl.style.display = 'none';
-    resultsEl.style.display = 'block';
-
-    if (matches.length === 0) {
-        resultsEl.innerHTML = `<div class="sidebar-search-empty">${window.escapeHTML(t('search_no_result', '找不到符合的看板'))}</div>`;
-        return;
-    }
-
-    // 麵包屑：往上找父節點名稱，讓使用者知道看板所在位置
-    const byId = new Map(all.map(m => [window.cleanId(m.id), m]));
-    const crumbOf = (m) => {
-        const parts = [];
-        const seen = new Set();
-        let pid = m.parentId || (m.parentIds && m.parentIds[0]);
-        while (pid) {
-            const cp = window.cleanId(pid);
-            if (!cp || seen.has(cp)) break;
-            seen.add(cp);
-            const p = byId.get(cp);
-            if (!p) break;
-            parts.unshift(nameOf(p));
-            pid = p.parentId || (p.parentIds && p.parentIds[0]);
-        }
-        return parts.join(' / ');
-    };
-
-    let html = '';
-    matches.forEach(m => {
-        const name = nameOf(m);
-        let iconHtml;
-        const cleanIcon = typeof window.resolveIconUrl === 'function' ? window.resolveIconUrl(m.icon) : m.icon;
-        if (cleanIcon && (String(cleanIcon).startsWith('data:') || String(cleanIcon).includes('/'))) {
-            iconHtml = `<img src="${window.escapeHTML(cleanIcon)}" class="custom-icon menu-icon" alt="icon" onerror="this.onerror=null;this.replaceWith(document.createElement('i'));this.className='fas fa-file-alt text-muted menu-icon';">`;
-        } else {
-            iconHtml = `<i class="${window.escapeHTML(m.icon || 'far fa-file-alt')} menu-icon"></i>`;
-        }
-        const crumb = crumbOf(m);
-        const crumbHtml = crumb ? `<div class="sidebar-search-crumb text-truncate">${window.escapeHTML(crumb)}</div>` : '';
-        html += `<div class="menu-item sidebar-search-item" data-action="search-result" data-id="${window.escapeHTML(String(m.id))}" title="${window.escapeHTML(name)}" style="cursor:pointer;">
-                    ${iconHtml}<span class="sidebar-search-text"><span class="sidebar-search-name text-truncate">${window.escapeHTML(name)}</span>${crumbHtml}</span>
-                 </div>`;
-    });
-    resultsEl.innerHTML = html;
-}
-
-// 綁定搜尋輸入框與結果點擊（idempotent：用 dataset.bound 防止重複綁定）
-window.setupSidebarSearch = function () {
-    const input = document.getElementById('sidebar-search-input');
-    if (!input || input.dataset.bound === '1') return;
-    input.dataset.bound = '1';
-
-    const clearBtn = document.getElementById('sidebar-search-clear');
-    const resultsEl = document.getElementById('sidebar-search-results');
-
-    // 語系感知的 placeholder（changeLanguage 會重繪側邊欄，再次經過這裡不會重綁但仍刷新 placeholder）
-    try { input.placeholder = t('search_placeholder', '搜尋看板…'); } catch (e) { }
-
-    const doFilter = () => {
-        if (clearBtn) clearBtn.style.display = input.value ? 'flex' : 'none';
-        filterSidebarMenus(input.value);
-    };
-    const reset = () => {
-        input.value = '';
-        if (clearBtn) clearBtn.style.display = 'none';
-        filterSidebarMenus('');
-    };
-
-    input.addEventListener('input', doFilter);
-    input.addEventListener('keydown', (e) => { if (e.key === 'Escape') { reset(); input.blur(); } });
-    if (clearBtn) clearBtn.addEventListener('click', () => { reset(); input.focus(); });
-
-    if (resultsEl && resultsEl.dataset.bound !== '1') {
-        resultsEl.dataset.bound = '1';
-        resultsEl.addEventListener('click', (e) => {
-            const item = e.target.closest('[data-action="search-result"]');
-            if (!item) return;
-            const id = item.getAttribute('data-id');
-            reset();                                   // 先清搜尋、還原樹
-            if (typeof window.activateMenu === 'function') window.activateMenu(id);  // 再導航（會重繪側邊欄）
-        });
-    }
-};
-
-
 // Expose for HTML inline handlers
 window.safeDestroyDataTable = safeDestroyDataTable;
 window.initDataTable = initDataTable;
 window.renderSidebarMenus = renderSidebarMenus;
-window.filterSidebarMenus = filterSidebarMenus;
 

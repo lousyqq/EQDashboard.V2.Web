@@ -28,8 +28,14 @@ appsettings.json
 # --- Node 套件（puppeteer 等本機測試工具，非執行期相依，不入版控）---
 node_modules/
 
-# --- 暫時 / 拋棄式腳本 ---
+# --- 暫時 / 拋棄式腳本與暫存檔 ---
+#   2026-08-12：曾有 navigation.js.bak / tmp.txt / css_diff.txt / old_components.css 等
+#   一次性產物被 commit 進版控（合計約 200KB），以下規則防止再次發生。
 scratch/
+*.bak
+tmp*.txt
+*_diff.txt
+old_*.css
 
 # --- 上傳的動態內容（看板圖示等，不入版控）---
 wwwroot/images/icons/

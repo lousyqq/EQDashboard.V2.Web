@@ -4,18 +4,35 @@
 //           GET /api/Analytics/details?page=...&pageSize=...
 // 對應頁面：#page-traffic-stats
 
-import { customAlert, skeletonRows } from '../ui/dialogs.js?v=20260727b';
-import { appState } from '../store.js?v=20260727b';
-import { t } from '../config.js?v=20260727b';
+import { customAlert, skeletonRows } from '../ui/dialogs.js';
+import { appState } from '../store.js';
+import { t } from '../config.js';
 
 // XSS 防禦：對插入 innerHTML 的使用者資料做 HTML 實體跳脫
-function escHtml(s) {
-    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
+// escHtml 使用 store.js 的全域單一實作（原本此處有一份私有副本，2026-08-13 移除）。
+const escHtml = (s) => window.escHtml(s);
 
 window._trafficDetailPage = 1;
 window._trafficDetailPageSize = 20;
 window._trafficDetailTotal = 0;
+
+// 殭屍看板的「建立日期」欄。後端 GetZombieMenus 回 createTime + createTimeKind 三態：
+//   exact    → Menus.CreatedAt 有值，直接顯示
+//   inferred → CreatedAt 為 NULL（欄位 2026-08-11 才加，之前建立的都沒有），
+//              改用「歷來最早一次點擊日」當下限 → 必須標示成推估值，不可假裝是建立日
+//   unknown  → 既無 CreatedAt、也從未被點過 → 誠實顯示「未知」
+// 為什麼要分三態：舊資料 31 筆 CreatedAt 全為 NULL，若一律顯示 "-"，
+// 管理員無法分辨「真的長期沒人用」與「單純沒有建檔時間」，殭屍清單就失去判讀價值。
+function zombieCreateCell(item) {
+    const kind = item.createTimeKind || (item.createTime ? 'exact' : 'unknown');
+    if (kind === 'exact') return escHtml(item.createTime);
+    if (kind === 'inferred') {
+        const hint = t('ts_created_inferred_hint', '此看板沒有建立時間紀錄，這是系統可追溯到的最早一次點擊日期（實際建立時間更早）');
+        return `<span title="${escHtml(hint)}" class="text-warning-emphasis">≤ ${escHtml(item.createTime)}`
+            + ` <i class="fas fa-circle-question opacity-75" aria-hidden="true"></i></span>`;
+    }
+    return `<span class="fst-italic opacity-75">${escHtml(t('ts_created_unknown', '未知'))}</span>`;
+}
 
 export async function loadTrafficStats() {
     if (!appState.currentUser || String(appState.currentUser.roleLevel || '').toLowerCase() !== 'admin') {
@@ -190,16 +207,17 @@ export async function loadTrafficStats() {
             fetch(`/api/Analytics/ZombieMenus?days=${days}`)
                 .then(r => r.ok ? r.json() : Promise.reject('HTTP ' + r.status))
                 .then(d => {
-                    if (zombieDesc) zombieDesc.innerText = `以下看板在過去 ${d.thresholdDays || days} 天內從未被點擊過。`;
+                    if (zombieDesc) zombieDesc.innerText = t('ts_zombie_desc_fmt', '以下看板在過去 {d} 天內從未被點擊過。')
+                        .replace('{d}', d.thresholdDays || days);
                     if (!d.items || d.items.length === 0) {
-                        zombieBody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-muted">恭喜！目前沒有殭屍看板</td></tr>`;
+                        zombieBody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-muted">${escHtml(t('ts_no_zombie', '恭喜！目前沒有殭屍看板'))}</td></tr>`;
                     } else {
                         zombieBody.innerHTML = d.items.map(item => `
                             <tr>
                                 <td class="text-muted small">${escHtml(item.menuId)}</td>
                                 <td class="fw-bold text-dark"><i class="fas fa-ghost text-warning me-2"></i>${escHtml(item.menuName)}</td>
                                 <td>${escHtml(item.creator)}</td>
-                                <td class="text-muted small">${escHtml(item.createDate)}</td>
+                                <td class="text-muted small">${zombieCreateCell(item)}</td>
                             </tr>
                         `).join('');
                     }

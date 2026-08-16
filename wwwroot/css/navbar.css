@@ -117,6 +117,18 @@ body.nav-hidden .top-navbar-group {
 }
 
 /* 主選單頁籤 */
+/* WCAG 2.5.8 (AA)：互動目標至少 24×24 CSS px。
+   側欄收合鈕（.nav-brand-section > button，內容只有一個 fa-bars 圖示 + p-0）
+   在桌機實測只有 16×26px。用 inline-flex + min-size 擴大命中區，圖示視覺大小不變。
+   ⚠️ responsive.css 在 ≤992px 另有一條 44px 的觸控規則會蓋過這裡，兩者不衝突（那邊要求更大）。 */
+.nav-brand-section > button {
+    min-width: 24px;
+    min-height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
 .top-menus {
     display: flex;
     align-items: flex-end;
@@ -133,6 +145,11 @@ body.nav-hidden .top-navbar-group {
     }
 
 .top-menu-link {
+    /* ⚠️ flex-shrink:0 必留：.top-menus 是 flex + overflow-x:auto，但 flex 子項預設 flex-shrink:1
+       會被壓縮到比內容還窄 → scrollWidth 永遠等於 clientWidth，水平捲動根本不會出現。
+       實測 541px 寬、18 個選單時每項只剩 15~21px（文字整個消失）；加上本行後
+       scrollWidth 338 → 826、寬度回到 31~59px，改以捲動呈現。 */
+    flex: 0 0 auto;
     color: rgba(255,255,255,0.8);
     text-decoration: none;
     font-weight: 600;

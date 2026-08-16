@@ -600,9 +600,70 @@ div.dataTables_wrapper {
     color: var(--text-muted) !important;
 }
 
+/* === WCAG AA 對比度修正 (E13) ===
+   Bootstrap 預設的 .text-secondary（#6c757d）在淺色底 #f8fafc 上只有 4.48:1，
+   差一點點就達標 4.5。比照上方 .text-muted 統一走 --text-muted
+   （淺色 #475569 Slate-600 / 深色 #e2e8f0 Slate-200，兩者都是專案為了投影機可讀性調過的值）。
+   ⚠️ 全站 55 處 text-secondary 都吃得到這條；已確認 #top-navbar 內那 2 處是在
+      使用者下拉面板（淺底）而非深色導覽列本體，不會變成深色配深色。 */
+.text-secondary {
+    color: var(--text-muted) !important;
+}
+
+/* Bootstrap 的語意文字色在淺色底（#f8fafc / #fff）上普遍差一點才到 AA 4.5：
+     .text-primary #0d6efd → 4.30    .text-info #0dcaf0 → 1.96（最嚴重）
+     .text-danger  #dc3545 → 4.33    .text-warning #ffc107 → 約 1.6
+   一律換成 Bootstrap 自家加深一階的色階（$blue-700 / $cyan-800 / $red-700 / $yellow-700）。
+   ⚠️ **必須限定在內容區與 Modal**，不能全域覆寫：
+      這些工具類別也用在「永遠是深色底」的 #top-navbar 上（例如品牌標題的
+      <span class="text-info">UMC</span>、釘選鈕的 .text-danger），全域壓深會讓它們在深底上糊掉。
+   ⚠️ 深色主題不覆寫：亮色配深底本來就已達標（實測 0 項未達 AA）。 */
+:root:not([data-theme="dark"]) :is(#main-content, .modal, .offcanvas) .text-primary { color: #0a58ca !important; }
+:root:not([data-theme="dark"]) :is(#main-content, .modal, .offcanvas) .text-info { color: #087990 !important; }
+:root:not([data-theme="dark"]) :is(#main-content, .modal, .offcanvas) .text-danger { color: #b02a37 !important; }
+:root:not([data-theme="dark"]) :is(#main-content, .modal, .offcanvas) .text-warning { color: #997404 !important; }
+
+/* Bootstrap tab（流量統計的「每日趨勢／月份統計…」）走 --bs-nav-link-color，預設同 #0d6efd → 4.30。 */
+:root:not([data-theme="dark"]) :is(#main-content, .modal) .nav-link {
+    --bs-nav-link-color: #0a58ca;
+    --bs-nav-link-hover-color: #094db1;
+}
+
+/* outline 按鈕的文字色同理（.btn-outline-primary 實測 4.30、.btn-outline-danger 4.33）。 */
+:root:not([data-theme="dark"]) .btn-outline-primary {
+    --bs-btn-color: #0a58ca;
+    --bs-btn-border-color: #0a58ca;
+    --bs-btn-hover-bg: #0a58ca;
+    --bs-btn-hover-border-color: #0a58ca;
+    --bs-btn-active-bg: #094db1;
+    --bs-btn-active-border-color: #094db1;
+}
+
+:root:not([data-theme="dark"]) .btn-outline-danger {
+    --bs-btn-color: #b02a37;
+    --bs-btn-border-color: #b02a37;
+    --bs-btn-hover-bg: #b02a37;
+    --bs-btn-hover-border-color: #b02a37;
+    --bs-btn-active-bg: #9a2530;
+    --bs-btn-active-border-color: #9a2530;
+}
+
+/* DataTables 目前頁碼：Bootstrap 給白字，所以底色亮度必須夠低才達得到 4.5:1。
+   淺色主題的 --primary-light (#0d6efd) 剛好 4.55:1 過關；
+   深色主題的 --primary-light (#3b82f6) 只有 3.68:1 → 這裡用專屬的 token 壓深一階（#2563eb = 4.87:1）。
+   ⚠️ 不要改回直接用 --primary-light：那個變數還被邊框/強調線用著，壓深會讓整體視覺變濁。 */
+:root {
+    --pagination-active-bg: #0d6efd;
+}
+
+:root[data-theme="dark"] {
+    --pagination-active-bg: #2563eb;
+}
+
 .page-item.active .page-link {
-    background-color: var(--primary-light);
-    border-color: var(--primary-light);
+    background-color: var(--pagination-active-bg);
+    border-color: var(--pagination-active-bg);
+    color: #fff;
 }
 
 /* === DataTables 深色模式覆寫 === */
@@ -1163,3 +1224,34 @@ table.dataTable.table-hover tbody tr:hover {
 
 
 
+
+/* === 看板 iframe 載入 / 失敗狀態覆蓋層（2026-08-13 新增，搭配 navigation.js openDynamicIframe） ===
+   蓋在 #page-iframe 之上、不影響 iframe 本身佈局；只在載入中或逾時失敗時顯示。 */
+.iframe-status-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: none;              /* JS 改為 flex 才顯示 */
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    background: var(--card-bg);
+    color: var(--text-main);
+}
+
+#page-iframe {
+    position: relative;         /* 覆蓋層的定位基準 */
+}
+
+/* === 最近瀏覽卡片 hover（2026-08-13：由 navigation.js 的 inline onmouseenter/leave 移來） === */
+.recent-menu-card {
+    cursor: pointer;
+    transition: box-shadow .15s, transform .15s;
+}
+
+    .recent-menu-card:hover {
+        box-shadow: 0 4px 16px rgba(0, 0, 0, .13) !important;
+        transform: translateY(-2px);
+    }

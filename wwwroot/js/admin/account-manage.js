@@ -1,12 +1,13 @@
 ﻿// === admin/account-manage.js - 帳號管理 CRUD ===
 
-import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260727b';
-import { deleteAccountAPI, fetchInitialDataFromDB, saveAccountAPI } from '../api.js?v=20260727b';
-import { renderAccDefaultPagesUI, renderAccManageMenuCheckboxes, renderAccRoleCheckboxes } from '../render/account-ui.js?v=20260727b';
-import { renderSidebarMenus } from '../render/sidebar.js?v=20260727b';
-import { renderAccountTable } from '../render/tables.js?v=20260727b';
-import { customAlert, customConfirm } from '../ui/dialogs.js?v=20260727b';
-import { appState } from '../store.js?v=20260727b';
+import { hideModalSafely, showModalSafely } from './modal-utils.js';
+import { t } from '../config.js';
+import { deleteAccountAPI, fetchInitialDataFromDB, saveAccountAPI } from '../api.js';
+import { renderAccDefaultPagesUI, renderAccManageMenuCheckboxes, renderAccRoleCheckboxes } from '../render/account-ui.js';
+import { renderSidebarMenus } from '../render/sidebar.js';
+import { renderAccountTable } from '../render/tables.js';
+import { customAlert, customConfirm } from '../ui/dialogs.js';
+import { appState } from '../store.js';
 
 
 // === Accounts 帳號管理 ===
@@ -57,16 +58,27 @@ export async function editAccount(empId) {
         //   ⚠️ empId 必須 encodeURIComponent：Windows 網域工號含反斜線（SARIEL\yu-tinglin），
         //      未編碼時瀏覽器會把路徑中的「\」正規化成「/」→ 變成兩段路徑 → 路由不匹配 404
         //      → 整個編輯/儲存流程拿到殘缺資料。/api/Accounts/{id} 為 admin-only，與本頁 authz 一致。
+        // ⚠️ 三個失敗分支都必須給使用者回饋（2026-08-15 修）：舊版只 console.error 就 return，
+        //   使用者點「編輯」畫面毫無反應、也不知道要重試 —— 這是企業使用者最難回報的一類問題。
         let acc;
         try {
             const res = await fetch(`/api/Accounts/${encodeURIComponent(empId)}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-            if (!res.ok) { console.error(`無法取得帳號 ${empId} 的明細 (HTTP ${res.status})`); return; }
+            if (!res.ok) {
+                console.error(`無法取得帳號 ${empId} 的明細 (HTTP ${res.status})`);
+                customAlert(t('err_load_failed', '無法載入資料，請重新整理後再試。') + ` (HTTP ${res.status})`);
+                return;
+            }
             acc = await res.json();
         } catch (err) {
             console.error("Fetch account details failed:", err);
+            customAlert(t('err_load_failed', '無法載入資料，請重新整理後再試。'));
             return;
         }
-        if (!acc || !acc.empId) { console.error("帳號明細回傳格式異常 (工號: " + empId + ")"); return; }
+        if (!acc || !acc.empId) {
+            console.error("帳號明細回傳格式異常 (工號: " + empId + ")");
+            customAlert(t('err_load_failed', '無法載入資料，請重新整理後再試。'));
+            return;
+        }
 
         document.getElementById('editAccMode').value = 'edit';
         document.getElementById('accEmpId').value = acc.empId; document.getElementById('accEmpId').disabled = true;
@@ -168,8 +180,7 @@ export async function saveAccountItem(e) {
 
         const result = await saveAccountAPI(isNew, payload);
         if (!result.success) {
-            if (btn) window.setButtonLoading(btn, false);
-            customAlert("儲存失敗: " + result.message);
+            customAlert(t('err_save_failed', '儲存失敗：') + result.message);
             return false;
         }
 
@@ -177,7 +188,6 @@ export async function saveAccountItem(e) {
         await window.fetchInitialDataFromDB();
 
         hideModalSafely('accModal');
-        if (btn) window.setButtonLoading(btn, false);
         if (typeof renderAccountTable === 'function') renderAccountTable();
 
         if (appState.currentUser && window.cleanId(appState.currentUser.id) === window.cleanId(empId)) {
@@ -193,7 +203,14 @@ export async function saveAccountItem(e) {
             if (typeof renderFabSwitcher === 'function') renderFabSwitcher();
             if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
         }
-    } catch (error) { console.error("[saveAccountItem] 錯誤:", error); }
+    } catch (error) {
+        // ⚠️ 例外時也要給回饋（2026-08-15 修）：舊版只 console.error，使用者看到的是
+        //   「按鈕轉圈轉到天荒地老」——loading 狀態的解除已移到 finally，不會再卡住。
+        console.error("[saveAccountItem] 錯誤:", error);
+        customAlert(t('err_unexpected', '發生非預期的錯誤：') + (error.message || error));
+    } finally {
+        if (btn) window.setButtonLoading(btn, false);
+    }
     return false;
 }
 
@@ -201,16 +218,22 @@ export async function deleteAccount(empId) {
     try {
         if (window.cleanId(empId) === 'admin') { customAlert('系統預設管理員無法刪除！'); return; }
         customConfirm('確定要刪除此帳號嗎？', async () => {
-            const result = await deleteAccountAPI(empId);
-            if (!result.success) {
-                customAlert("刪除失敗: " + result.message);
-                return;
+            try {
+                const result = await deleteAccountAPI(empId);
+                if (!result.success) {
+                    customAlert(t('err_delete_failed', '刪除失敗：') + result.message);
+                    return;
+                }
+
+                // 儲存成功後，重新從後端拉取全部資料以更新前端記憶體
+                await window.fetchInitialDataFromDB();
+
+                if (typeof renderAccountTable === 'function') renderAccountTable();
+            } catch (err) {
+                // ⚠️ callback 內的例外不會被外層 try 接到（customConfirm 是非同步回呼）→ 必須自帶 try
+                console.error("[deleteAccount] 回呼錯誤:", err);
+                customAlert(t('err_unexpected', '發生非預期的錯誤：') + (err.message || err));
             }
-
-            // 儲存成功後，重新從後端拉取全部資料以更新前端記憶體
-            await window.fetchInitialDataFromDB();
-
-            if (typeof renderAccountTable === 'function') renderAccountTable();
         });
     } catch (e) { console.error("[deleteAccount] 錯誤:", e); }
 }

@@ -92,6 +92,12 @@ public class AccountService : IAccountService
             department = a.Department,
             roleLevel = a.RoleLevel,
             canEditOthers = a.CanEditOthers,
+            // ⚠️ LoginCount / LastLoginTime 必須一起匯出（2026-08-15 修）：
+            //   Excel 匯入走 /Settings/SaveData 的「DELETE + 依 schema 重建 INSERT」全量覆寫，
+            //   Excel 沒有的欄位一律寫成 DBNull/0。少了這兩欄＝一次「匯出→匯入」就把全站
+            //   登入統計歸零。規格同 Menus.CreatedAt：稽核欄位，前端只原封不動帶回、不編輯。
+            loginCount = a.LoginCount ?? 0,
+            lastLoginTime = a.LastLoginTime?.ToString("yyyy-MM-dd HH:mm:ss"),
             assignedRoles = a.MapAccountRoles?.Select(m => m.RoleId).ToList() ?? new List<string>(),
             manageableMenus = a.MapAccountManageMenus?.Select(m => m.MenuId).ToList() ?? new List<string>(),
             defaultPages = a.MapAccountDefaultPages?.ToDictionary(m => m.FabId, m => m.MenuId ?? "") ?? new Dictionary<string, string>()

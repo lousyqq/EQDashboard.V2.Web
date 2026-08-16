@@ -1,22 +1,22 @@
-﻿import { appState, escHtml } from './store.js?v=20260727b';
-import './config.js?v=20260727b';
-import './api.js?v=20260727b';
-import './auth.js?v=20260727b';
-import './ui/layout.js?v=20260727b';
-import './ui/navigation.js?v=20260727b';
-import './ui/dialogs.js?v=20260727b';
-import './render/sidebar.js?v=20260727b';
-import './render/sidebar-item.js?v=20260727b';
-import './render/tables.js?v=20260727b';
-import './render/account-ui.js?v=20260727b';
-import './admin/modal-utils.js?v=20260727b';
-import './admin/fab-manage.js?v=20260727b';
-import './admin/role-manage.js?v=20260727b';
-import './admin/account-manage.js?v=20260727b';
-import './admin/menu-manage.js?v=20260727b';
-import './admin/misc-manage.js?v=20260727b';
-import './admin/activity-log.js?v=20260727b';
-import './admin/traffic-stats.js?v=20260718';
+﻿import { appState, escHtml } from './store.js';
+import './config.js';
+import './api.js';
+import './auth.js';
+import './ui/layout.js';
+import './ui/navigation.js';
+import './ui/dialogs.js';
+import './render/sidebar.js';
+import './render/sidebar-item.js';
+import './render/tables.js';
+import './render/account-ui.js';
+import './admin/modal-utils.js';
+import './admin/fab-manage.js';
+import './admin/role-manage.js';
+import './admin/account-manage.js';
+import './admin/menu-manage.js';
+import './admin/misc-manage.js';
+import './admin/activity-log.js';
+import './admin/traffic-stats.js';
 
 export function initModalSafely(id) { const el = document.getElementById(id); return el ? new bootstrap.Modal(el) : null; }
 
@@ -59,10 +59,21 @@ export function initDashboardUI(stayOnCurrentPage = false) {
     }
 
     if (typeof renderFabTable === 'function') renderFabTable();
-    if (typeof renderAccountTable === 'function') renderAccountTable();
+    // ⚠️ 帳號表只在「人真的停在帳號管理頁」時才初始化（E8）。
+    //    它是全站唯一的 serverSide DataTable，無條件呼叫會讓每位 admin 每次進站
+    //    （即使停在首頁）都白打一趟 GET /api/Accounts?page=1&pageSize=10。
+    //    其他進入點都已涵蓋：navTo/selectTopMenu（navigation.js）進頁時會呼叫、
+    //    changeLanguage（navigation.js:57）與背景同步（api.js:538）也都有「當前頁是帳號管理才重繪」的分支。
+    if (typeof renderAccountTable === 'function'
+        && document.getElementById('page-account-manage')?.classList.contains('active')) {
+        renderAccountTable();
+    }
     if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
     if (typeof renderFabSwitcher === 'function') renderFabSwitcher(); // ⭐️ 補上廠區切換選單的初始化
-    if (typeof switchLayoutMode === 'function') switchLayoutMode('system');
+    // ⚠️ 第二參數 navigate=false：只同步版面模式狀態與 UI，導航交給下方唯一一次 goDefaultHome()。
+    //    舊版 switchLayoutMode('system') 內部也會 goDefaultHome() → 每次進站 activateMenu 跑兩遍
+    //    → MenuClick 統計記兩次，且 stayOnCurrentPage 被架空。詳見 layout.js 該函式註解。
+    if (typeof switchLayoutMode === 'function') switchLayoutMode('system', false);
     if (!stayOnCurrentPage) {
         if (typeof window.goDefaultHome === 'function') window.goDefaultHome();
     }
@@ -149,6 +160,21 @@ window.addEventListener('error', function (event) {
         event.stopImmediatePropagation();
     }
 }, true);
+
+// ⌨️ 鍵盤啟動委派：把 Enter / Space 轉成 click，讓 role="button" 的 <div> 能用鍵盤操作（E10）。
+//   為什麼要用委派而不是在每個樣板上寫 onkeydown：
+//     側邊欄的子選單是 lazy-loading 插入的（sidebar-item.js 的 data-lazy 佔位符），
+//     逐處綁定必然漏掉後來才插入的節點；委派到 document 一次涵蓋全部（含未來新增的）。
+//   只處理「自訂的 role=button 元素」——原生 <button>/<a> 瀏覽器本來就會處理，重複觸發會變成點兩次。
+document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+    const el = e.target.closest('[role="button"][tabindex]');
+    if (!el) return;
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'button' || tag === 'a' || tag === 'input' || tag === 'select' || tag === 'textarea') return;
+    e.preventDefault();   // 阻止 Space 捲動頁面
+    el.click();
+});
 
 // 全域事件委派 (Event Delegation) 處理 data-action，防止 XSS
 document.addEventListener('click', function(e) {
@@ -237,10 +263,46 @@ document.addEventListener("DOMContentLoaded", async () => {
     }, 15000);
 
     try {
+        // 🛡️ CSRF token 與 Auth 設定：與 DB 初始資料「並行」發出（兩者皆為 GET、互不相依 → 不增加 RTT），
+        //    但必須在 initDashboardUI() 之前 await 完成。
+        //    ⚠️ 為什麼一定要在這裡做（2026-08-12 修）：
+        //      window._csrfToken 原本只在 auth.js 的 fetchAuthConfig() 內設值，而它只被 tryAutoLogin() 呼叫；
+        //      但下方「restoreLoginFromStorage() 成功」＝localStorage 已有登入者的暖重整路徑**不會**走
+        //      tryAutoLogin → 該次頁面 _csrfToken 全程為 null →
+        //        ① initDashboardUI() → goDefaultHome() → activateMenu() → POST /api/Tracking/MenuClick
+        //           是本頁第一個寫入請求，必定被擋 400「CSRF validation failed: Invalid Token」
+        //           （api.js 的 auto-retry 會補救功能，但瀏覽器仍會把那筆 400 印進 console → 長年紅字噪音的真因，
+        //             與原先研判的「伺服器重啟/金鑰輪換」無關）；
+        //        ② window._authConfig 也沒被填 → appState.openAccessMode 未設定 →
+        //           goDefaultHome() 的 isOpenAccess 判為 false → OpenAccessMode 環境下
+        //           「暖重整」與「冷載入」算出的預設首頁／可視看板清單不一致。
+        //    fetchAuthConfig() 內有 promise 快取，稍後 tryAutoLogin() 再呼叫不會重複請求。
+        const authReady = Promise.race([
+            (typeof window.fetchAuthConfig === 'function')
+                ? window.fetchAuthConfig().catch(() => null)
+                : Promise.resolve(null),
+            // 保底：Auth/Config 若卡住不拖垮整個初始化流程（CSRF 仍有 api.js 的 400 auto-retry 兜底）
+            new Promise(r => setTimeout(r, 5000))
+        ]);
+
+        // ⚠️ 冷載入不要先打 GetInitialData（E7）：
+        //    localStorage 沒有登入者 ＝ 這次是冷載入（首訪 / 清過快取 / 登出後），此時 cookie 幾乎必然不存在，
+        //    先打 GetInitialData 只會拿到 401（連帶它內部並行的 MyProfile 也 401），
+        //    接著 tryAutoLogin() 登入成功後又會再打一次（auth.js 內 accounts 為空時的補拉）
+        //    → 冷載入固定浪費兩趟請求，且 console 固定留下兩行 `GetInitialData failed: 401` 紅字。
+        //    改成只有「暖重整」（localStorage 有登入者）才走並行預拉；冷載入直接交給 tryAutoLogin 拉一次。
+        //    ⚠️ 不可改用「有沒有 cookie」判斷：auth cookie 是 HttpOnly，JS 讀不到。
+        //    暖重整但 cookie 已失效的情境不受影響：fetchInitialDataFromDB 照樣回 false → 一樣落到 tryAutoLogin。
+        const storedLogin = localStorage.getItem('umc_current_user');
+        const hasStoredLogin = !!storedLogin && storedLogin !== 'null' && storedLogin !== 'undefined';
+
         let isDbLoaded = false;
-        if (typeof fetchInitialDataFromDB === 'function') {
+        if (hasStoredLogin && typeof fetchInitialDataFromDB === 'function') {
             isDbLoaded = await fetchInitialDataFromDB();
         }
+
+        // token / openAccessMode 就位後，才允許進入會觸發寫入請求的流程
+        await authReady;
 
         clearTimeout(loadingTimeoutId);
         loadingOverlay.remove();

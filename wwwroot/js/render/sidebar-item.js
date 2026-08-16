@@ -1,9 +1,9 @@
 // === render/sidebar-item.js - 選單項目產生器 ===
-import { getFabs, t } from '../config.js?v=20260727b';
-import { renderSidebarMenus } from './sidebar.js?v=20260727b';
-import { customAlert } from '../ui/dialogs.js?v=20260727b';
-import { changeLanguage, goDefaultHome } from '../ui/navigation.js?v=20260727b';
-import { appState } from '../store.js?v=20260727b';
+import { getFabs, t } from '../config.js';
+import { renderSidebarMenus } from './sidebar.js';
+import { customAlert } from '../ui/dialogs.js';
+import { changeLanguage, goDefaultHome } from '../ui/navigation.js';
+import { appState } from '../store.js';
 
 
 export function generateSidebarMenuItem(menu, allMenus, level, forceExpand = true) {
@@ -47,9 +47,11 @@ export function generateSidebarMenuItem(menu, allMenus, level, forceExpand = tru
         const expClass = isExpanded ? 'show' : '';
         const ariaAttr = isExpanded ? 'true' : 'false';
         const collapsedClass = isExpanded ? '' : 'collapsed';
-        let html = `<div class="menu-item ${collapsedClass}" ${actionAttr} title="${safeDName}" aria-expanded="${ariaAttr}" style="cursor:pointer;">
+        // role="button" + tabindex="0"：本身是 <div>，沒有這兩個屬性就 Tab 不到也按不了 Enter。
+        // 已有 aria-expanded 表達展開狀態；Enter/Space 啟動由 main.js 的委派 keydown 統一處理。
+        let html = `<div class="menu-item ${collapsedClass}" ${actionAttr} title="${safeDName}" role="button" tabindex="0" aria-expanded="${ariaAttr}" style="cursor:pointer;">
                         ${iconHtml}<span class="text-truncate">${safeDName}</span>
-                        <i class="fas fa-chevron-right dropdown-arrow"></i>
+                        <i class="fas fa-chevron-right dropdown-arrow" aria-hidden="true"></i>
                     </div>`;
 
         if (isExpanded) {
@@ -66,7 +68,7 @@ export function generateSidebarMenuItem(menu, allMenus, level, forceExpand = tru
         return html;
     } else {
         const itemClass = level > 1 ? 'menu-item sub-item' : 'menu-item';
-        return `<div class="${itemClass}" ${actionAttr} title="${safeDName}" style="cursor:pointer;">${iconHtml}<span class="text-truncate">${safeDName}</span></div>`;
+        return `<div class="${itemClass}" ${actionAttr} title="${safeDName}" role="button" tabindex="0" style="cursor:pointer;">${iconHtml}<span class="text-truncate">${safeDName}</span></div>`;
     }
 }
 
@@ -209,7 +211,7 @@ window.renderFabSwitcher = function () {
             <a class="dropdown-item py-2 fw-bold d-flex justify-content-between align-items-center ${isCurrent ? 'bg-primary text-white' : ''}"
                href="#"
                data-fab="${String(fName).replace(/"/g, '&quot;')}">
-              <span><i class="fas fa-industry me-2 small ${isCurrent ? 'text-white' : 'text-secondary'}"></i>${dName}</span>
+              <span><i class="fas fa-industry me-2 small ${isCurrent ? 'text-white' : 'text-secondary'}"></i>${window.escapeHTML(dName)}</span>
               ${isCurrent ? '<i class="fas fa-check ms-2"></i>' : ''}
             </a>
           </li>

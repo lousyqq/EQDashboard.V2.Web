@@ -1,10 +1,10 @@
 // === ui/navigation.js - 語系切換、選單導航、路由、iframe ===
-import { getCustomMenus, getFabs, getRoles, t } from '../config.js?v=20260727b';
-import { loadActivityLogs } from '../admin/activity-log.js?v=20260727b';
-import { openAppGridPage } from '../admin/misc-manage.js?v=20260727b';
-import { renderSidebarMenus } from '../render/sidebar.js?v=20260727b';
-import { renderAccountTable, renderApplyTable, renderAuditTable, renderFabTable, renderMenuConfigTable, renderPersonalMenuManage, renderRoleTable, renderWebpageTable } from '../render/tables.js?v=20260727b';
-import { appState } from '../store.js?v=20260727b';
+import { getCustomMenus, getFabs, getRoles, t } from '../config.js';
+import { loadActivityLogs } from '../admin/activity-log.js';
+import { openAppGridPage } from '../admin/misc-manage.js';
+import { renderSidebarMenus } from '../render/sidebar.js';
+import { renderAccountTable, renderApplyTable, renderAuditTable, renderFabTable, renderMenuConfigTable, renderPersonalMenuManage, renderRoleTable, renderWebpageTable } from '../render/tables.js';
+import { appState } from '../store.js';
 
 
 export function changeLanguage(lang) {
@@ -16,10 +16,22 @@ export function changeLanguage(lang) {
             const key = el.getAttribute('data-i18n');
             if (i18n[lang] && i18n[lang][key] !== undefined && i18n[lang][key] !== null) el.innerHTML = i18n[lang][key];
         });
-        // 1b. data-i18n-placeholder：input/textarea 的 placeholder 也要跟著翻譯（如側邊欄看板搜尋框）
+        // 1b. data-i18n-placeholder：input/textarea 的 placeholder 也要跟著翻譯
+        //     （目前使用者：操作紀錄的工號欄、流量統計的部門/關鍵字欄）
         document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
             const key = el.getAttribute('data-i18n-placeholder');
             if (i18n[lang] && i18n[lang][key] !== undefined && i18n[lang][key] !== null) el.setAttribute('placeholder', i18n[lang][key]);
+        });
+        // 1c. data-i18n-aria-label / data-i18n-title：純圖示按鈕的無障礙名稱與 tooltip
+        //     （2026-08-16 新增。在此之前 aria-label / title 只能寫死中文，
+        //      對讀螢幕的英日文使用者等同沒有翻譯。新增 aria-label/title 時請一併掛這兩個屬性。）
+        document.querySelectorAll('[data-i18n-aria-label]').forEach(el => {
+            const key = el.getAttribute('data-i18n-aria-label');
+            if (i18n[lang] && i18n[lang][key] !== undefined && i18n[lang][key] !== null) el.setAttribute('aria-label', i18n[lang][key]);
+        });
+        document.querySelectorAll('[data-i18n-title]').forEach(el => {
+            const key = el.getAttribute('data-i18n-title');
+            if (i18n[lang] && i18n[lang][key] !== undefined && i18n[lang][key] !== null) el.setAttribute('title', i18n[lang][key]);
         });
     }
 
@@ -58,6 +70,8 @@ export function changeLanguage(lang) {
         if (pageId === 'page-audit-manage' && typeof renderAuditTable === 'function') renderAuditTable();
         if (pageId === 'page-activity-log' && typeof loadActivityLogs === 'function') loadActivityLogs();
         if (pageId === 'page-traffic-stats' && typeof loadTrafficStats === 'function') loadTrafficStats();
+        // 最近瀏覽頁的卡片與空狀態文字也是動態產生的，需一併重繪才會跟著換語系
+        if (pageId === 'page-recent') openRecentPage();
     }
 }
 window.changeLanguage = changeLanguage;
@@ -313,12 +327,25 @@ export function activateMenu(menuId) {
 
                 if (window._currentServerProfile) window._currentServerProfile.preferences = newPrefsStr;
 
+                // CSRF 標頭（X-Requested-With + X-CSRF-TOKEN）與 400 auto-retry 一律由 api.js 的
+                //   全域 fetch 攔截器統一補上，此處不要自己帶。
+                //   （舊版帶的 'RequestVerificationToken' 標頭是死碼：後端 HeaderName 設定為 X-CSRF-TOKEN，
+                //     且頁面上根本沒有 input[name="__RequestVerificationToken"]，永遠送空字串。）
                 fetch(window.normalizeTargetUrl('/api/PersonalSettings/Preferences'), {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value || '' },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ preferences: newPrefsStr })
                 }).catch(e => console.error('Failed to sync preferences', e));
-            }, 2000);
+            }, 500);
+        }
+
+        // ⭐️ 呼叫後端 API 紀錄點擊統計 (Popular/Zombie 看板資料來源)
+        //   CSRF 標頭由 api.js 全域攔截器補上（同上）；此處是頁面生命週期中最早發生的寫入請求，
+        //   所以 main.js 必須在 initDashboardUI() 之前就把 window._csrfToken 準備好，否則這支會 400。
+        if (mId) {
+            fetch(window.normalizeTargetUrl(`/api/Tracking/MenuClick?menuId=${encodeURIComponent(mId)}`), {
+                method: 'POST'
+            }).catch(e => console.error('Failed to record menu click', e));
         }
 
         if (mMode === 'app_grid') openAppGridPage(mId, dName, targetEl);
@@ -544,6 +571,9 @@ export function navTo(pageId, element, subTitle = '') {
         document.body.classList.add('iframe-mode');
     } else {
         document.body.classList.remove('iframe-mode');
+        // 離開看板頁時收掉載入/失敗覆蓋層並取消逾時計時，避免下次進來殘留舊狀態
+        if (_iframeTimeoutId) { clearTimeout(_iframeTimeoutId); _iframeTimeoutId = null; }
+        setIframeStatus('none');
     }
 
     const bcPath = document.getElementById('bc-path');
@@ -603,11 +633,41 @@ export function normalizeTargetUrl(url) {
 }
 window.normalizeTargetUrl = normalizeTargetUrl;
 
+// ⭐️ 看板載入狀態控制（2026-08-13 新增）
+//   舊行為：iframe.src 一設就結束，載入期間與失敗時畫面都是全白，使用者無法分辨
+//   「還在載」「網站掛了」「權限不足」。現在補上 loading 指示 + 逾時失敗回饋。
+//   ⚠️ 跨來源 iframe 讀不到內部狀態（同源政策），所以：
+//     - onload 觸發 → 視為成功（跨來源也會觸發 onload）
+//     - 逾時（預設 20s）仍未 onload → 顯示失敗卡片，提供「重新載入 / 另開視窗」
+//   兩者都只操作我們自己的覆蓋層，不碰 iframe 內部。
+const IFRAME_LOAD_TIMEOUT_MS = 20000;
+let _iframeTimeoutId = null;
+let _iframeCurrentUrl = '';
+
+function setIframeStatus(state) {
+    const load = document.getElementById('iframe-loading');
+    const err = document.getElementById('iframe-error');
+    if (load) load.style.display = (state === 'loading') ? 'flex' : 'none';
+    if (err) err.style.display = (state === 'error') ? 'flex' : 'none';
+}
+
+export function retryCurrentIframe() {
+    if (_iframeCurrentUrl) openDynamicIframe(_iframeCurrentUrl, document.getElementById('bc-name')?.innerText || '', null, document.body.classList.contains('fullscreen-mode'));
+}
+window.retryCurrentIframe = retryCurrentIframe;
+
+export function openCurrentIframeInNewTab() {
+    if (_iframeCurrentUrl) window.open(_iframeCurrentUrl, '_blank', 'noopener,noreferrer');
+}
+window.openCurrentIframeInNewTab = openCurrentIframeInNewTab;
+
 export function openDynamicIframe(url, title, element, isFullscreen = false) {
     if (!url) return;
     navTo('page-iframe', element, title);
     const iframe = document.getElementById('main-iframe');
     iframe.removeAttribute('srcdoc');
+    // 螢幕閱讀器可辨識當前載入的是哪個看板
+    if (title) iframe.setAttribute('title', String(title));
 
     let finalUrl = normalizeTargetUrl(url);
     if (!finalUrl.startsWith('page-') && !finalUrl.includes('fab=')) {
@@ -626,6 +686,21 @@ export function openDynamicIframe(url, title, element, isFullscreen = false) {
     } catch (e) {
         // URL 解析失敗 (例如 page-xxx 偽 URL) → 保留 default sandbox
     }
+
+    // 載入狀態：先顯示 loading，onload 收掉、逾時則顯示失敗卡片。
+    //   監聽器每次都重新掛（用 onload/onerror 賦值而非 addEventListener，天然不累積）。
+    _iframeCurrentUrl = finalUrl;
+    if (_iframeTimeoutId) clearTimeout(_iframeTimeoutId);
+    setIframeStatus('loading');
+    iframe.onload = () => {
+        if (_iframeTimeoutId) clearTimeout(_iframeTimeoutId);
+        setIframeStatus('none');
+    };
+    iframe.onerror = () => {
+        if (_iframeTimeoutId) clearTimeout(_iframeTimeoutId);
+        setIframeStatus('error');
+    };
+    _iframeTimeoutId = setTimeout(() => setIframeStatus('error'), IFRAME_LOAD_TIMEOUT_MS);
 
     iframe.src = finalUrl;
     if (isFullscreen) document.body.classList.add('fullscreen-mode');
@@ -671,8 +746,8 @@ export function openRecentPage() {
     if (!listEl) { navTo('page-home'); return; }
 
     if (!appState.currentUser || !appState.currentUser.empId) {
-        listEl.innerHTML = '<div class="col-12"><div class="text-center text-muted py-5"><i class="fas fa-user-slash fa-2x mb-3 opacity-25"></i><div>請先登入</div></div></div>';
-        navTo('page-recent', null, '最近瀏覽');
+        listEl.innerHTML = `<div class="col-12"><div class="text-center text-muted py-5"><i class="fas fa-user-slash fa-2x mb-3 opacity-25"></i><div>${window.escapeHTML(t('recent_login_required', '請先登入'))}</div></div></div>`;
+        navTo('page-recent', null, t('lbl_recent', '最近瀏覽'));
         return;
     }
 
@@ -690,21 +765,21 @@ export function openRecentPage() {
         .filter(Boolean)
         .slice(0, 15);
 
-    if (badgeEl) badgeEl.textContent = validHistory.length > 0 ? `${validHistory.length} 項` : '';
+    if (badgeEl) badgeEl.textContent = validHistory.length > 0 ? t('recent_count_fmt', '{0} 項').replace('{0}', validHistory.length) : '';
 
     if (validHistory.length === 0) {
         listEl.innerHTML = `
             <div class="col-12">
                 <div class="text-center py-5 text-muted">
                     <i class="fas fa-folder-open fa-3x mb-3 opacity-25"></i>
-                    <div class="fw-bold">尚無最近瀏覽紀錄</div>
-                    <div class="small mt-1">點擊左側選單進入看板後，即可記錄瀏覽歷程。</div>
+                    <div class="fw-bold">${window.escapeHTML(t('recent_empty_title', '尚無最近瀏覽紀錄'))}</div>
+                    <div class="small mt-1">${window.escapeHTML(t('recent_empty_desc', '點擊左側選單進入看板後，即可記錄瀏覽歷程。'))}</div>
                 </div>
             </div>`;
     } else {
         listEl.innerHTML = validHistory.map((m, idx) => {
             const mId = m.id || m.MenuId || '';
-            const mName = window.escapeHTML(m.displayName || m.DisplayName || m.sysName || m.SysName || '未命名');
+            const mName = window.escapeHTML(m.displayName || m.DisplayName || m.sysName || m.SysName || t('menu_unnamed', '未命名'));
             const mPath = window.getFullMenuPathStr(mId, menus);
 
             // 路徑最後一段就是名稱，只顯示前面的父層路徑
@@ -720,9 +795,9 @@ export function openRecentPage() {
             return `
                 <div class="col-sm-6 col-md-4 col-xl-3">
                     <a href="#" class="text-decoration-none" onclick="event.preventDefault(); activateMenu('${window._jsArg(mId)}')">
-                        <div class="card h-100 border shadow-sm recent-menu-card" style="transition:box-shadow .15s,transform .15s; cursor:pointer;"
-                             onmouseenter="this.style.boxShadow='0 4px 16px rgba(0,0,0,.13)';this.style.transform='translateY(-2px)'"
-                             onmouseleave="this.style.boxShadow='';this.style.transform=''">
+                        <!-- hover 效果改由 CSS 的 .recent-menu-card:hover 處理（原本寫在 inline
+                             onmouseenter/onmouseleave，既不利維護、也擋住未來收緊 CSP 的 unsafe-inline） -->
+                        <div class="card h-100 border shadow-sm recent-menu-card">
                             <div class="card-body d-flex align-items-start gap-3 p-3">
                                 <div class="flex-shrink-0 mt-1">${iconHtml}</div>
                                 <div class="overflow-hidden">
@@ -736,7 +811,7 @@ export function openRecentPage() {
         }).join('');
     }
 
-    navTo('page-recent', null, '最近瀏覽');
+    navTo('page-recent', null, t('lbl_recent', '最近瀏覽'));
 }
 window.openRecentOffcanvas = openRecentPage; // 保持向下相容
 window.openRecentPage = openRecentPage;

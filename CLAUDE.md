@@ -1,120 +1,88 @@
-# EQ Performance Dashboard - 專案說明文件 (CLAUDE.md / AGENTS.md)
+# EQ Performance Dashboard - 專案說明文件 (CLAUDE.md)
 
-> AI 助手在此專案開發、修改、除錯的最小必要知識與規範（最新狀態快照，2026-07-19 整理）。
-> **現役主線**：`EQDashboard.V2.Web`（ASP.NET Core .NET 9.0 + ES Modules 前端 + 最小整合測試 `EQDashboard.V2.Web.Tests`）。
-> **文件分工**：本檔＝規範與待辦｜`系統架構.md`＝目錄結構與模組職責｜`DB_Table.md`＝DB 結構快照與增量 SQL 歷史（Changelog 只增不刪）｜`memory.md`＝現況快照與待辦。
-
----
-
-## 1. 專案概況與運行模式
-
-- **架構**：Kestrel/IIS；後端 Service 層 + DI 解耦；前端 ES Modules + Bootstrap 5/Vanilla JS（全 CDN，無 npm/bundler）。
-- **資料**：MSSQL（`ConnectionStrings:EQDashboard`，DB `EQDashboardV2`，Server `Sariel`）。CRUD 異動自動靜默寫回 DB；個人版面存 `PersonalSettings` + LocalStorage 快取；登入更新 `Accounts.LoginCount/LastLoginTime` 並冪等 upsert `DailyUserVisits`。
-- **驗證 (`AuthSettings`)**：Kestrel + Negotiate 自動偵測 Windows 桌機帳號（如 `00058897` 或 `UMC\00059987`），前端無手動帳密 Tab 與登出按鈕。三核心配置：
-  1. **`SimulatedAccount`**：指定帳號本地模擬驗證；留空 (`""`) 自動抓桌機身分。後端 Controller/Service 統一注入 `IOptionsSnapshot<AuthSettings>`，並在 Cookie 驗證中配置 `OnValidatePrincipal`：當 `appsettings.json` 的 `SimulatedAccount` 變更或切換回 Windows 偵測時，即時作廢舊 Cookie (`SignOutAsync`) 並觸發前端 `tryAutoLogin` / `completeLoginAfterAuth` 重新拉取新登入者的完整權限結構 (`fetchInitialDataFromDB`)。
-  2. **`DefaultAdmins`**（`["yu-ting", "00058897", "00059987"]`）：這些身分登入時若 DB 不存在或權限不足，自動建立/升級為 `admin`，防止系統鎖死。
-  3. **`OpenAccessMode=true`**：名單外新登入者自動建帳（`roleLevel="user"`、部門「一般使用者」）、自動綁定所有角色群組（可視全廠區）；預設首頁不設定（自動抓第一個，登入網頁預設停留 12A）；全站開放瀏覽（後端 `GetVisibleMenuIdsAsync` 回 null 不過濾、前端全放行）。`false` 則嚴格限 DB 帳號名單登入與授權。
-- **App Grid 權限隔離**：無 `canManageCurrentAppGrid` 者一律隱藏編輯/刪除圖示與操作端點，不分模式；開啟方式全站一致（新視窗全螢幕或彈窗/IE 模式）。
+> 給 AI 助手的明確指令：
+> **每次對話開始時，請務必先讀取 `memory.md` 與 `系統架構.md` 掌握當前最新進度與架構。**
+> **每次修改或決策後，請務必同步更新 `memory.md`（與必要時的 `系統架構.md`、`DB_Table.md`）。**
 
 ---
 
-## 2. 目錄結構（詳細職責見 `系統架構.md`）
+## 1. 專案簡介與核心目標
+**EQDashboard.V2.Web**（現役主線重構版）是專為 UMC（聯電）廠區設計的效能看板入口系統。
+**核心目標**：依據使用者的廠區與職務權限，結構化地呈現並管理可存取的各項效能報表與看板連結。提供極致流暢的使用者體驗（App Shell 快取、SPA 級路由切換）與嚴謹的權限隔離。
 
-```
-EQDashboard.V2.Web\
-├── Program.cs            # DI、Middleware Pipeline、CSP、健康檢查 (/health, /health/ready)
-├── appsettings.json      # ConnectionStrings:EQDashboard + AuthSettings
-├── Models\  Data\  Controllers\  Middleware\  Helpers\
-├── Services\
-│   ├── SchemaBootstrap.cs              # 啟動時 idempotent DDL 自我修復（補表/補欄位/補索引）
-│   ├── InitialDataCacheInvalidator.cs  # Singleton 快取作廢 + ETag bump 中心
-│   └── CacheInvalidationInterceptor.cs # EF SaveChangesInterceptor 快取作廢安全網
-└── wwwroot\
-    ├── index.html        # 唯一 UI 進入點 (<script type="module" src="js/main.js">)
-    ├── partials\modals.html
-    ├── css\              # variables / navbar / sidebar / components / responsive (RWD)
-    └── js\               # main / store(狀態中心) / api / auth / config
-        ├── ui\           # layout / navigation / dialogs
-        ├── render\       # sidebar / sidebar-item / tables / account-ui
-        └── admin\        # fab / role / account / menu / misc / activity-log / traffic-stats / modal-utils
-```
-
-增量 DB 異動 SQL 腳本放在方案根目錄 `sql\`（如 `sql\2026-07-18_Add_DailyUserVisits.sql`）。
+## 2. 當前最高優先級開發任務 (Current Focus)
+- **⚠️ 先把工作區 commit 掉**：最後一次 commit 是 `c9cc64e (2026-08-10)`，此後 E1~E14、登入不過期、pinNewRow 等六天成果（40 modified + 25 staged + 3 untracked，含兩支 SQL 腳本）全部未進版控。詳見 `memory.md` §3 第四輪健檢 F1。
+- 執行 `sql/2026-08-16_Fix_Account_Department_RoleNamePollution.sql`（尚未人工執行）。
+- 第四輪健檢待修清單（`memory.md` §3，F3~F12：語言不持久化、手機頂列溢位、ESC 全螢幕殘留、深色徽章對比、JS 動態字串 i18n…）。
+- 產出完整的使用者操作手冊 (PPT 規劃)。
+- ~~`TrackingController` 點擊統計偶發 `400 (Invalid CSRF Token)`~~ → 已於 2026-08-12 由 A2 修復（根因是 `_csrfToken` 初始化時序，非金鑰輪換）；2026-08-16 實機複驗暖重整請求序列乾淨、MenuClick 只 1 筆。
 
 ---
 
-## 3. 資料庫重點（完整結構快照與 SQL 歷史一律見 `DB_Table.md`）
-
-- 不使用 EF Migrations；`SchemaBootstrap.cs` 啟動時以冪等 SQL（`IF NOT EXISTS` / `COL_LENGTH IS NULL`）自我修復表、欄位與索引。
-- **19 張表**：實體 7（`Menus`/`Fabs`/`Roles`/`Accounts`/`Apps`/`Requests`/`PersonalSettings`）＋關聯 10（`Map_*`）＋稽核統計 2（`UserActivityLogs`、`DailyUserVisits` 複合 PK `(VisitDate, EmpId)`）。
-- **Per-Fab 覆寫**：`Map_Account_ExtraMenu`/`Map_Account_DenyMenu` PK 為 `(EmpId, FabId, MenuId)`，`FabId` 存廠區名稱（如 `12A`），刻意不建 FK 以免多重 Cascade 路徑衝突。
-- **命名映射**：前端 JS 一律 CamelCase（`m.displayName`），後端 C#/DB 一律 PascalCase（`DisplayName`）。`Accounts` 覆寫存檔必帶 `LoginCount`/`LastLoginTime`，以免被洗成 NULL。
-- **圖示**：為支援多主機 Web Farm 部署，上傳的圖示（Base64）統一儲存於資料庫（`Menus.Icon` / `Apps.IconBase64`），不再寫入本機實體檔案。舊有實體圖示已由 `IconStorageService.MigrateBase64IconsAsync` 於系統啟動時自動轉換回 DB 儲存。前端統一經由 `window.resolveIconUrl` 處理，`IconStorageService` 負責 MIME 驗證。APP 圖示編輯區由 `setIconPreviewBoxVisible` 透過 Bootstrap `d-none !important` / `d-flex !important` 嚴密控制（全新建立 APP 尚未上傳圖檔時不顯示預覽卡片區塊）。
-
----
-
-## 4. API 規範
-
-- **`GET /Settings/GetInitialData`**：非 Admin 由 `IMenuAuthService.GetVisibleMenuIdsAsync` 後端列級過濾；帳號相關表（`Accounts`/`PersonalSettings`/`Map_Account_*`）不分身分一律 **scope-to-own**（`.Where(x => x.EmpId == empId)` 只回登入者自身列，**嚴禁移除自身資料列**）；ETag 必摻入身分（`"{ETag}:{empId}:{isAdmin}"`）防共用機台跨帳號快取回放。
-- **`/api/Accounts`（Admin-Only）**：`GET ?page=&pageSize=&q=` 伺服器端分頁，`q` 進 DB 前必截斷至 100 字（防 SqlException 8152 字串截斷）；`GET /{id}` 呼叫端必套 `encodeURIComponent(id)`（防網域工號 `\` 造成 404）；`GET /export` 全量匯出供 Excel 備份。
-- **`GET /api/Auth/MyProfile`**：回傳登入者完整設定與授權（empId/name/department/登入統計/roleLevel/canEditOthers/assignedRoles/manageableMenus/per-fab extraMenus·denyMenus/defaultPages），與 `GetInitialData` 並行發送省 RTT；`MyProfile`/`WhoAmI`/`Config` 皆帶 `Cache-Control: no-cache, no-store, must-revalidate` 且前端 `{cache:'no-store'}`。**全域 401 攔截排除清單必含 `/api/Auth/MyProfile`、`/api/Auth/Login`、`/Settings/GetInitialData`、`/api/Auth/WhoAmI`**（防冷開頁誤判登出）。
-- **`/api/Analytics`（Admin-Only）**：`GET UsageStats?days=N`（DAU/MAU/註冊數/活躍率 KPI、每日與 12 個月趨勢、部門/廠區活躍比率）；`GET details?page=&pageSize=&date=&dept=&q=`（每日個人造訪明細分頁）。
+## 3. 專案概況與運行模式
+- **架構**：ASP.NET Core .NET 9.0 (Kestrel/IIS) + ES Modules 前端 (Bootstrap 5/Vanilla JS，全 CDN 無 bundler)。
+- **資料庫**：MSSQL (`EQDashboardV2` @ `Sariel`)。無 EF Migrations，由 `SchemaBootstrap` 啟動時以 T-SQL 冪等修復 (補表/欄位/索引)。CRUD 靜默寫入 DB，個人版面存 `PersonalSettings`。
+- **身分驗證 (`AuthSettings`)**：Windows Negotiate 自動偵測，前端無手動帳密表單。
+  - `SimulatedAccount`：指定帳號本地模擬驗證。變更時即時作廢舊 Cookie (`SignOutAsync`)。
+  - `DefaultAdmins`：名單內帳號自動建帳升級為 admin，防系統鎖死。
+  - `OpenAccessMode`：開啟時開放瀏覽，自動建帳綁定全廠區；關閉時嚴格限制名單。
+- **權限隔離 (App Grid)**：無管理權限者，前端 UI 一律隱藏編輯/刪除圖示與端點。操作開啟方式全站一致。
+- **登入不因時間過期（企業內網政策，2026-08-16 定案）**：`Auth:SessionDays` 預設 **3650 天**＋`SlidingExpiration`，實務上等同不過期。
+  - **存續期間的唯一事實來源是 `Program.cs` 的 `options.ExpireTimeSpan`**。`SignInAsync` 的 `AuthenticationProperties` **嚴禁再設 `ExpiresUtc`** —— 它會覆蓋前者（歷史坑：兩處寫死 `AddHours(12)`，讓 `ExpireTimeSpan` 形同虛設，使用者隔夜回來必被登出）。
+  - **401 一律先靜默重新自動登入**：`api.js` 收到 401、且 MyProfile 複驗確認失效後，會先跑一次 `tryAutoLogin()`（Windows Negotiate 背景換身分）。成功 → 只出 toast、**不彈視窗、不顯示登入框、且留在原頁**（靠 `window._silentReauthKeepPage` 讓 `completeLoginAfterAuth` 改呼叫 `initDashboardUI(true)`）；只有連自動偵測都失敗才 `logout()` + 阻斷式提示。**不要退回「401 就彈視窗要人重登入」的舊行為。**
+  - ⚠️ 不論 `SessionDays` 設多久，**清掉 `App_Data/keys`（DataProtection 金鑰）等於所有人一起被登出** —— cookie 是用它加密的。部署/搬機器時務必保留該目錄。
 
 ---
 
-## 5. C# 與 MSSQL 開發規範（必 100% 嚴格遵循）
+## 4. 技術開發規範與 Coding Style
 
+### C# 與 MSSQL (必 100% 嚴格遵循)
 1. **薄 Controller**：統一 `XxxController : Controller`，業務邏輯封裝至 `Services/`。
-2. **SQL 參數化**：原生 ADO.NET/DDL 對外部輸入一律 `SqlParameter`，嚴禁字串拼接（`SchemaBootstrap` DDL 硬編碼白名單除外）。
-3. **交易與執行策略**：多步驟「先刪舊 mapping、再寫新 mapping」一律包原子交易；因 `EnableRetryOnFailure`，手動交易必經 `_context.Database.CreateExecutionStrategy().ExecuteAsync(...)` 內包 `BeginTransactionAsync()`。
-4. **複合 PK 先刪後寫兩回合**：替換 `Map_Role_Menu`/`Map_Fab_Role`/`PersonalSettings` 等關聯時，先 `RemoveRange(old)` + `SaveChangesAsync()`，再 `Add(new)` + `SaveChangesAsync()`（同回合 Remove+Add 相同 PK 會觸發 EF Identity Map 追蹤衝突）；寫入前以 `HashSet`/`.Distinct()` 去重。
-5. **參照預檢**：寫 `Map_*` 前先 `ValidateMappingRefsAsync` 驗 `RoleId`/`MenuId` 存在，回 400 而非 500 FK 錯誤。
-6. **索引唯一事實來源**＝`SchemaBootstrap.EnsureIndexesAsync`（冪等 T-SQL）；**嚴禁 EF `HasIndex`**（無 Migrations 時為無效 metadata）。帳號搜尋靠覆蓋索引 `IX_Accounts_Search (Name, Department)`。
-7. **UPDATE + OUTPUT 單次往返**：「更新並取新值」一律單一 SQL 配 `OUTPUT INSERTED.*`，禁 UPDATE 後再 SELECT；reader 無列＝WHERE 未命中（帳號不存在）。
-8. **快取作廢與 ETag**：異動 `Menus`/`Fabs`/`Roles`/`Map_*` 的寫入端點完成後必呼叫 `IInitialDataCacheInvalidator.InvalidateInitialDataCache()`（雙重關鍵：清快取＋bump ETag，連動作廢 `visibleMenus:{ETag}:{empId}`）；EF 寫入有 `CacheInvalidationInterceptor` 安全網，**raw ADO.NET/raw SQL 寫入必須手動呼叫**。
-9. **約束啟用**：一律 `WITH CHECK CHECK CONSTRAINT ALL`；嚴禁 `WITH NOCHECK CHECK`（Untrusted 狀態）。
-10. **禁用 `SqlBulkCopy`**：主機 `Sariel` 僅 6GB RAM，Bulk Copy 的 Memory Grant 易卡死 `RESOURCE_SEMAPHORE`；維持參數化批次 INSERT。
-11. **DbContext 池化 (`AddDbContextPool`)**：建構子只收 `DbContextOptions<AppDbContext>`；嚴禁注入 Scoped 服務、嚴禁可變實例欄位、嚴禁實例層級變更（`SetCommandTimeout`/`QueryTrackingBehavior`）。
-12. **`AsSplitQuery`**：≥2 個 Collection `Include` 的 LINQ 查詢必加 `.AsSplitQuery()`。
-13. **`AsNoTracking`**：唯讀 GET 序列化查詢必加；即將 `SaveChanges` 的查詢嚴禁加（會靜默無效）。
-14. **身分與 IP**：`EmpId` 唯一取自 `User.FindFirst(ClaimTypes.NameIdentifier)?.Value`，**嚴禁 `User.Identity.Name`**（為姓名）；IP 走 `ClientIpHelper.GetClientIp(HttpContext)`，僅供稽核不可作授權。
-15. **狀態碼與日誌**：資源不存在回 404；業務驗證/格式/授權阻擋回 400；日誌一律 DI 注入 `ILogger<T>`，**嚴禁 `Console.WriteLine`**（IIS 下無法捕獲）。
-16. **跨時區一致性**：每日統計/跨日比對（如 `DailyUserVisits`）的「今天」一律以 DB 端 `CONVERT(date, GETDATE())` 為準。
+2. **SQL 參數化**：原生 ADO.NET 對外部輸入一律 `SqlParameter`，嚴禁字串拼接。
+3. **交易與執行策略**：多步驟寫入包原子交易，因 `EnableRetryOnFailure`，手動交易必經 `CreateExecutionStrategy().ExecuteAsync(...)`。
+4. **複合 PK 先刪後寫**：替換映射表（如 `Map_Role_Menu`）時，同回合先 `RemoveRange` + `SaveChanges`，再 `Add` + `SaveChanges` 防止追蹤衝突。
+5. **索引唯一事實來源**：`SchemaBootstrap.EnsureIndexesAsync`（冪等 T-SQL），嚴禁 EF `HasIndex`。
+6. **UPDATE + OUTPUT**：更新並取新值單次往返，單一 SQL 配 `OUTPUT INSERTED.*`。
+7. **快取作廢與 ETag**：異動核心表後必呼叫 `IInitialDataCacheInvalidator.InvalidateInitialDataCache()`。EF 有 `CacheInvalidationInterceptor` 安全網，但 raw SQL 寫入必須手動呼叫。
+8. **禁用 `SqlBulkCopy`**：主機僅 6GB RAM，維持參數化批次 INSERT 防卡死 `RESOURCE_SEMAPHORE`。
+9. **DbContext 池化**：建構子只收 `DbContextOptions`；嚴禁注入 Scoped 服務、嚴禁可變實例欄位。
+10. **身分與 IP**：EmpId 唯一取自 `User.FindFirst(ClaimTypes.NameIdentifier)`；IP 走 `ClientIpHelper.GetClientIp`。
+
+### 前端開發與安全規範
+1. **CSRF**：`api.js` 攔截器對 400 + `Invalid Token` 自動刷新重試 1 次；Antiforgery Middleware 置於驗證後；**標頭一律由攔截器統一補上（`X-Requested-With` + `X-CSRF-TOKEN`），呼叫端不准自己帶** 。
+   - **初始化時序（必守）**：`window._csrfToken` 只有 `auth.js` 的 `fetchAuthConfig()` 會設值，而 `main.js` 的 DOMContentLoaded 必須在 `initDashboardUI()` **之前** `await` 它完成（與 `fetchInitialDataFromDB()` 並行發出、不增加 RTT）。原因：`initDashboardUI → goDefaultHome → activateMenu → POST MenuClick` 是每次開頁的第一個寫入請求；若 token 未就位就會 400，且 `appState.openAccessMode` 未設會讓預設首頁判定在「暖重整 vs 冷載入」之間不一致。**嚴禁把 token 取得綁在 `tryAutoLogin()` 內**（暖重整路徑不會經過它）。
+2. **ES Modules**：`import` 絕對置頂；inline 事件函數必 `window.X = X` 暴露；狀態走 `store.js` (`appState`)。
+3. **App Shell 快取防禦**：RESTful 存檔後必呼叫 `window.clearAppCache(preserveCurrentUser)` 清除 LocalStorage 畫面暫存。
+4. **單一 JS 入口，且 JS 一律不帶版本碼 (`?v=`)**：`index.html` 只准有 **一支** `<script type="module" src="js/main.js">`（不帶 query；main.js 的 import 圖已涵蓋全部 20 支模組），模組內的 `import` 也**全部不帶 `?v=`**。
+   - 理由：module map 以「完整 URL 含 query」為 key，同一檔案只要出現兩種 URL 就會被載成**兩個模組實例** → `window.fetch` 被包兩層、`DOMContentLoaded` 跑兩遍（GetInitialData 雙打、MenuClick 統計記兩次）、模組層級 guard 變數各有兩份而失效。
+   - ⚠️ 入口那支也不能帶 `?v=`：`auth.js` 與 `admin/misc-manage.js` 有反向 `import './main.js'`（循環相依），`main.js?v=x` 與 `main.js` 會變成兩個 URL、main.js 照樣執行兩次。
+   - JS 的新鮮度改由 `Program.cs` 對 `.js/.css/.html` 設 `Cache-Control: no-cache`（每次帶 ETag 重新驗證、未變更回 304）保證。`?v=` 只保留給**不在 module 圖內**的資源：CSS `<link>` 與 `partials/modals.html`，其值一律對齊 `index.html` 內的 `__APP_VER__`（唯一事實來源）。
+   - 驗收：`index.html` 內 `type="module"` 只能有 1 個；`grep -r "?v=" wwwroot/js` 必須是 0 筆。
+5. **轉義三件套**：ID 進 JS `onclick` 必 `_jsArg()`；DB 資料進 DOM 必 `escHtml()`；URL ID 必 `encodeURIComponent()`。
+6. **訊息分流**：成功/資訊走右下角 `showToast`；錯誤/決策走 `customAlert`/`customConfirm`。禁止為成功訊息加阻斷 Modal。**暫時性失敗（連線中斷、可重試的 401）也走 toast，不得阻斷**。
+   - **401 不可直接登出**：`api.js` 收到 401 時必須先打一次 `/api/Auth/MyProfile` 複驗；只有確認身分真的失效才 `logout()`。401 有多種「session 其實還活著」的成因（改 `SimulatedAccount` 觸發 `OnValidatePrincipal` 的 `SignOutAsync`、App Pool 回收、金鑰輪換、與 SignOut 競態），舊版無條件登出會把人無故踢出。
+   - **主題切換**：一律走 `ui/layout.js` 的 `applyTheme()`，它會同時設 `data-theme`（自訂變數）與 `data-bs-theme`（Bootstrap 5.3 原生元件）。**不要在別處各自 `setAttribute`**，否則兩個屬性會不同步、Bootstrap 元件卡在淺色。
+   - **轉義只有一份實作**：`store.js` 的 `escHtml`（含 `'`）。`escapeHTML`／`escapeHtml` 都是它的別名，不要再新增私有副本。
+7. **表格/挑選器**：`renderAccountTable` 是唯一 `serverSide:true` 的 DataTable，嚴禁改為記憶體分頁。
+   - **「剛新增的必須在第一頁最上方」（2026-08-16 定案）**：新資料的 `order` 是接在最後（`menus.length * 10`），照排序渲染會掉到最後一頁，使用者按完新增看不到成果。統一機制在 `render/sidebar.js`：新增成功後呼叫 `pinNewRow(tableId, id)`（記在 `appState.dtPinnedNewIds`，**且會讓該次 `initDataTable` 略過分頁還原、留在第 1 頁**），render 函式排序完再套 `applyPinnedNewFirst(tableId, rows)` 把它搬到最前面。
+   - **置頂只是「本次 session 的暫時排序」**：記憶體變數，整頁重整即消失、回歸 `order` 排序 —— 這是刻意的，不可改存 localStorage/DB，否則等於偷偷竄改全域順序（該順序的事實來源是「權限管理」的拖曳）。編輯既有項目**不置頂**（只有 `!id` 的新增路徑才呼叫）。
+8. **新增 DB 欄位時必須同步「全量覆寫」三條路徑**：`/Settings/SaveData` 是 `DELETE FROM` + 依 **DB schema 欄位**重建 INSERT，**payload 沒帶到的欄位會被寫成 NULL**。所以每加一個欄位，都要同時補：① `api.js getDatabasePayload()`、② `api.js fetchInitialDataFromDB()` 的 mapper、③ `misc-manage.js` 的 Excel 匯出 + 匯入 mapping。少補任何一處，使用者按一次「匯入並覆蓋」就會靜默清空該欄。稽核欄位（`CreatedAt`/`CreatedBy`/`LoginCount`…）的規格是「前端只原封不動帶回、不編輯，且不放進 DTO」。
+9. **i18n 三語必須同時新增**：新增 `data-i18n` 屬性或 `t('key')` 呼叫時，**zh/en/ja 三個語系都要補齊**。`data-i18n` 指向不存在的 key 不會報錯、只會靜默保留原本的中文硬字 —— 專案曾因此有 4 個 key（`lbl_recent`、`home_fab_title`、`ts_tab_popular`、`ts_tab_zombie`）長期失效而沒人發現。驗收：三語 key 數必須相等，且 `index.html` 內所有 `data-i18n` / `data-i18n-placeholder` 都要在 i18n 表中找得到。動態產生的畫面（如最近瀏覽卡片）還要記得加進 `changeLanguage()` 的作用頁重繪清單，否則切語言不會更新。
+   - **`data-i18n` 絕對不可巢狀（2026-08-16 血淚）**：`changeLanguage()` 是對每個 `[data-i18n]` 直接 `el.innerHTML = 譯文`。若父元素有 `data-i18n`、內部又有帶 `data-i18n` 的子元素，**切語言時子元素會被整個覆寫掉、文字永久消失**（例：`<label data-i18n="X">套用權限群組 <span data-i18n="Y">(單選…)</span></label>` 切一次語言後那句提示就不見了）。
+     正確作法：把 key 下移到「包住父層自身裸文字」的 `<span>`，父層不掛 `data-i18n`。驗收腳本要檢查「巢狀 data-i18n = 0」。
+   - **JS 會動態填值的元素不可掛 `data-i18n`**：同樣因為切語言會把 innerHTML 洗回預設字串。已知名單：`#current-lang-display`、`#user-name`/`#user-role`、`#dropdown-user-*`、`#tsZombieDesc`、`#app-grid-title`、`#under-construction-text`、`#whoami-status`。這些請改在 JS 內用 `t('key', '中文預設')`。
+   - **`aria-label` / `title` 也要翻譯**：2026-08-16 起 `changeLanguage()` 支援 `data-i18n-aria-label` 與 `data-i18n-title`。純圖示按鈕新增 `aria-label` 時請一併掛上，否則英日文使用者用讀螢幕聽到的仍是中文。
+   - **掃描器要用 DOM 走訪、不要只用正則**：`<div><i class="…"></i>提示：…</div>` 這種「巢狀元素之後的裸文字」，用 `<tag …>text` 的正則會完全掃不到（本輪就是這樣先漏了 37 處）。
+10. **導航所有權單一化**：`initDashboardUI()` 是唯一負責初始導航的地方（依 `stayOnCurrentPage` 決定是否 `goDefaultHome()`）。呼叫 `switchLayoutMode(mode, navigate)` 時若只是要同步版面模式狀態，**必須傳 `navigate=false`**，否則它內部也會 `goDefaultHome()` → `activateMenu` 跑兩遍（MenuClick 統計膨脹一倍）並架空 `stayOnCurrentPage`。判斷「是否重複執行」請以實機 Network 紀錄為準，不要只看程式碼推論。
 
 ---
 
-## 6. 前端開發與安全規範（必守）
-
-- **CSRF**：Antiforgery Middleware 必配置於 `UseAuthentication()`/`UseAuthorization()` **之後**（Token 綁 Identity Claims）；登入後 `refreshCsrfToken()`；`api.js` 攔截器對 400 + `Invalid Token` 自動刷新重試 1 次。
-- **CSP/SRI**：CSP 必含 `'unsafe-inline'`＋CDN 白名單（`cdn.jsdelivr.net`/`cdnjs.cloudflare.com`/`cdn.datatables.net`/`code.jquery.com`）＋`frame-src` 允許外部看板 iframe；CDN 標籤必帶 `integrity="sha384-..."` + `crossorigin="anonymous"`，換版本重算校驗碼。
-- **Authorization baseline**：Controller 預設 class-level `[Authorize]`，管理員功能再加 `[Authorize(Roles="admin")]`。
-- **ES Modules**：`import` 絕對置頂（任一 SyntaxError 中斷整張模組圖）；inline `onclick` 用的函式必 `window.X = X`；狀態一律走 `store.js` 的 `appState`。
-- **App Shell 快取防禦**：`syncDataToDB()`、RESTful 存檔（`save*API`/`delete*API`）、切帳號/登出後必呼叫 `window.clearAppCache(preserveCurrentUser)`（`app_shell_*` 快照 Ctrl+F5 不會清）；`restoreLoginFromStorage` 比對 `window._currentServerEmpId` 雙重驗證，並以 `Object.assign` 將 DB 最新身分同步回 localStorage。
-- **版本碼 `?v=`**：`index.html` 與所有模組 `import ?v=` 全站完全一致（目前 `20260727b`），改版一律全域取代，否則同模組雙載、狀態分裂。
-- **訊息分流**：成功/資訊走 `showToast(msg, type, delay, isHtml)`（非阻斷 Toast）；錯誤與需決策才走 `customAlert`/`customConfirm`，嚴禁為成功訊息新增阻斷 Modal；查詢表格載入態一律 `skeletonRows(colCount, rowCount)` 骨架屏。
-- **i18n 全量覆蓋**：新 UI 文字必掛 `data-i18n`（placeholder 用 `data-i18n-placeholder`），`config.js` 字典同步補 zh/en/ja；JS 動態字串走 `t(key, fallback)`，含數值用 `{0}`/`{1}` 模板＋`.replace()`；含圖示元素把文字包 `<span data-i18n>`。
-- **轉義三件套**：ID 進 inline `onclick('ID')` 先 `_jsArg()`（防網域 ID 的 `\` 被吃）；DB 資料進 `innerHTML` 必 `escHtml()`（防 XSS）；REST URL 的 ID 必 `encodeURIComponent()`。
-- **RWD**：`@media` 斷點全集中 `css/responsive.css`（≤992 側欄浮層＋遮罩 / ≤768 手機 / ≤480 窄幅）；JS 行為集中 `ui/layout.js` RWD 區塊（`RWD_SIDEBAR_BREAKPOINT = 992` 與 CSS 一致）。
-- **表格/挑選器**：`renderAccountTable` 是唯一 `serverSide:true` DataTable（方案 A 旗艦優化為 6 欄配置，將層級與委派整合為「管理層級與狀態」，將可視群組與委派選單整合為「可視與管轄範圍」，大幅釋放寬度供長路徑文字展開），禁改回記憶體分頁；查詢篩選綁 Enter 送出且新查詢重設回第 1 頁；sticky 表頭只宣告於 `components.css`；`openMenuSelector` 支援 folder 當預設首頁，權限與 Root 判定必檢查整個 `parentIds` 陣列：`(!cleanId(m.parentId)) && (m.parentIds||[]).filter(Boolean).length===0`；樹狀模板引用的 `${xxxHtml}` 必先以 `const` 宣告。
-- **排序**：系統選單拖曳走 `batchSaveMenusAPI`（禁 Excel 全量覆寫）；個人排序走 `/api/PersonalSettings`，personal 模式根層排序 fallback 對齊 `dedupedInitIds` 索引。
-- **意見箱**：`openFeedbackPage` 導向系統「需求申請」頁（非外部信箱），管理員於「申請審核管理」回覆。
-
----
-
-## 7. 當前待辦事項 (Active Tasks)
-
-- [x] **本地版控收尾**：確保 `bin/`、`obj/`、`.vs/`、`App_Data/`、`appsettings.json` 不進版控，並 commit 保存最新狀態。
-- [x] **DataProtection 金鑰輪換（安全優先）**：清除歷史外洩的 `App_Data/keys/*` 並重啟重產新金鑰（現有 Sessions 失效）。
-- [x] **大型規模擴展評估（長期可選）**：看板/權限達數千筆時，評估 Menu 分類檢索、側欄樹狀 lazy-loading 與分廠 on-demand 載入。已實作側欄樹狀 DOM lazy-loading。
-
----
-
-## 🔄 每輪對話文件同步規範 (Mandatory Protocol)
-
-1. **同步 `CLAUDE.md`（＝`AGENTS.md`）與 `memory.md`**：寫入新確定的規範/坑點，移除過時任務。
-2. **同步 `系統架構.md`**：檔案增刪、移動或核心職責調整時更新架構樹與說明。
-3. **DB 架構異動（嚴格遵從）**：凡涉及 `SchemaBootstrap.cs`、實體欄位、資料表或索引增刪修：
-   1. 同步修改 `DB_Table.md` 上方結構快照；
-   2. 於方案根目錄 `sql\` 產出增量異動 `.sql` 腳本（`IF NOT EXISTS` 冪等 DDL、相容既有資料）；
-   3. 於 `DB_Table.md` 末「5. Schema Changelog」**只增不刪**追加當日日期 (`YYYY-MM-DD`) 與 `.sql` 檔名。
-4. **回覆通知**：對話末尾註明 `*已自動更新 CLAUDE.md 與 memory.md*`（有 SQL 檔亦一併列出）。
+## 5. 每輪對話文件同步規範 (Mandatory Protocol)
+1. **同步 `CLAUDE.md` 與 `memory.md`**：寫入新確定的規範/坑點，移除過時任務。
+2. **同步 `系統架構.md`**：檔案增刪、移動或核心職責調整時更新架構樹。
+3. **DB 架構異動 (嚴格遵從)**：凡涉及資料庫 Schema 或結構變動，必須：
+   - 同步修改 `DB_Table.md` 上方的結構快照。
+   - 於方案根目錄 `sql\` **往下新增**增量的 `.sql` 腳本檔案。
+   - **絕對禁止修改目前既有的 DB 資料與舊有腳本，只能透過往下新增 SQL 指令來進行架構修改。**
+   - 於 `DB_Table.md` 末端的 Changelog **只增不刪**追加當日日期與新增的 `.sql` 檔名。
+4. **回覆通知**：對話末尾註明 `*已自動更新 CLAUDE.md 與 memory.md*`。

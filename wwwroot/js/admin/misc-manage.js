@@ -1,16 +1,16 @@
 ﻿// === admin/misc-manage.js - AppGrid + 需求申請 + 審核 + Excel 匯出 + 圖示工具 ===
 
-import { getAppItems, getCustomMenus, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings } from '../config.js?v=20260727b';
+import { getAppItems, getCustomMenus, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings } from '../config.js';
 
 
-import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260727b';
-import { batchSaveMenusAPI, deleteAppAPI, fetchInitialDataFromDB, saveAppAPI, syncDataToDB } from '../api.js?v=20260727b';
-import { initDashboardUI } from '../main.js?v=20260727b';
-import { renderSidebarMenus } from '../render/sidebar.js?v=20260727b';
-import { renderAppGrid, renderApplyTable, renderAuditTable, renderMenuConfigTable, renderPersonalMenuManage, renderWebpageTable } from '../render/tables.js?v=20260727b';
-import { customAlert, customConfirm, showToast, updateSyncButtonUI } from '../ui/dialogs.js?v=20260727b';
-import { navTo } from '../ui/navigation.js?v=20260727b';
-import { appState } from '../store.js?v=20260727b';
+import { hideModalSafely, showModalSafely } from './modal-utils.js';
+import { batchSaveMenusAPI, deleteAppAPI, fetchInitialDataFromDB, saveAppAPI, syncDataToDB } from '../api.js';
+import { initDashboardUI } from '../main.js';
+import { renderSidebarMenus } from '../render/sidebar.js';
+import { renderAppGrid, renderApplyTable, renderAuditTable, renderMenuConfigTable, renderPersonalMenuManage, renderWebpageTable } from '../render/tables.js';
+import { customAlert, customConfirm, showToast } from '../ui/dialogs.js';
+import { navTo } from '../ui/navigation.js';
+import { appState } from '../store.js';
 
 
 // === 拖曳全域輔助 (表格重新排序使用) ===
@@ -695,12 +695,18 @@ export async function createWorkbookData() {
     const apps = getAppItems();
     const reqs = getRequests();
 
-    appendSafeData(menus.map(m => ({ MenuId: m.id, SysName: m.name, DisplayName: m.displayName, MenuMode: m.menuMode, Url: m.url || '', TargetPage: m.targetPage || '', OpenTarget: m.target || '', Icon: m.icon || '', CreatedBy: m.createdBy || 'admin', IsEnabled: m.enabled !== false, IsPoolItem: m.isPoolItem === true, IsEdited: m.isEdited === true, GlobalOrder: m.order || 0 })), "Menus");
+    // ⚠️ Description / Keywords / CreatedAt 必須一起匯出：匯入是「DELETE + 依 schema 重建 INSERT」的全量覆寫，
+    //   Excel 沒有的欄位匯入後就是 NULL。少了它們＝一次「匯出→匯入」就洗掉看板描述/關鍵字與建立時間
+    //   （後者會讓殭屍看板誤判防護失效）。
+    appendSafeData(menus.map(m => ({ MenuId: m.id, SysName: m.name, DisplayName: m.displayName, MenuMode: m.menuMode, Url: m.url || '', TargetPage: m.targetPage || '', OpenTarget: m.target || '', Icon: m.icon || '', CreatedBy: m.createdBy || 'admin', IsEnabled: m.enabled !== false, IsPoolItem: m.isPoolItem === true, IsEdited: m.isEdited === true, GlobalOrder: m.order || 0, Description: m.description || '', Keywords: m.keywords || '', CreatedAt: m.createdAt || '' })), "Menus");
     appendSafeData(fabs.map(f => ({ FabId: f.id, FabName: f.fabName, DisplayName: f.displayName, DefaultLang: f.defaultLang || 'zh' })), "Fabs");
     appendSafeData(roles.map(r => ({ RoleId: r.id, GroupName: r.groupName })), "Roles");
-    appendSafeData(accs.map(a => ({ EmpId: a.empId, Name: a.name, Department: a.department || '', RoleLevel: a.roleLevel || 'user', CanEditOthers: a.canEditOthers === true })), "Accounts");
+    // ⚠️ LoginCount / LastLoginTime 為稽核欄位，必須原封不動 round-trip（規格同 Menus.CreatedAt）。
+    //   漏帶＝一次「匯出→匯入並覆蓋」全站登入統計歸零（2026-08-15 修）。
+    appendSafeData(accs.map(a => ({ EmpId: a.empId, Name: a.name, Department: a.department || '', RoleLevel: a.roleLevel || 'user', CanEditOthers: a.canEditOthers === true, LoginCount: a.loginCount || 0, LastLoginTime: a.lastLoginTime || '' })), "Accounts");
     appendSafeData(apps.map(a => ({ AppId: a.id, MenuId: a.menuId, AppName: a.name, Url: a.url || '', IconBase64: a.iconBase64 || '', Target: a.target || '_blank' })), "Apps");
-    appendSafeData(reqs.map(r => ({ RequestId: r.id, EmpId: r.empId, EmpName: r.empName, Reason: r.reason, Timestamp: r.timestamp, Status: r.status, WithdrawReason: r.withdrawReason || '', Reply: r.reply || '' })), "Requests");
+    // ⚠️ ReqType / Fab 同理：漏帶會讓所有申請單在匯入後失去「申請類別」與「廠區」（2026-08-15 修）。
+    appendSafeData(reqs.map(r => ({ RequestId: r.id, EmpId: r.empId, EmpName: r.empName, ReqType: r.reqType || '', Fab: r.fab || '', Reason: r.reason, Timestamp: r.timestamp, Status: r.status, WithdrawReason: r.withdrawReason || '', Reply: r.reply || '' })), "Requests");
 
     let mapFabRole = []; fabs.forEach(f => { if (f.assignedRoles) f.assignedRoles.forEach(rId => mapFabRole.push({ FabId: f.id, RoleId: rId })); });
     appendSafeData(mapFabRole.length ? mapFabRole : [{ FabId: '', RoleId: '' }], "Map_Fab_Role");
@@ -912,6 +918,10 @@ export async function processAndSaveWorkbook(workbook, isManualImport = false) {
                 empId: empId, name: row.Name || '', department: row.Department || '',
                 roleLevel: (row.RoleLevel || 'user').toLowerCase(),
                 canEditOthers: String(row.CanEditOthers).toLowerCase() === 'true',
+                // 稽核欄位原封帶回；舊版 Excel 沒有這兩欄 → 0 / null（getDatabasePayload 會寫成 DBNull）。
+                //   ⚠️ lastLoginTime 不可用 String() 包，否則空值會變成字串 "undefined"。
+                loginCount: parseInt(row.LoginCount) || 0,
+                lastLoginTime: row.LastLoginTime || null,
                 defaultPages: defPages,
                 assignedRoles: mapAccRole.filter(m => window.cleanId(m.EmpId) === window.cleanId(empId) && m.RoleId).map(m => String(m.RoleId)),
                 manageableMenus: mapAccMenu.filter(m => window.cleanId(m.EmpId) === window.cleanId(empId) && m.MenuId).map(m => String(m.MenuId))
@@ -931,7 +941,9 @@ export async function processAndSaveWorkbook(workbook, isManualImport = false) {
 
         const finalMenus = rawMenus.filter(r => r.MenuId).map(row => {
             let mId = String(row.MenuId);
-            let m = { id: mId, name: row.SysName || '', displayName: row.DisplayName || '', menuMode: row.MenuMode || 'link', url: row.Url || '', targetPage: row.TargetPage || '', target: row.OpenTarget || 'iframe', icon: row.Icon || '', createdBy: row.CreatedBy || 'admin', enabled: String(row.IsEnabled).toLowerCase() !== 'false', isPoolItem: String(row.IsPoolItem).toLowerCase() === 'true', isEdited: String(row.IsEdited).toLowerCase() === 'true', order: parseInt(row.GlobalOrder || 0), parentId: null, parentIds: [], parentOrders: {} };
+            // Description / Keywords / CreatedAt：舊版 Excel 沒有這幾欄 → 取不到就給 ''/null，
+            //   CreatedAt 給 null（而非 ''）才會在 SaveDataAsync 寫成 DBNull，語意等同「未知建立時間」。
+            let m = { id: mId, name: row.SysName || '', displayName: row.DisplayName || '', menuMode: row.MenuMode || 'link', url: row.Url || '', targetPage: row.TargetPage || '', target: row.OpenTarget || 'iframe', icon: row.Icon || '', createdBy: row.CreatedBy || 'admin', enabled: String(row.IsEnabled).toLowerCase() !== 'false', isPoolItem: String(row.IsPoolItem).toLowerCase() === 'true', isEdited: String(row.IsEdited).toLowerCase() === 'true', order: parseInt(row.GlobalOrder || 0), description: row.Description || '', keywords: row.Keywords || '', createdAt: row.CreatedAt || null, parentId: null, parentIds: [], parentOrders: {} };
             let parents = mapMenuStruct.filter(s => window.cleanId(s.ChildMenuId) === window.cleanId(mId) && s.ParentMenuId);
             if (parents.length > 0) { m.parentId = String(parents[0].ParentMenuId); m.parentIds = parents.map(p => String(p.ParentMenuId)); parents.forEach(p => { m.parentOrders[String(p.ParentMenuId)] = parseInt(p.SortOrder || 0); }); }
             return m;
@@ -950,7 +962,10 @@ export async function processAndSaveWorkbook(workbook, isManualImport = false) {
         if (rawReqs.length > 0) {
             finalReqs = rawReqs.filter(r => r.RequestId || r.id).map(row => ({
                 id: String(row.RequestId || row.id), empId: String(row.EmpId || row.empId),
-                empName: row.EmpName || row.empName || '', reason: row.Reason || row.reason || '',
+                empName: row.EmpName || row.empName || '',
+                // 舊版 Excel 沒有 ReqType / Fab → 給空字串（與 getDatabasePayload 的 safeStr 行為一致）
+                reqType: row.ReqType || row.reqType || '', fab: row.Fab || row.fab || '',
+                reason: row.Reason || row.reason || '',
                 timestamp: row.Timestamp || row.timestamp, status: row.Status || row.status || 'unreplied',
                 withdrawReason: row.WithdrawReason || row.withdrawReason || '', reply: row.Reply || row.reply || ''
             }));
@@ -990,17 +1005,9 @@ export async function processAndSaveWorkbook(workbook, isManualImport = false) {
         }
     }
 
-    if (isManualImport) {
-        appState.hasUnsavedChanges = false;
-        if (typeof updateSyncButtonUI === 'function') updateSyncButtonUI();
-
-        if (typeof syncDataToDB === 'function') {
-            await syncDataToDB(true); // Excel 匯入時要顯示 loading 與完成訊息
-            if (typeof initDashboardUI === 'function') initDashboardUI(true);
-        }
-    } else {
-        appState.hasUnsavedChanges = false;
-        if (typeof updateSyncButtonUI === 'function') updateSyncButtonUI();
+    if (isManualImport && typeof syncDataToDB === 'function') {
+        await syncDataToDB(true); // Excel 匯入時要顯示 loading 與完成訊息
+        if (typeof initDashboardUI === 'function') initDashboardUI(true);
     }
 }
 

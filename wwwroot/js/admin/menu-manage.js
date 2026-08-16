@@ -1,15 +1,15 @@
-﻿// === admin/menu-manage.js - 個人選單 + 看板管理 + 選單結構樹 ===
+// === admin/menu-manage.js - 個人選單 + 看板管理 + 選單結構樹 ===
 
-import { getCustomMenus, getPersonalSettings, savePersonalSettings, t } from '../config.js?v=20260727b';
+import { getCustomMenus, getPersonalSettings, savePersonalSettings, t } from '../config.js';
 
 
-import { getSelectedIconVal, setIconValToModal } from './misc-manage.js?v=20260727b';
-import { hideModalSafely, showModalSafely } from './modal-utils.js?v=20260727b';
-import { batchDeleteMenusAPI, batchSaveMenusAPI, deleteMenuAPI, fetchInitialDataFromDB, saveMenuAPI } from '../api.js?v=20260727b';
-import { renderSidebarMenus } from '../render/sidebar.js?v=20260727b';
-import { renderMenuConfigTable, renderPersonalMenuManage, renderWebpageTable } from '../render/tables.js?v=20260727b';
-import { customAlert, customConfirm, showToast } from '../ui/dialogs.js?v=20260727b';
-import { appState } from '../store.js?v=20260727b';
+import { getSelectedIconVal, setIconValToModal } from './misc-manage.js';
+import { hideModalSafely, showModalSafely } from './modal-utils.js';
+import { batchDeleteMenusAPI, batchSaveMenusAPI, deleteMenuAPI, fetchInitialDataFromDB, saveMenuAPI } from '../api.js';
+import { pinNewRow, renderSidebarMenus } from '../render/sidebar.js';
+import { renderMenuConfigTable, renderPersonalMenuManage, renderWebpageTable } from '../render/tables.js';
+import { customAlert, customConfirm, showToast } from '../ui/dialogs.js';
+import { appState } from '../store.js';
 
 
 // 共用工具：把 ACL textarea 內容切行、trim、過濾空字串、去重
@@ -229,10 +229,12 @@ export async function saveWebpageItem(e) {
 
         const result = await saveMenuAPI(!id, mObj);
         if (!result.success) {
-            if (btn) window.setButtonLoading(btn, false);
-            customAlert("儲存失敗: " + (result.message || '未知錯誤'));
-            return false; 
+            customAlert(t('err_save_failed', '儲存失敗：') + (result.message || '未知錯誤'));
+            return false;
         }
+
+        // 新增（非編輯）才置頂：讓剛建立的看板出現在第一頁最上方，不必翻頁去找
+        if (!id) pinNewRow('dtWebpage', mObj.id);
 
         // 成功 → 刷新資料 + 關 modal + 重畫；任一階段若噴錯也不能讓畫面卡住
         try { await window.fetchInitialDataFromDB(); } catch (e) { console.error('fetch 失敗', e); }
@@ -243,10 +245,14 @@ export async function saveWebpageItem(e) {
             if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
         } catch (e) { console.error('render 失敗', e); }
     } catch (error) {
-        if (btn) window.setButtonLoading(btn, false);
         console.error("[saveWebpageItem] 錯誤:", error);
         // 最外層噴錯也要彈訊息 + 確保 modal 不會永遠卡住
-        try { customAlert("儲存發生未預期錯誤：" + (error?.message || error)); } catch (_) { }
+        try { customAlert(t('err_unexpected', '發生非預期的錯誤：') + (error?.message || error)); } catch (_) { }
+    } finally {
+        // ⚠️ 一律在 finally 解除（2026-08-15 修）：舊版只在「早退」與「catch」兩條路徑解除，
+        //   **成功路徑漏掉** → 存檔成功後 modal 雖然關了，但同一顆按鈕仍留著 disabled + btn-loading，
+        //   下次重開「看板網頁內容配置」時儲存鈕是壞的（要整頁重整才會恢復）。
+        if (btn) window.setButtonLoading(btn, false);
     }
     return false;
 }
@@ -254,20 +260,25 @@ export async function saveWebpageItem(e) {
 export async function deleteWebpageItem(id) {
     try {
         customConfirm('確定要刪除此看板嗎？', async () => {
-            let menus = getCustomMenus().filter(m => window.cleanId(m.id) !== window.cleanId(id));
+            try {
+                const delResult = await deleteMenuAPI(id);
 
-            const delResult = await deleteMenuAPI(id);
+                if (!delResult.success) {
+                    // 舊版只寫「刪除失敗」不帶原因，使用者與客服都無從判斷 → 帶出後端訊息
+                    customAlert(t('err_delete_failed', '刪除失敗：') + (delResult.message || '未知錯誤'));
+                    return;
+                }
 
-            if (!delResult.success) {
-                customAlert("刪除失敗");
-                return;
+                await window.fetchInitialDataFromDB();
+
+                if (typeof renderWebpageTable === 'function') renderWebpageTable();
+                if (typeof renderMenuConfigTable === 'function') renderMenuConfigTable();
+                if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
+            } catch (err) {
+                // ⚠️ callback 內的例外不會被外層 try 接到 → 必須自帶 try
+                console.error("[deleteWebpageItem] 回呼錯誤:", err);
+                customAlert(t('err_unexpected', '發生非預期的錯誤：') + (err.message || err));
             }
-
-            await window.fetchInitialDataFromDB();
-
-            if (typeof renderWebpageTable === 'function') renderWebpageTable();
-            if (typeof renderMenuConfigTable === 'function') renderMenuConfigTable();
-            if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
         });
     } catch (e) { console.error("[deleteWebpageItem] 錯誤:", e); }
 }
@@ -470,6 +481,11 @@ export function openAddMenuNodeModal(id = null) {
         if (nodeAllowTA) nodeAllowTA.value = '';
         if (nodeDenyTA) nodeDenyTA.value = '';
 
+        const nodeDesc = document.getElementById('nodeDescription');
+        const nodeKeywords = document.getElementById('nodeKeywords');
+        if (nodeDesc) nodeDesc.value = '';
+        if (nodeKeywords) nodeKeywords.value = '';
+
         const menus = getCustomMenus();
         if (id) {
             const m = menus.find(x => window.cleanId(x.id) === window.cleanId(id));
@@ -482,6 +498,9 @@ export function openAddMenuNodeModal(id = null) {
                 document.getElementById('nodeUrl').value = m.url || m.targetPage || '';
                 document.getElementById('nodeTarget').value = m.target || 'iframe';
                 setIconValToModal('node', m.icon || '');
+                
+                if (nodeDesc) nodeDesc.value = m.description || '';
+                if (nodeKeywords) nodeKeywords.value = m.keywords || '';
 
                 if (nodeAllowTA) nodeAllowTA.value = (m.allowedEmpIds || []).join('\n');
                 if (nodeDenyTA) nodeDenyTA.value = (m.deniedEmpIds || []).join('\n');
@@ -519,6 +538,10 @@ export async function saveMenuNodeItem(e) {
         mObj.displayName = document.getElementById('nodeDisplayName').value.trim();
         mObj.menuMode = isFolder ? 'folder' : 'link';
         mObj.icon = getSelectedIconVal('node');
+        const descEl = document.getElementById('nodeDescription');
+        const kwEl = document.getElementById('nodeKeywords');
+        mObj.description = descEl ? descEl.value.trim() : '';
+        mObj.keywords = kwEl ? kwEl.value.trim() : '';
         mObj.isEdited = true;
 
         // 收 ACL
@@ -640,7 +663,10 @@ export async function saveMenuNodeItem(e) {
 
         // 成功後處理
         hideModalSafely('menuNodeModal');
-        
+
+        // 新增（非編輯）才置頂：新節點的 order 是接在最後，不置頂的話會掉到最後一頁看不見
+        if (!id) pinNewRow('dtMenuConfig', mObj.id);
+
         try { await window.fetchInitialDataFromDB(); } catch (e) { console.error('fetch 失敗', e); }
         try {
             if (typeof renderMenuConfigTable === 'function') renderMenuConfigTable();
@@ -714,7 +740,8 @@ export async function deleteMenuNodeItem(id) {
             const delResult = await batchDeleteMenusAPI(idsToDelete);
 
             if (!result.success || !delResult.success) {
-                customAlert("刪除失敗");
+                // 帶出真正失敗的那一支的訊息，不要只丟「刪除失敗」三個字
+                customAlert(t('err_delete_failed', '刪除失敗：') + (result.message || delResult.message || '未知錯誤'));
                 return;
             }
             try { await window.fetchInitialDataFromDB(); } catch (e) { console.error('fetch 失敗', e); }

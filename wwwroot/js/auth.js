@@ -6,11 +6,11 @@
 //   window.retryWhoAmI()     - 「重試偵測」按鈕
 //   window.logout()          - 右上頭像下拉的登出
 
-import { getAccounts } from './config.js?v=20260727b';
-import { fetchInitialDataFromDB } from './api.js?v=20260727b';
-import { initDashboardUI, restoreLoginFromStorage } from './main.js?v=20260727b';
-import { customAlert } from './ui/dialogs.js?v=20260727b';
-import { appState } from './store.js?v=20260727b';
+import { getAccounts } from './config.js';
+import { fetchInitialDataFromDB } from './api.js';
+import { initDashboardUI, restoreLoginFromStorage } from './main.js';
+import { customAlert } from './ui/dialogs.js';
+import { appState } from './store.js';
 
 
 // 「使用者主動登出 → 別再自動登入」旗標
@@ -31,7 +31,19 @@ let _autoLoginInProgress = false;
 window._authConfig = { allowManualLogin: true };  // 預設值，fetch 失敗時退回 true
 window._csrfToken = null;
 
-export async function fetchAuthConfig() {
+// ⭐️ Promise 快取：本函式是「取 CSRF token + 取 Auth 設定」的唯一入口，冷/暖啟動都必須跑到。
+//   main.js 在 DOMContentLoaded 早期會呼叫一次（暖重整路徑不會經過 tryAutoLogin，見下方註解），
+//   tryAutoLogin() 也會呼叫；用快取讓兩者共用同一次請求，不會多打一輪 RTT。
+//   ⚠️ 登入後身分改變導致 token 失效的情境不靠這裡處理 —— 由 completeLoginAfterAuth() 內的
+//      refreshCsrfToken() 負責，兩者職責不重疊。
+let _authConfigPromise = null;
+
+export function fetchAuthConfig() {
+    if (!_authConfigPromise) _authConfigPromise = doFetchAuthConfig();
+    return _authConfigPromise;
+}
+
+async function doFetchAuthConfig() {
     try {
         const csrfResp = await fetch('/api/Auth/CsrfToken', { credentials: 'include' });
         if (csrfResp.ok) {
@@ -454,7 +466,9 @@ export async function completeLoginAfterAuth(empId, source, fallbackAccount) {
     localStorage.setItem('umc_current_user', JSON.stringify(slimUser));
 
     hideLoginOverlay();
-    if (typeof initDashboardUI === 'function') initDashboardUI();
+    // ⚠️ 靜默重新登入（api.js 的 trySilentReauth）走到這裡時，使用者正停在某張看板／管理頁上，
+    //    預設的 initDashboardUI() 會 goDefaultHome() 把人硬拉回首頁 → 傳 true 留在原頁。
+    if (typeof initDashboardUI === 'function') initDashboardUI(window._silentReauthKeepPage === true);
     return true;
 }
 

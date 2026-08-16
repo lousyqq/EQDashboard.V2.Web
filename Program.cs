@@ -38,6 +38,17 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
 var requireHttps = builder.Configuration.GetValue<bool?>("Hosting:RequireHttps")
     ?? !builder.Environment.IsDevelopment();
 
+// === 登入存續期間 (企業內網：預設實質不過期) ===
+//   本站是廠內看板入口，走 Windows Negotiate 自動偵測、沒有對外曝露，
+//   「閒置一段時間就強制重登入」對使用者只有干擾、沒有實質安全效益
+//   （真正的權限關卡在 Menu ACL / Role，不在 session 長度）。
+//   故預設 3650 天（10 年）＋ SlidingExpiration：每次使用都往後延，實務上等同不過期。
+//   若日後有稽核需求要縮短，改 appsettings 的 Auth:SessionDays 即可，不必動程式碼。
+//   ⚠️ 前提：App_Data/keys（DataProtection 金鑰）不可被清掉 —— cookie 是用它加密的，
+//      金鑰沒了等於所有人的登入狀態一起作廢，跟 session 長度設多久無關。
+var sessionDays = builder.Configuration.GetValue<int?>("Auth:SessionDays") ?? 3650;
+if (sessionDays < 1) sessionDays = 1;
+
 // 註冊 Anti-Forgery 服務 (防範 CSRF)
 builder.Services.AddAntiforgery(options =>
 {
@@ -148,7 +159,11 @@ builder.Services
     .AddCookie(options =>
     {
         options.Cookie.Name = "EQDashboard.Auth";
-        options.ExpireTimeSpan = TimeSpan.FromHours(12);
+        // ⚠️ 這裡是登入存續期間的**唯一事實來源**（見上方 sessionDays 的說明）。
+        //    AuthController 的 SignInAsync **不可**再自己設 AuthenticationProperties.ExpiresUtc ——
+        //    那個值會覆蓋本設定（2026-08-16 前兩處都寫死 AddHours(12)，導致這行形同虛設，
+        //    使用者離開一晚回來就被登出）。
+        options.ExpireTimeSpan = TimeSpan.FromDays(sessionDays);
         options.SlidingExpiration = true;
         // ⭐️ 安全強化：Cookie 安全設定
         options.Cookie.SameSite = SameSiteMode.Lax;    // 防止 CSRF 跨站請求偽造
@@ -354,25 +369,39 @@ if (requireHttps)
 app.Use(async (context, next) =>
 {
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
-    context.Response.Headers["X-Frame-Options"] = "DENY";
+    // ⚠️ SAMEORIGIN 而非 DENY（2026-08-13 修）：本中介軟體註冊在 UseStaticFiles 之前，
+    //   標頭會套用到「本站所有回應」，而 DENY 連**同源**框架也一併封殺。
+    //   本站的看板是以 iframe (#main-iframe) 載入 menu.url —— 一旦有任何看板指向本站自身
+    //   （含未來放進 wwwroot 的報表頁、或子目錄部署下的另一支本站頁面），iframe 會直接空白
+    //   且沒有任何錯誤提示，極難排查。SAMEORIGIN 仍完整阻擋跨站點擊劫持，同時放行自家嵌入。
+    context.Response.Headers["X-Frame-Options"] = "SAMEORIGIN";
     context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
 
-    // Content-Security-Policy：本專案 CDN（Bootstrap/FontAwesome/DataTables/jQuery/SheetJS）+ 大量
-    //   inline onclick / style → script-src、style-src 必含 'unsafe-inline'；看板以 iframe 載入任意外部
-    //   menu.url → frame-src 放寬 http:/https:；menu/app 圖示可為 data: 或外部 https 圖檔 → img-src 含
-    //   data: https:。即使有 'unsafe-inline'，CSP 仍藉 source allowlist + object-src 'none' +
-    //   base-uri 'self' + frame-ancestors 'none' + form-action 'self' 顯著縮小攻擊面。
+    // Content-Security-Policy：
+    //   ⭐️ 2026-08-15：Bootstrap / FontAwesome / jQuery / DataTables / SheetJS 已全部自 host 於
+    //      wwwroot/lib（見 index.html 的說明），故 script-src / style-src / font-src / connect-src
+    //      的四個外部 CDN 來源（jsdelivr、cdnjs、cdn.datatables.net、code.jquery.com）一併移除，
+    //      script-src / style-src 收斂為 'self'。若日後有人把某支資產改回 CDN，這裡會直接擋下來
+    //      （F12 Console 會有明確的 CSP 違規訊息）—— 這是刻意的，請改回自 host 而非放寬本政策。
+    //   仍保留 'unsafe-inline'：專案有大量 inline onclick / style（見 index.html 41 處），移除需另一輪重構。
+    //   看板以 iframe 載入任意外部 menu.url → frame-src 放寬 http:/https:；
+    //   menu/app 圖示可為 data: 或外部圖檔 → img-src 含 data: http: https:。
+    //   即使有 'unsafe-inline'，CSP 仍藉 source allowlist + object-src 'none' + base-uri 'self' +
+    //   frame-ancestors 'self' + form-action 'self' 顯著縮小攻擊面。
     context.Response.Headers["Content-Security-Policy"] =
         "default-src 'self'; " +
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net https://code.jquery.com; " +
-        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net; " +
+        "script-src 'self' 'unsafe-inline'; " +
+        "style-src 'self' 'unsafe-inline'; " +
         "img-src 'self' data: http: https:; " +
-        "font-src 'self' data: https://cdnjs.cloudflare.com; " +
-        "connect-src 'self' ws: wss: http://localhost:* http://127.0.0.1:* https://localhost:* https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net https://code.jquery.com; " +
+        "font-src 'self' data:; " +
+        // ws:/wss: 與 localhost 供開發期的 Browser Link / hot reload 用；正式站不會有這類連線。
+        "connect-src 'self' ws: wss: http://localhost:* http://127.0.0.1:* https://localhost:*; " +
         "frame-src 'self' http: https:; " +
         "object-src 'none'; " +
         "base-uri 'self'; " +
-        "frame-ancestors 'none'; " +
+        // frame-ancestors 與上方 X-Frame-Options 必須一致：'none' 會連同源 iframe 一起擋
+        // （現代瀏覽器以 CSP 為準、忽略 XFO，所以只改 XFO 沒用，這裡也要放行 'self'）
+        "frame-ancestors 'self'; " +
         "form-action 'self'";
     await next();
 });

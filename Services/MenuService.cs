@@ -58,6 +58,9 @@ public class MenuService : IMenuService
             isPoolItem = m.IsPoolItem ?? false,
             isEdited = m.IsEdited ?? false,
             order = m.GlobalOrder,
+            description = m.Description,
+            keywords = m.Keywords,
+            createdAt = m.CreatedAt?.ToString("yyyy-MM-dd HH:mm:ss"),
             parentIds = m.MapMenuStructuresChild?.Select(p => p.ParentMenuId).ToList() ?? new List<string>(),
             parentOrders = m.MapMenuStructuresChild?.ToDictionary(p => p.ParentMenuId, p => p.SortOrder ?? 0) ?? new Dictionary<string, int>(),
             // ⚠️ 非 admin 只看自己這份 ACL — 完整 ACL 含其他人工號 = 內部 EmpId 列舉風險。
@@ -120,7 +123,10 @@ public class MenuService : IMenuService
             IsEnabled = dto.Enabled,
             IsPoolItem = dto.IsPoolItem,
             IsEdited = dto.IsEdited,
-            GlobalOrder = dto.Order
+            GlobalOrder = dto.Order,
+            Description = dto.Description,
+            Keywords = dto.Keywords,
+            CreatedAt = DateTime.Now
         };
 
         _context.Menus.Add(menu);
@@ -195,6 +201,8 @@ public class MenuService : IMenuService
         menu.IsPoolItem = dto.IsPoolItem;
         menu.IsEdited = dto.IsEdited;
         menu.GlobalOrder = dto.Order;
+        menu.Description = dto.Description;
+        menu.Keywords = dto.Keywords;
 
         // ⚠️ Map 表用「全刪+重建」模式，必須在 Add 之前先 SaveChanges 把 DELETE flush 到 DB，
         //     否則 EF Core 同時 track DELETE + INSERT 同一個 PK 會撞衝突。
@@ -329,14 +337,22 @@ public class MenuService : IMenuService
                     {
                         menu = new Menu { MenuId = dto.Id };
                         _context.Menus.Add(menu);
-                        // ⚠️ Mass Assignment 防護：新建強制 CreatedBy = 實際登入者，不接受 dto.CreatedBy 偽造
+                        // ⚠️ Mass Assignment 防護：新建強制 CreatedBy / CreatedAt = 伺服器端事實，不接受 dto 偽造
+                        //   （MenuDto 刻意不含 CreatedAt，所以 RESTful 路徑無法從外部覆寫此欄）。
                         menu.CreatedBy = empId;
+                        // ⚠️ CreatedAt 必須在此設定：「選單配置管理」樹狀存檔走的是本 batch 端點（非 CreateAsync），
+                        //   漏設會讓所有從樹狀介面新建的看板 CreatedAt = NULL →
+                        //   AnalyticsController 的 `CreatedAt == null` 分支把它們當成舊看板 →
+                        //   剛建好、還沒人點的看板立刻被列為殭屍看板（即 CreatedAt 欄位當初要解決的問題本身）。
+                        //   時間基準用 DateTime.Now（本機時間），對齊 CreateAsync 與 AnalyticsController 的 cutoffDate。
+                        menu.CreatedAt = DateTime.Now;
                     }
                     else
                     {
                         // 既有 menu 換圖後舊檔可能變孤兒，先記下來，commit 後再清
                         oldIcons.Add(menu.Icon);
-                        // ⚠️ 既有：CreatedBy immutable — 完全不動
+                        // ⚠️ 既有：CreatedBy / CreatedAt 皆 immutable — 完全不動（舊資料的 NULL 也維持 NULL，
+                        //    不可補 GETDATE() 假裝新建，否則真正的殭屍看板會被漂白）
                     }
 
                     menu.SysName = dto.Name;
@@ -350,6 +366,8 @@ public class MenuService : IMenuService
                     menu.IsPoolItem = dto.IsPoolItem;
                     menu.IsEdited = dto.IsEdited;
                     menu.GlobalOrder = dto.Order;
+                    menu.Description = dto.Description;
+                    menu.Keywords = dto.Keywords;
 
                     UpdateMenuMappings(dto);
                     if (isAdmin) UpdateMenuAcl(dto);  // 非 admin 已在上方被清空 ACL，跳過保險

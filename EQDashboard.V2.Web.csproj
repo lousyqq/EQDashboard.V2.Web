@@ -19,12 +19,12 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <!-- Windows 自動身份識別 (Kestrel) -->
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.Negotiate" Version="9.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.Negotiate" Version="9.0.19" />
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="7.2.0" />
     <!-- AD LDAP bind (用於手動模式密碼驗證) -->
-    <PackageReference Include="System.DirectoryServices.Protocols" Version="9.0.0" />
+    <PackageReference Include="System.DirectoryServices.Protocols" Version="9.0.19" />
   </ItemGroup>
 
   <!-- 整合測試專案巢狀於本資料夾下（為與 Web 專案留在同一 git repo）。

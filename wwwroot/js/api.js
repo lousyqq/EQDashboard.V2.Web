@@ -1,10 +1,11 @@
-﻿// === 全域變數：取代原本的 localStorage，達成真正的 DB 讀寫 ===
+// === 全域變數：取代原本的 localStorage，達成真正的 DB 讀寫 ===
 
 // ⭐️ ES Module imports：fetch 覆寫攔截 401/403 時會用到 logout()/customAlert()。
 //    其餘 getter / 渲染函式皆透過 window.* 呼叫，毋須在此 import。
-import { logout } from './auth.js?v=20260727b';
-import { customAlert, showToast } from './ui/dialogs.js?v=20260727b';
-import { appState } from './store.js?v=20260727b';
+import { logout } from './auth.js';
+import { customAlert, showToast } from './ui/dialogs.js';
+import { appState } from './store.js';
+import { t } from './config.js';   // 401 提示訊息要走 i18n（config.js 只依賴 store.js，不會造成循環）
 
 
 // ⭐️ IIS 子目錄部署自適應：把絕對路徑 URL 自動 prepend APP_BASE。
@@ -59,6 +60,28 @@ async function refreshCsrfToken() {
 }
 window.refreshCsrfToken = refreshCsrfToken;
 
+// 🔁 靜默重新自動登入：cookie 失效時，用 Windows Negotiate 在背景把身分換回來，使用者無感。
+//   ⚠️ 必須有 re-entrancy guard：401 可能同時來自數個並行請求，沒有 guard 會同時觸發多次
+//      tryAutoLogin（重複 WhoAmI／Login／GetInitialData，且 LoginCount 會被灌水）。
+//   ⚠️ _silentReauthKeepPage：completeLoginAfterAuth 預設會呼叫 initDashboardUI() → goDefaultHome()，
+//      那會把正在看某張看板的使用者硬拉回首頁。設下這個旗標讓它改用 initDashboardUI(true) 留在原頁。
+let _silentReauthInProgress = false;
+async function trySilentReauth() {
+    if (_silentReauthInProgress) return false;
+    if (typeof window.tryAutoLogin !== 'function') return false;
+    _silentReauthInProgress = true;
+    window._silentReauthKeepPage = true;
+    try {
+        await window.tryAutoLogin();
+        return !!(window.appState && window.appState.currentUser);
+    } catch (e) {
+        return false;
+    } finally {
+        _silentReauthInProgress = false;
+        window._silentReauthKeepPage = false;
+    }
+}
+
 window.fetch = async function (...args) {
     const isString = args[0] && typeof args[0] === 'string';
     if (isString) {
@@ -97,13 +120,49 @@ window.fetch = async function (...args) {
     //   umc_force_manual_login 旗標卡住 Windows 自動登入）＋彈「登入時效已過期」擾民視窗
     //   （2026-07-03 修正）。其 401 由呼叫端 `if (myProfileRes.ok)` 靜默處理即可。
     if (response.status === 401 && !urlStr.includes('/api/Auth/Login') && !urlStr.includes('/Settings/GetInitialData') && !urlStr.includes('/api/Auth/WhoAmI') && !urlStr.includes('/api/Auth/MyProfile')) {
-        if (typeof logout === 'function') {
-            logout();
-        }
-        if (typeof customAlert === 'function') {
-            customAlert("您的登入時效已過期或無權限，請重新登入！");
+        // 🛡️ 二次確認才登出（2026-08-13 修）：舊版只要收到「任何一個」401 就立刻 logout() +
+        //   彈阻斷式 modal。但 401 有不少「伺服器端 session 其實還活著」的暫時性成因：
+        //     ① 變更 appsettings 的 Auth:SimulatedAccount → OnValidatePrincipal 會 SignOutAsync()（設計如此）
+        //     ② IIS App Pool 回收 / DataProtection 金鑰輪換的瞬間
+        //     ③ 請求剛好與 SignOutAsync 競態
+        //   實際觀察到過：前端被清空並設下 umc_force_manual_login 旗標，但同時 WhoAmI /
+        //   MyProfile / GetInitialData 全部回 200 —— 使用者無故被踢出並看到嚇人的過期視窗。
+        //   現在改成：先靜默打一次 MyProfile 複驗身分，只有「確認真的失效」才登出。
+        //   ⚠️ 必須走 originalFetch：MyProfile 雖在上方排除清單內，但走本攔截器會多一層無謂遞迴。
+        let reallyLoggedOut = true;
+        try {
+            const probe = await originalFetch(window.toAppUrl('/api/Auth/MyProfile'), { cache: 'no-store', credentials: 'same-origin' });
+            if (probe.ok) reallyLoggedOut = false;   // 身分仍有效 → 這個 401 是暫時性的，不動使用者的登入狀態
+        } catch (e) { /* 探測本身失敗（斷網等）→ 保守視為已登出 */ }
+
+        if (reallyLoggedOut) {
+            // 🔁 先靜默重新自動登入（2026-08-16）：本站是廠內看板入口、走 Windows Negotiate 自動偵測，
+            //   使用者的身分隨時可以在背景重新確認 —— 沒有理由為了 cookie 失效就丟一個阻斷式視窗
+            //   要人家手動點「以此身份進入」。只有連自動偵測都失敗（非網域機器、Negotiate 被停用、
+            //   帳號已無權限）才需要真的請使用者處理。
+            const recovered = await trySilentReauth();
+            if (recovered) {
+                console.info('401 後已靜默重新登入成功，使用者無感:', urlStr);
+                if (typeof showToast === 'function') {
+                    showToast(t('reauth_ok', '連線已自動恢復，請重試剛才的操作'), 'success');
+                }
+            } else {
+                if (typeof logout === 'function') {
+                    logout();
+                }
+                if (typeof customAlert === 'function') {
+                    customAlert(t('session_expired', '無法確認您的登入身分，請重新登入或聯絡系統管理員。'));
+                } else {
+                    alert('無法確認您的登入身分，請重新登入或聯絡系統管理員。');
+                }
+            }
         } else {
-            alert("您的登入時效已過期或無權限，請重新登入！");
+            // 身分仍有效：不登出、不阻斷。用非阻斷式 toast 告知這一次操作沒成功即可
+            //   （對齊 CLAUDE.md 的訊息分流：不為這種暫時性狀況彈 Modal 打斷使用者）。
+            console.warn('收到 401 但身分複驗仍有效，視為暫時性失敗，不強制登出:', urlStr);
+            if (typeof showToast === 'function') {
+                showToast('連線暫時中斷，請再試一次', 'warning');
+            }
         }
     } else if (response.status === 403) {
         if (typeof customAlert === 'function') {
@@ -242,6 +301,13 @@ export async function fetchInitialDataFromDB() {
                 parentId: pId,
                 parentIds: parsedPIds,
                 parentOrders: parsedPOrders,
+                description: String(getVal(m, 'Description') || getVal(m, 'description') || ''),
+                keywords: String(getVal(m, 'Keywords') || getVal(m, 'keywords') || ''),
+                // ⚠️ CreatedAt 是「系統稽核欄位」：前端一律不編輯，只原封不動帶回 getDatabasePayload，
+                //   否則 /Settings/SaveData 的全量覆寫（DELETE + 依 schema 重建 INSERT）會把它洗成 NULL，
+                //   使 AnalyticsController 的殭屍看板誤判防護失效。與 Accounts 的 LoginCount/LastLoginTime 同一模式。
+                //   不可用 String() 包：舊資料為 null 時要維持 null（→ DBNull），不能變成字串 "null"。
+                createdAt: getVal(m, 'CreatedAt') || getVal(m, 'createdAt') || null,
                 // Menu 層級存取控制 — 下面從 Map_Menu_Allow/DenyAccount 補入
                 allowedEmpIds: [],
                 deniedEmpIds: []
@@ -546,6 +612,10 @@ export function getDatabasePayload() {
             MenuMode: safeStr(m.menuMode, 20) || 'link', Url: safeLongStr(m.url), TargetPage: safeStr(m.targetPage, 100),
             OpenTarget: safeStr(m.target, 20), Icon: safeLongStr(m.icon), CreatedBy: safeStr(m.createdBy, 50) || 'admin',
             IsEnabled: m.enabled !== false, IsPoolItem: m.isPoolItem === true, IsEdited: m.isEdited === true, GlobalOrder: m.order || 0,
+            Description: safeStr(m.description, 255), Keywords: safeStr(m.keywords, 255),
+            // 保留建立時間，避免全量覆寫時被洗掉（殭屍看板誤判防護的判斷基準）。
+            //   SaveDataAsync 對 datetime2 欄位走 DateTime.TryParse，null/空字串會寫成 DBNull（舊資料維持 NULL）。
+            CreatedAt: m.createdAt || null,
             ParentId: m.parentId ? String(m.parentId) : null,
             ParentIds: pIdsStr,
             ParentOrders: pOrdersStr
@@ -665,9 +735,7 @@ export async function syncDataToDB(showFeedback) {
 
         if (loadingOverlay) loadingOverlay.remove();
 
-        if (result.success) {
-            appState.hasUnsavedChanges = false;
-            // ⭐️ 自動清除 App Shell 與本地殘留快照，確保 Ctrl+F5 或切換畫面能立即從 DB 更新
+        if (result.success) {            // ⭐️ 自動清除 App Shell 與本地殘留快照，確保 Ctrl+F5 或切換畫面能立即從 DB 更新
             if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
             if (showFeedback === true && typeof showToast === 'function') {
                 showToast(result.message || "資料已成功同步至資料庫！");

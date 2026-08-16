@@ -272,7 +272,11 @@ public class AnalyticsController : ControllerBase
     [Authorize(Roles = "admin")]
     public async Task<IActionResult> GetZombieMenus([FromQuery] int days = 90)
     {
-        if (days < 30 || days > 365) days = 90;
+        // ⚠️ 下限必須與 GetUsageStats / GetMenuClickStats 一致（皆為 7）：
+        //    「流量與使用率」頁只有一個 #tsDaysSelect（7/30/60/90），同一個 days 會送給四個端點。
+        //    原本這裡是 `days < 30`，使用者選「最近 7 天」時會被靜默改成 90 →
+        //    畫面上其他三塊是 7 天、殭屍看板卻是 90 天，且面板文字直接寫「過去 90 天」自打嘴巴。
+        if (days < 7 || days > 365) days = 90;
         try
         {
             var sqlToday = await _context.Database
@@ -289,21 +293,67 @@ public class AnalyticsController : ControllerBase
                 .ToListAsync();
 
             // 取得有效的看板 (不包含 AppGrid, Folder, Pool 項目與停用看板)
-            var zombieMenus = await _context.Menus.AsNoTracking()
-                .Where(m => m.IsEnabled == true && 
-                            m.IsPoolItem != true && 
-                            m.MenuMode != "folder" && 
+            // ⚠️ 殭屍防誤判機制：只挑出 CreatedAt 早於 cutoffDate 的看板 (或者舊資料沒有 CreatedAt 的看板)
+            var candidates = await _context.Menus.AsNoTracking()
+                .Where(m => m.IsEnabled == true &&
+                            m.IsPoolItem != true &&
+                            m.MenuMode != "folder" &&
                             m.MenuMode != "app_grid")
+                .Where(m => m.CreatedAt == null || m.CreatedAt < cutoffDate)
                 .Where(m => !activeMenuIds.Contains(m.MenuId))
                 .Select(m => new
                 {
-                    menuId = m.MenuId,
-                    menuName = m.DisplayName,
-                    creator = m.CreatedBy,
-                    createTime = "-", // Menus 表無建立時間欄位
-                    url = m.Url
+                    m.MenuId,
+                    m.DisplayName,
+                    m.CreatedBy,
+                    m.CreatedAt,
+                    m.Url
                 })
                 .ToListAsync();
+
+            // ⚠️ CreatedAt 為 NULL 的舊看板（欄位是 2026-08-11 才加的，之前建立的通通沒有值）
+            //    原本一律回 "-"，管理員無法分辨「真的長期沒人用」與「單純沒有建檔時間」。
+            //    這裡用「歷來最早一次點擊日」當作『至少在這天之前就存在』的下限，
+            //    並以 createTimeKind 標示資料來源，讓前端能誠實標註是推估值。
+            //    ⚠️ 仍然不寫回 Menus.CreatedAt —— 舊資料的 NULL 不可用推估值漂白，否則真殭屍會被洗白。
+            var unknownIds = candidates.Where(c => c.CreatedAt == null).Select(c => c.MenuId).ToList();
+            var firstSeen = unknownIds.Count == 0
+                ? new Dictionary<string, DateTime>()
+                : await _context.DailyMenuClicks.AsNoTracking()
+                    .Where(x => unknownIds.Contains(x.MenuId))
+                    .GroupBy(x => x.MenuId)
+                    .Select(g => new { MenuId = g.Key, First = g.Min(x => x.ClickDate) })
+                    .ToDictionaryAsync(x => x.MenuId, x => x.First);
+
+            var zombieMenus = candidates.Select(c =>
+            {
+                string? createTime;
+                string createTimeKind;
+                if (c.CreatedAt != null)
+                {
+                    createTime = c.CreatedAt.Value.ToString("yyyy-MM-dd");
+                    createTimeKind = "exact";
+                }
+                else if (firstSeen.TryGetValue(c.MenuId, out var f))
+                {
+                    createTime = f.ToString("yyyy-MM-dd");
+                    createTimeKind = "inferred";   // 前端要標「≤ 此日期即已存在」
+                }
+                else
+                {
+                    createTime = null;
+                    createTimeKind = "unknown";    // 既無 CreatedAt、也從未被點過 → 真的無從得知
+                }
+                return new
+                {
+                    menuId = c.MenuId,
+                    menuName = c.DisplayName,
+                    creator = c.CreatedBy,
+                    createTime,
+                    createTimeKind,
+                    url = c.Url
+                };
+            }).ToList();
 
             return Ok(new { items = zombieMenus, thresholdDays = days });
         }

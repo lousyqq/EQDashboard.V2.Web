@@ -111,7 +111,14 @@ public class AuthController : ControllerBase
                 {
                     EmpId = empId,
                     Name = !string.IsNullOrWhiteSpace(lookupName) ? lookupName : empId,
-                    Department = !string.IsNullOrWhiteSpace(lookupDept) ? lookupDept : "系統管理員",
+                    // ⚠️ 查不到部門時一律留 null，**不要**塞角色名稱（曾寫成 "系統管理員"／"一般使用者"）。
+                    //    Department 是給「各部門活躍比率」報表分群用的欄位：
+                    //      ① UpdateLoginStats 會把它抄進 DailyUserVisits.Department（SettingsService 的 COALESCE 鏈）
+                    //         → 假部門會在報表上長出一個不存在的部門；
+                    //      ② 硬編中文在 en/ja 介面也會照樣顯示中文。
+                    //    null 的呈現由前端負責（i18n key `dept_unknown`，三語齊備），
+                    //    報表端 AnalyticsController 也已有 `x.Department ?? "未指定/其他"` 兜底。
+                    Department = string.IsNullOrWhiteSpace(lookupDept) ? null : lookupDept,
                     RoleLevel = "admin",
                     CanEditOthers = true,
                     LoginCount = 0,
@@ -127,7 +134,7 @@ public class AuthController : ControllerBase
                 {
                     EmpId = empId,
                     Name = !string.IsNullOrWhiteSpace(lookupName) ? lookupName : empId,
-                    Department = !string.IsNullOrWhiteSpace(lookupDept) ? lookupDept : "一般使用者",
+                    Department = string.IsNullOrWhiteSpace(lookupDept) ? null : lookupDept,   // 見上方 WhoAmI/admin 分支的說明：查不到就留 null
                     RoleLevel = "user",
                     CanEditOthers = false,
                     LoginCount = 0,
@@ -206,8 +213,10 @@ public class AuthController : ControllerBase
             new ClaimsPrincipal(claimsIdentity),
             new AuthenticationProperties
             {
-                IsPersistent = true,
-                ExpiresUtc = DateTimeOffset.UtcNow.AddHours(12)
+                // ⚠️ 刻意**不設** ExpiresUtc：一旦在這裡指定，就會覆蓋 Program.cs 的
+                //    options.ExpireTimeSpan（登入存續期間的唯一事實來源）。
+                //    2026-08-16 前這裡寫死 AddHours(12)，使用者隔夜回來一定被登出。
+                IsPersistent = true
             });
 
         await _activityLogger.LogLoginAsync(HttpContext, account.EmpId, account.Name, loginSource, true,
@@ -393,7 +402,7 @@ public class AuthController : ControllerBase
                         {
                             EmpId = empId,
                             Name = !string.IsNullOrWhiteSpace(lookupName) ? lookupName : empId,
-                            Department = !string.IsNullOrWhiteSpace(lookupDept) ? lookupDept : "系統管理員",
+                            Department = string.IsNullOrWhiteSpace(lookupDept) ? null : lookupDept,   // 同 WhoAmI 分支：查不到就留 null，不塞角色名稱
                             RoleLevel = "admin",
                             CanEditOthers = true,
                             LoginCount = 0,
@@ -409,7 +418,7 @@ public class AuthController : ControllerBase
                         {
                             EmpId = empId,
                             Name = !string.IsNullOrWhiteSpace(lookupName) ? lookupName : empId,
-                            Department = !string.IsNullOrWhiteSpace(lookupDept) ? lookupDept : "一般使用者",
+                            Department = string.IsNullOrWhiteSpace(lookupDept) ? null : lookupDept,   // 同 WhoAmI 分支：查不到就留 null，不塞角色名稱
                             RoleLevel = "user",
                             CanEditOthers = false,
                             LoginCount = 0,
@@ -461,8 +470,7 @@ public class AuthController : ControllerBase
             new ClaimsPrincipal(claimsIdentity),
             new AuthenticationProperties
             {
-                IsPersistent = true,
-                ExpiresUtc = DateTimeOffset.UtcNow.AddHours(12)
+                IsPersistent = true   // 存續期間一律由 Program.cs 的 options.ExpireTimeSpan 決定，見上方 WhoAmI 分支的說明
             });
 
         await _activityLogger.LogLoginAsync(HttpContext, account.EmpId, account.Name, loginSource, true);

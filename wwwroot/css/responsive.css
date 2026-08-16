@@ -31,9 +31,42 @@
         display: block;
     }
 
-    /* 導覽列壓縮：小螢幕捨棄麵包屑，保留品牌與工具列 */
+    /* 導覽列壓縮：小螢幕只留「當前位置」一層，不整段隱藏。
+       （2026-08-13 修：原本 display:none 整列隱藏，而側欄在此斷點預設也是收起的
+        → 使用者在手機/平板上完全失去「我在哪」的定位。現改為隱藏上層路徑與裝飾圖示、
+        只留 #bc-name，並限制寬度避免擠壓工具列。） */
     .nav-breadcrumb-inline {
-        display: none;
+        min-width: 0;
+        flex-shrink: 1;
+    }
+
+    .nav-breadcrumb-inline #bc-path,
+    .nav-breadcrumb-inline .monitoring-dot,
+    .nav-breadcrumb-inline .fa-satellite-dish {
+        display: none !important;
+    }
+
+    .nav-breadcrumb-inline #bc-name {
+        display: inline-block;
+        max-width: 34vw;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        vertical-align: bottom;
+    }
+
+    /* 觸控目標：工具列圖示鈕實測僅 22~31px，低於 WCAG 2.5.5 建議的 44px
+       （最小的 22px 連 2.5.8 AA 的 24px 都沒過）。用 padding 擴大命中區，
+        視覺尺寸靠 line-height 維持不變，不動桌機版外觀。 */
+    .utility-cluster > button,
+    .utility-cluster .util-item,
+    .utility-cluster .dropdown > button,
+    .nav-brand-section > button {
+        min-width: 44px;
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .navbar-row-top,
@@ -50,7 +83,7 @@
     }
 }
 
-/* ---------- ??68px嚗?璈脖?甇亙?蝮?---------- */
+/* ---------- ≤768px：手機（品牌字縮小、工具列只留圖示） ---------- */
 @media (max-width: 768px) {
     .nav-logo-text {
         font-size: var(--fs-sm);
@@ -82,7 +115,7 @@
         padding: 18px;
     }
 
-    /* App Grid ?內蝮桀?銝??銝??憭?*/
+    /* App Grid：圖示與間距收窄，避免小螢幕擠壓 */
     .app-grid {
         grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
         gap: 14px;

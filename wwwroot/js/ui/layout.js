@@ -1,38 +1,48 @@
-﻿import { getCustomMenus } from '../config.js?v=20260727b';
+﻿import { getCustomMenus } from '../config.js';
 
 
-import { renderSidebarMenus } from '../render/sidebar.js?v=20260727b';
-import { goDefaultHome, navTo } from './navigation.js?v=20260727b';
-import { appState } from '../store.js?v=20260727b';
+import { renderSidebarMenus } from '../render/sidebar.js';
+import { goDefaultHome, navTo } from './navigation.js';
+import { appState } from '../store.js';
 
 
 ﻿// === ui/layout.js - 版面切換、側邊欄、全螢幕、釘選 ===
 
 // 佈景主題切換邏輯
-export function initTheme() {
-    const theme = localStorage.getItem('umc_theme_preference');
-    const icon = document.getElementById('theme-icon');
-    if (theme === 'dark') {
-        document.documentElement.setAttribute('data-theme', 'dark');
-        if (icon) { icon.classList.remove('fa-moon'); icon.classList.add('fa-sun'); }
+//   ⭐️ 2026-08-13：套用主題時「同時」設 data-theme 與 **data-bs-theme**。
+//      本專案原本只有自訂的 data-theme，Bootstrap 5.3 的原生元件（modal / dropdown /
+//      form-control / table / btn-close / tooltip / popover / DataTables 分頁）都認的是
+//      data-bs-theme，所以過去只能靠 components.css 裡 30+ 條 `!important` 逐個補丁硬扛。
+//      兩者一起設 → 原生元件自己就正確，補丁只是保險，未來可逐步移除。
+//   ⚠️ 一律走 applyTheme()，不要在別處各自 setAttribute，否則兩個屬性會不同步。
+function applyTheme(isDark) {
+    const root = document.documentElement;
+    if (isDark) {
+        root.setAttribute('data-theme', 'dark');
+        root.setAttribute('data-bs-theme', 'dark');
     } else {
-        document.documentElement.removeAttribute('data-theme');
-        if (icon) { icon.classList.remove('fa-sun'); icon.classList.add('fa-moon'); }
+        root.removeAttribute('data-theme');
+        root.setAttribute('data-bs-theme', 'light');
+    }
+    const icon = document.getElementById('theme-icon');
+    if (icon) {
+        icon.classList.toggle('fa-sun', isDark);
+        icon.classList.toggle('fa-moon', !isDark);
     }
 }
 
+export function initTheme() {
+    const stored = localStorage.getItem('umc_theme_preference');
+    // 首次造訪（尚無偏好）→ 跟隨作業系統的淺/深色設定；使用者手動切過之後就以其選擇為準。
+    const isDark = stored ? (stored === 'dark')
+        : !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    applyTheme(isDark);
+}
+
 export function toggleTheme() {
-    const current = document.documentElement.getAttribute('data-theme');
-    const icon = document.getElementById('theme-icon');
-    if (current === 'dark') {
-        document.documentElement.removeAttribute('data-theme');
-        localStorage.setItem('umc_theme_preference', 'light');
-        if (icon) { icon.classList.remove('fa-sun'); icon.classList.add('fa-moon'); }
-    } else {
-        document.documentElement.setAttribute('data-theme', 'dark');
-        localStorage.setItem('umc_theme_preference', 'dark');
-        if (icon) { icon.classList.remove('fa-moon'); icon.classList.add('fa-sun'); }
-    }
+    const isDark = document.documentElement.getAttribute('data-theme') !== 'dark';
+    applyTheme(isDark);
+    localStorage.setItem('umc_theme_preference', isDark ? 'dark' : 'light');
 }
 window.initTheme = initTheme;
 window.toggleTheme = toggleTheme;
@@ -149,7 +159,14 @@ export function enforceSystemModeUI() {
 
 // ⭐️ 核心修復：切換系統/自訂版面
 // ===== 單一真實來源：切換系統/自訂版面（對齊 TEST_20260429.html，統一使用 'personal'）=====
-export function switchLayoutMode(mode) {
+//   navigate=false：只同步「模式狀態 + slider UI + 側邊欄重繪」，**不重設當前位置、不導航**。
+//     ⚠️ 供 initDashboardUI() 使用 —— 它自己會依 stayOnCurrentPage 決定要不要 goDefaultHome()。
+//        舊版在本函式內也無條件呼叫一次 goDefaultHome()，造成兩個問題（2026-08-12 修）：
+//          ① 每次進站 activateMenu 跑兩遍 → POST MenuClick 被記兩次 → Popular 看板統計膨脹一倍
+//             （實測網路紀錄確認；與 ES module 雙載那條是各自獨立的兩個成因）。
+//          ② initDashboardUI(true) 的 stayOnCurrentPage 被架空 → Excel 匯入後仍被踢回預設首頁
+//             （misc-manage.js:872 / :1004 兩處呼叫的原意就是「留在原頁」）。
+export function switchLayoutMode(mode, navigate = true) {
     // normalize to: system / personal （與 TEST_20260429.html:2147 appState.currentLayoutMode='system' 一致）
     const m = String(mode ?? 'system').toLowerCase();
     const finalMode = (m.includes('custom') || m.includes('personal') || m.includes('自訂')) ? 'personal' : 'system';
@@ -175,7 +192,12 @@ export function switchLayoutMode(mode) {
     try {
         const isInSystemSettings = (appState.currentActiveTopMenuId === 'system_settings');
 
-        if (!isInSystemSettings) {
+        // ⭐️ 2026-08-13：先記住使用者「目前正在看哪個看板」，切換後若它在新版面仍可見就留在原處。
+        //   舊行為是一律 goDefaultHome() → 使用者正在看某張報表時誤觸切換鈕就丟失位置，
+        //   而系統/自訂版面的看板集合其實大多重疊，多數情況根本不需要跳頁。
+        const _prevMenuId = appState.currentActiveSidebarMenuId;
+
+        if (navigate && !isInSystemSettings) {
             appState.currentActiveTopMenuId = null;
             appState.currentActiveSidebarMenuId = null;
         }
@@ -183,18 +205,27 @@ export function switchLayoutMode(mode) {
         // 頂部頁籤已由 renderSidebarMenus 一併渲染，無需另外呼叫 renderTopMenus
         if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
 
-        if (isInSystemSettings) {
-            // 留在系統設定，不要踢回首頁
-            const personalPage = document.getElementById('page-personal-manage');
-            if (finalMode === 'system' && personalPage && personalPage.classList.contains('active')) {
-                if (typeof navTo === 'function') {
-                    if (typeof appState.currentUser !== 'undefined' && appState.currentUser?.roleLevel === 'admin') navTo('page-account-manage', null, '帳號管理');
-                    else navTo('page-apply', null, '需求申請');
+        if (navigate) {
+            if (isInSystemSettings) {
+                // 留在系統設定，不要踢回首頁
+                const personalPage = document.getElementById('page-personal-manage');
+                if (finalMode === 'system' && personalPage && personalPage.classList.contains('active')) {
+                    if (typeof navTo === 'function') {
+                        if (typeof appState.currentUser !== 'undefined' && appState.currentUser?.roleLevel === 'admin') navTo('page-account-manage', null, '帳號管理');
+                        else navTo('page-apply', null, '需求申請');
+                    }
+                }
+            } else {
+                // 切換後優先「留在原本的看板」：只有當它在新版面的可視清單裡不存在
+                //   （例如自訂版面把它隱藏了、或權限不同）才退回預設首頁。
+                const stillVisible = _prevMenuId && Array.isArray(appState._currentValidMenus)
+                    && appState._currentValidMenus.some(m => window.cleanId(m.id || m.MenuId) === window.cleanId(_prevMenuId));
+                if (stillVisible && typeof window.activateMenu === 'function') {
+                    window.activateMenu(_prevMenuId);
+                } else if (typeof goDefaultHome === 'function') {
+                    goDefaultHome();
                 }
             }
-        } else {
-            // 對齊 TEST：切換模式一律導回「預設首頁」，不顯示 page-home
-            if (typeof goDefaultHome === 'function') goDefaultHome();
         }
     } catch (e) {
         console.error("🚨 切換模式錯誤:", e);

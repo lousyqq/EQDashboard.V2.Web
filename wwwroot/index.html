@@ -1,11 +1,21 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
+    <!-- ⭐️ 防閃爍：必須在任何 CSS 之前同步套用主題，否則深色模式使用者會先看到一閃的白底。
+         首次造訪（localStorage 尚無偏好）跟隨作業系統的 prefers-color-scheme。
+         同時設 data-bs-theme，Bootstrap 5.3 的原生元件才會一起變深（見 ui/layout.js applyTheme）。 -->
     <script>
         (function() {
             try {
-                const theme = localStorage.getItem('umc_theme_preference');
-                if (theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+                const stored = localStorage.getItem('umc_theme_preference');
+                const isDark = stored ? (stored === 'dark')
+                    : !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+                if (isDark) {
+                    document.documentElement.setAttribute('data-theme', 'dark');
+                    document.documentElement.setAttribute('data-bs-theme', 'dark');
+                } else {
+                    document.documentElement.setAttribute('data-bs-theme', 'light');
+                }
             } catch (e) {}
         })();
     </script>
@@ -13,39 +23,42 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>主系統儀表板 - EQ Performance Dashboard</title>
 
-    <!-- 引入 Bootstrap CSS, FontAwesome 與 SheetJS(Excel 匯出匯入) -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"
-          integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet"
-          integrity="sha384-iw3OoTErCYJJB9mCa8LNS2hbsQ7M3C0EpIsO/H5+EGAkPGc6rk+V8i04oW/K5xq0" crossorigin="anonymous">
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"
-            integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw" crossorigin="anonymous"></script>
+    <!-- ⭐️ 第三方資產全部自 host 於 /lib（2026-08-15 改）：原本這五組走公開 CDN
+         （jsdelivr / cdnjs / code.jquery.com / cdn.datatables.net）。UMC 廠區內網一旦擋外網
+         或 CDN 抖動，站台會「無聲」壞掉且極難排查：
+           沒有 Bootstrap → 所有 Modal 全失效（新增/編輯按鈕按了沒反應）
+           沒有 DataTables → 所有管理表格不 render
+           沒有 SheetJS   → 匯出/匯入功能消失
+           沒有 FontAwesome → 全站圖示變空框
+         自 host 後同時可把 CSP 的四個外部來源全部收掉（見 Program.cs 安全標頭中介軟體）。
+         ⚠️ 版本升級請「連檔案一起換」並更新下方版本註記；不要改回 CDN URL。
+         ⚠️ 移除 integrity/crossorigin 是刻意的：SRI 的用途是防「第三方主機被竄改」，
+            同源檔案由自己的 IIS 供應，不適用（保留反而會在檔案有任何位元差異時整支資產被擋掉）。
+         版本：Bootstrap 5.3.2 / FontAwesome 6.4.0 / jQuery 3.7.0 / DataTables 1.13.6 / SheetJS 0.18.5 -->
+    <link href="lib/bootstrap/bootstrap.min.css?v=20260816f" rel="stylesheet">
+    <link href="lib/fontawesome/css/all.min.css?v=20260816f" rel="stylesheet">
+    <script src="lib/xlsx/xlsx.full.min.js?v=20260816f"></script>
 
     <!-- DataTables CSS & JS + jQuery -->
-    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet"
-          integrity="sha384-5oFfLntNy8kuC2TaebWZbaHTqdh3Q+7PwYbB490gupK0YtTAB7mBJGv4bQl9g9rK" crossorigin="anonymous">
-    <script src="https://code.jquery.com/jquery-3.7.0.min.js"
-            integrity="sha384-NXgwF8Kv9SSAr+jemKKcbvQsz+teULH/a5UNJvZc6kP47hZgl62M1vGnw6gHQhb1" crossorigin="anonymous"></script>
-    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"
-            integrity="sha384-k5vbMeKHbxEZ0AEBTSdR7UjAgWCcUfrS8c0c5b2AfIh7olfhNkyCZYwOfzOQhauK" crossorigin="anonymous"></script>
-    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"
-            integrity="sha384-PgPBH0hy6DTJwu7pTf6bkRqPlf/+pjUBExpr/eIfzszlGYFlF9Wi9VTAJODPhgCO" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
-            integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+    <link href="lib/datatables/dataTables.bootstrap5.min.css?v=20260816f" rel="stylesheet">
+    <script src="lib/jquery/jquery-3.7.0.min.js?v=20260816f"></script>
+    <script src="lib/datatables/jquery.dataTables.min.js?v=20260816f"></script>
+    <script src="lib/datatables/dataTables.bootstrap5.min.js?v=20260816f"></script>
+    <script src="lib/bootstrap/bootstrap.bundle.min.js?v=20260816f"></script>
 
     <!-- CSS 模組 (從 style.css 拆分) -->
-    <link href="css/variables.css?v=20260727b" rel="stylesheet">
-    <link href="css/navbar.css?v=20260727b" rel="stylesheet">
-    <link href="css/sidebar.css?v=20260727b" rel="stylesheet">
-    <link href="css/components.css?v=20260727b" rel="stylesheet">
-    <link href="css/responsive.css?v=20260727b" rel="stylesheet">
+    <link href="css/variables.css?v=20260816f" rel="stylesheet">
+    <link href="css/navbar.css?v=20260816f" rel="stylesheet">
+    <link href="css/sidebar.css?v=20260816f" rel="stylesheet">
+    <link href="css/components.css?v=20260816f" rel="stylesheet">
+    <link href="css/responsive.css?v=20260816f" rel="stylesheet">
 </head>
 <body>
 
     <div id="focus-exit-btn" class="focus-exit-overlay">
         <span class="text-white" style="font-size: 10px; font-weight: bold; letter-spacing: 1px;">FOCUS</span>
         <button class="btn btn-sm btn-light py-0 px-2" style="font-size: 0.75rem;" onclick="document.getElementById('main-iframe').src = document.getElementById('main-iframe').src" title="重新整理"><i class="fas fa-sync-alt"></i></button>
-        <button class="btn btn-sm btn-danger py-0 px-2 fw-bold" style="font-size: 0.75rem;" onclick="toggleFullscreen()"><i class="fas fa-compress me-1"></i> 退出</button>
+        <button class="btn btn-sm btn-danger py-0 px-2 fw-bold" style="font-size: 0.75rem;" onclick="toggleFullscreen()"><i class="fas fa-compress me-1"></i> <span data-i18n="btn_exit">退出</span></button>
     </div>
 
     <!-- 登入框 (Windows 自動偵測 + 手動帳密) -->
@@ -59,10 +72,10 @@
                     正在偵測桌機登入者...
                 </div>
                 <button type="button" class="btn btn-success btn-sm w-100 fw-bold py-2 mb-2" id="btn-windows-continue" onclick="doWindowsLogin()" disabled>
-                    <i class="fas fa-sign-in-alt me-1"></i> 以此身份進入
+                    <i class="fas fa-sign-in-alt me-1"></i> <span data-i18n="btn_login_as">以此身份進入</span>
                 </button>
                 <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="retryWhoAmI()">
-                    <i class="fas fa-sync-alt me-1"></i> 重試偵測
+                    <i class="fas fa-sync-alt me-1"></i> <span data-i18n="btn_retry_detect">重試偵測</span>
                 </button>
             </div>
         </div>
@@ -76,8 +89,10 @@
     <div class="top-navbar-group" id="top-navbar">
         <div class="navbar-row-top">
             <div class="nav-brand-section">
-                <button class="btn p-0 text-white me-3" style="opacity: 0.7;" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
-                <h1 class="nav-logo-text" onclick="goDefaultHome()" title="回預設首頁"><span class="text-info">UMC</span> EQ Dashboard</h1>
+                <button class="btn p-0 text-white me-3" style="opacity: 0.7;" onclick="toggleSidebar()" aria-label="切換側邊選單" title="切換側邊選單"><i class="fas fa-bars"></i></button>
+                <!-- ⚠️ 不要再加 inline onkeydown：Enter/Space 一律由 main.js 的委派 keydown 處理
+                     （它會對任何 [role=button][tabindex] 呼叫 .click()）。兩邊都寫會觸發兩次。 -->
+                <h1 class="nav-logo-text" onclick="goDefaultHome()" role="button" tabindex="0" title="回預設首頁"><span class="text-info">UMC</span> EQ Dashboard</h1>
                 <div class="nav-breadcrumb-inline align-items-center" id="top-breadcrumb">
                     <div class="monitoring-dot me-2" title="系統即時監控運作中"></div>
                     <i class="fas fa-satellite-dish me-2" style="color: var(--navbar-accent); font-size: 0.95rem;" title="系統即時監控運作中"></i>
@@ -97,7 +112,7 @@
                 </div>
                 <div class="util-divider"></div>
 
-                <div class="layout-toggle-wrapper" id="layout-toggle-wrapper" onclick="switchLayoutMode((window.appState && window.appState.currentLayoutMode) === 'system' ? 'personal' : 'system')" title="切換版面配置">
+                <div class="layout-toggle-wrapper" id="layout-toggle-wrapper" onclick="switchLayoutMode((window.appState && window.appState.currentLayoutMode) === 'system' ? 'personal' : 'system')" role="button" tabindex="0" aria-label="切換版面配置（系統／自訂）" title="切換版面配置">
                     <div class="layout-toggle-slider"></div>
                     <div class="pill-btn-text active" id="btn-layout-system" data-i18n="nav_sys">系統</div>
                     <div class="pill-btn-text" id="btn-layout-personal" data-i18n="nav_personal">自訂</div>
@@ -204,7 +219,7 @@
                                     <!-- Round-5 B7：預設「系統管理員 / (Admin)」改成 — / —，登入後 renderHomeDashboard 才填值 -->
                                     <p class="text-muted fw-bold mb-2 small"><i class="fas fa-key me-1"></i><span data-i18n="home_role_title"> 我的系統權限層級</span></p>
                                     <h2 class="mb-3 mt-3 fw-bold" style="color: #dc3545;"><span id="home-role-title">—</span> <small class="text-danger fs-5 fw-normal opacity-75" id="home-role-level">—</small></h2>
-                                    <p class="text-muted small mb-0"><i class="fas fa-info-circle me-1"></i> 系統根據您的職務自動派發</p>
+                                    <p class="text-muted small mb-0"><i class="fas fa-info-circle me-1"></i> <span data-i18n="home_role_auto">系統根據您的職務自動派發</span></p>
                                 </div>
                             </div>
                         </div>
@@ -214,9 +229,9 @@
                                 <div class="home-card-content">
                                     <!-- Round-5 B4：<span data-i18n>...</span> 完整閉合，否則切語系時 badge 會被吃掉 -->
                                     <!-- Round-5 B7：home-fab-display 預設 12A → —，由 renderHomeDashboard 填值 -->
-                                    <div class="d-flex justify-content-between align-items-start"><p class="text-muted fw-bold mb-2 small"><i class="fas fa-map-marker-alt me-1"></i><span data-i18n="home_fab_title"> 目前選擇廠區</span></p><span class="badge border text-muted bg-light fw-normal py-1 px-2 shadow-sm" style="font-size: 0.75rem;">可於右上方切換</span></div>
+                                    <div class="d-flex justify-content-between align-items-start"><p class="text-muted fw-bold mb-2 small"><i class="fas fa-map-marker-alt me-1"></i><span data-i18n="home_fab_title"> 目前選擇廠區</span></p><span class="badge border text-muted bg-light fw-normal py-1 px-2 shadow-sm" style="font-size: 0.75rem;" data-i18n="home_switch_hint">可於右上方切換</span></div>
                                     <h2 class="mb-3 mt-3 fw-bold" style="color: #0284c7;" id="home-fab-display">—</h2>
-                                    <p class="text-muted small mb-0">目前顯示該廠區之全域配置</p>
+                                    <p class="text-muted small mb-0" data-i18n="home_sys_desc">目前顯示該廠區之全域配置</p>
                                 </div>
                             </div>
                         </div>
@@ -249,31 +264,31 @@
                 <div id="page-personal-manage" class="page-section">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <!-- Round-5 B4：外層 <span data-i18n>...</span> 補上閉合，避免切語系時把內層「(自訂專屬版面)」整段刪掉 -->
-                        <h5 class="mb-0 fw-bold text-primary"><i class="fas fa-user-cog me-2"></i><span data-i18n="menu_personal_manage"> 個人頁面管理</span> <span class="fs-6 text-muted fw-normal ms-2">(自訂專屬版面)</span></h5>
+                        <h5 class="mb-0 fw-bold text-primary"><i class="fas fa-user-cog me-2"></i><span data-i18n="menu_personal_manage"> 個人頁面管理</span> <span class="fs-6 text-muted fw-normal ms-2" data-i18n="home_personal_tag">(自訂專屬版面)</span></h5>
                         <div class="d-flex align-items-center gap-2">
                             <!-- 待儲存指示 + 儲存按鈕：拖曳排序後才顯示，按下才真正寫 DB + 重畫上方導覽列 -->
                             <button class="btn btn-sm btn-warning fw-bold shadow-sm d-none" id="btn-per-save-pending" onclick="commitPersonalPendingOrder()">
-                                <i class="fas fa-save me-1"></i> 儲存變更
+                                <i class="fas fa-save me-1"></i> <span data-i18n="btn_save_changes">儲存變更</span>
                                 <span class="badge bg-white text-warning ms-1" id="btn-per-pending-count" style="font-size:0.65rem;">0</span>
                             </button>
                             <button class="btn btn-sm btn-outline-secondary fw-bold shadow-sm d-none" id="btn-per-discard-pending" onclick="discardPersonalPendingOrder()" title="放棄這次的拖曳變更">
-                                <i class="fas fa-undo me-1"></i> 放棄
+                                <i class="fas fa-undo me-1"></i> <span data-i18n="btn_discard">放棄</span>
                             </button>
                             <button class="btn btn-sm btn-outline-danger fw-bold shadow-sm" onclick="restoreDefaultPersonalMenu()"><i class="fas fa-trash-restore me-1"></i><span data-i18n="btn_restore_default"> 還原預設版面</span></button>
                             <button class="btn btn-sm btn-outline-secondary fw-bold shadow-sm" id="btn-per-toggle-all" onclick="togglePerAllMenus()"><i class="fas fa-expand-arrows-alt me-1"></i><span data-i18n="btn_expand_all"> 全部展開</span></button>
                         </div>
                     </div>
                     <div class="manage-alert shadow-sm">
-                        <i class="fas fa-lightbulb text-warning me-2 fs-5"></i> <strong>獨立個人化設定區：</strong>這裡的設定完全只對您的帳號生效。切換顯示開關會立即同步左側。<strong>按住清單列上下拖曳排序，調好之後按右上「儲存變更」才會寫入 DB 並更新上方導覽列。</strong>
+                        <i class="fas fa-lightbulb text-warning me-2 fs-5"></i> <strong data-i18n="pm_zone_title">獨立個人化設定區：</strong><span data-i18n="pm_scope_hint">這裡的設定完全只對您的帳號生效。切換顯示開關會立即同步左側。</span><strong data-i18n="pm_zone_desc">按住清單列上下拖曳排序，調好之後按右上「儲存變更」才會寫入 DB 並更新上方導覽列。</strong>
                     </div>
                     <div class="card border-0 shadow-sm overflow-hidden">
                         <div class="card-header bg-white border-bottom py-3">
-                            <h6 class="m-0 fw-bold text-primary"><i class="fas fa-list me-2"></i>個人看板樹狀結構</h6>
+                            <h6 class="m-0 fw-bold text-primary"><i class="fas fa-list me-2"></i><span data-i18n="pm_tree_title">個人看板樹狀結構</span></h6>
                         </div>
                         <div class="card-body p-3 table-responsive">
                             <table id="dtPersonalMenu" class="table table-custom align-middle text-center w-100">
                                 <thead><tr>
-                                    <th class="text-start ps-4" style="width: 280px;" data-i18n="th_display_name">顯示名稱 <span class="fw-normal small text-muted">(按住可拖曳)</span></th>
+                                    <th class="text-start ps-4" style="width: 280px;"><span data-i18n="th_display_name">顯示名稱</span> <span class="fw-normal small text-muted" data-i18n="hint_draggable">(按住可拖曳)</span></th>
                                     <th style="width: 100px;" data-i18n="th_level">層級</th>
                                     <th style="width: 80px;" data-i18n="th_status">狀態</th>
                                     <th class="text-start" data-i18n="th_open_pref">開啟方式偏好</th>
@@ -309,7 +324,7 @@
                     </div>
                     <div class="alert alert-primary bg-primary bg-opacity-10 border-0 mb-3 d-flex align-items-center">
                         <i class="fas fa-sitemap fs-5 me-2 text-primary"></i>
-                        <span class="small fw-bold text-primary">此處用於建立「主選單群組」或「獨立網頁」。子選單請點擊「編輯結構」進入調整。</span>
+                        <span class="small fw-bold text-primary" data-i18n="mc_hint">此處用於建立「主選單群組」或「獨立網頁」。子選單請點擊「編輯結構」進入調整。</span>
                     </div>
                     <div class="card border-0 overflow-hidden shadow-sm">
                         <div class="card-body p-3 table-responsive">
@@ -405,11 +420,11 @@
                         <div class="card-body p-3">
                             <div class="row g-2 align-items-end">
                                 <div class="col-md-2">
-                                    <label class="form-label small fw-bold text-secondary mb-1" data-i18n="th_emp_id">工號</label>
+                                    <label class="form-label small fw-bold text-secondary mb-1" data-i18n="th_emp_id" for="alEmpId">工號</label>
                                     <input type="text" id="alEmpId" class="form-control form-control-sm" placeholder="(全部)" data-i18n-placeholder="opt_all">
                                 </div>
                                 <div class="col-md-2">
-                                    <label class="form-label small fw-bold text-secondary mb-1" data-i18n="al_category">分類</label>
+                                    <label class="form-label small fw-bold text-secondary mb-1" data-i18n="al_category" for="alCategory">分類</label>
                                     <select id="alCategory" class="form-select form-select-sm">
                                         <option value="" data-i18n="opt_all">(全部)</option>
                                         <option value="Login" data-i18n="cat_login">登入</option>
@@ -428,19 +443,19 @@
                                     </select>
                                 </div>
                                 <div class="col-md-2">
-                                    <label class="form-label small fw-bold text-secondary mb-1" data-i18n="lbl_from">開始日期</label>
+                                    <label class="form-label small fw-bold text-secondary mb-1" data-i18n="lbl_from" for="alFrom">開始日期</label>
                                     <input type="datetime-local" id="alFrom" class="form-control form-control-sm">
                                 </div>
                                 <div class="col-md-2">
-                                    <label class="form-label small fw-bold text-secondary mb-1" data-i18n="lbl_to">結束日期</label>
+                                    <label class="form-label small fw-bold text-secondary mb-1" data-i18n="lbl_to" for="alTo">結束日期</label>
                                     <input type="datetime-local" id="alTo" class="form-control form-control-sm">
                                 </div>
                                 <div class="col-md-2">
-                                    <label class="form-label small fw-bold text-secondary mb-1" data-i18n="lbl_keyword">關鍵字</label>
+                                    <label class="form-label small fw-bold text-secondary mb-1" data-i18n="lbl_keyword" for="alKeyword">關鍵字</label>
                                     <input type="text" id="alKeyword" class="form-control form-control-sm" placeholder="path / action / target">
                                 </div>
                                 <div class="col-md-1">
-                                    <label class="form-label small fw-bold text-secondary mb-1" data-i18n="th_status">狀態</label>
+                                    <label class="form-label small fw-bold text-secondary mb-1" data-i18n="th_status" for="alSuccess">狀態</label>
                                     <select id="alSuccess" class="form-select form-select-sm">
                                         <option value="" data-i18n="opt_all_plain">全部</option>
                                         <option value="true" data-i18n="opt_success">成功</option>
@@ -481,9 +496,9 @@
                         <div class="card-footer bg-white d-flex justify-content-between align-items-center py-2">
                             <div class="small text-muted" id="activityLogStats">—</div>
                             <div class="d-flex align-items-center gap-2">
-                                <button class="btn btn-sm btn-outline-secondary" id="alPrev" onclick="changeActivityPage(-1)"><i class="fas fa-chevron-left"></i></button>
+                                <button class="btn btn-sm btn-outline-secondary" id="alPrev" onclick="changeActivityPage(-1)" aria-label="上一頁" data-i18n-aria-label="dt_previous"><i class="fas fa-chevron-left" aria-hidden="true"></i></button>
                                 <span class="small fw-bold" id="alPageInfo">— / —</span>
-                                <button class="btn btn-sm btn-outline-secondary" id="alNext" onclick="changeActivityPage(1)"><i class="fas fa-chevron-right"></i></button>
+                                <button class="btn btn-sm btn-outline-secondary" id="alNext" onclick="changeActivityPage(1)" aria-label="下一頁" data-i18n-aria-label="dt_next"><i class="fas fa-chevron-right" aria-hidden="true"></i></button>
                             </div>
                         </div>
                     </div>
@@ -493,7 +508,7 @@
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h5 class="mb-0 fw-bold"><i class="fas fa-chart-line text-primary me-2"></i><span data-i18n="menu_traffic_stats">流量與使用率</span></h5>
                         <div class="d-flex gap-2 align-items-center">
-                            <label class="small fw-bold text-secondary mb-0" data-i18n="ts_range">統計範圍:</label>
+                            <label class="small fw-bold text-secondary mb-0" data-i18n="ts_range" for="tsDaysSelect">統計範圍:</label>
                             <select id="tsDaysSelect" class="form-select form-select-sm" style="width:120px;" onchange="loadTrafficStats()">
                                 <option value="7" data-i18n="ts_days_7">最近 7 天</option>
                                 <option value="30" selected data-i18n="ts_days_30">最近 30 天</option>
@@ -637,15 +652,15 @@
                                 <div class="card-body p-3">
                                     <div class="row g-2 align-items-end">
                                         <div class="col-md-3">
-                                            <label class="form-label small fw-bold text-secondary mb-1" data-i18n="ts_lbl_date">指定日期</label>
+                                            <label class="form-label small fw-bold text-secondary mb-1" data-i18n="ts_lbl_date" for="tsDetailDate">指定日期</label>
                                             <input type="date" id="tsDetailDate" class="form-control form-control-sm">
                                         </div>
                                         <div class="col-md-3">
-                                            <label class="form-label small fw-bold text-secondary mb-1" data-i18n="dept">部門</label>
+                                            <label class="form-label small fw-bold text-secondary mb-1" data-i18n="dept" for="tsDetailDept">部門</label>
                                             <input type="text" id="tsDetailDept" class="form-control form-control-sm" placeholder="例如：12A / IT" data-i18n-placeholder="ts_ph_dept">
                                         </div>
                                         <div class="col-md-4">
-                                            <label class="form-label small fw-bold text-secondary mb-1" data-i18n="ts_lbl_kw">關鍵字 (工號或姓名)</label>
+                                            <label class="form-label small fw-bold text-secondary mb-1" data-i18n="ts_lbl_kw" for="tsDetailKeyword">關鍵字 (工號或姓名)</label>
                                             <input type="text" id="tsDetailKeyword" class="form-control form-control-sm" placeholder="請輸入關鍵字..." data-i18n-placeholder="ts_ph_kw">
                                         </div>
                                         <div class="col-md-2">
@@ -678,9 +693,9 @@
                                 <div class="card-footer bg-white d-flex justify-content-between align-items-center py-2">
                                     <div class="small text-muted" id="tsDetailsStats">—</div>
                                     <div class="d-flex align-items-center gap-2">
-                                        <button class="btn btn-sm btn-outline-secondary" id="tsDetailPrev" onclick="changeTrafficDetailPage(-1)"><i class="fas fa-chevron-left"></i></button>
+                                        <button class="btn btn-sm btn-outline-secondary" id="tsDetailPrev" onclick="changeTrafficDetailPage(-1)" aria-label="上一頁" data-i18n-aria-label="dt_previous"><i class="fas fa-chevron-left" aria-hidden="true"></i></button>
                                         <span class="small fw-bold" id="tsDetailPageInfo">— / —</span>
-                                        <button class="btn btn-sm btn-outline-secondary" id="tsDetailNext" onclick="changeTrafficDetailPage(1)"><i class="fas fa-chevron-right"></i></button>
+                                        <button class="btn btn-sm btn-outline-secondary" id="tsDetailNext" onclick="changeTrafficDetailPage(1)" aria-label="下一頁" data-i18n-aria-label="dt_next"><i class="fas fa-chevron-right" aria-hidden="true"></i></button>
                                     </div>
                                 </div>
                             </div>
@@ -693,10 +708,10 @@
                                     <table class="table table-sm table-hover align-middle text-nowrap mb-0">
                                         <thead class="table-light sticky-top">
                                             <tr>
-                                                <th style="width: 250px;">看板名稱</th>
-                                                <th style="width: 150px;">累計點擊次數</th>
-                                                <th style="width: 150px;">獨立活躍人數</th>
-                                                <th>最後點擊時間</th>
+                                                <th style="width: 250px;" data-i18n="ts_th_menu_name">看板名稱</th>
+                                                <th style="width: 150px;" data-i18n="ts_th_clicks">累計點擊次數</th>
+                                                <th style="width: 150px;" data-i18n="ts_th_active_users">獨立活躍人數</th>
+                                                <th data-i18n="ts_th_last_click">最後點擊時間</th>
                                             </tr>
                                         </thead>
                                         <tbody id="tsPopularBody">
@@ -717,10 +732,10 @@
                                     <table class="table table-sm table-hover align-middle text-nowrap mb-0">
                                         <thead class="table-light sticky-top">
                                             <tr>
-                                                <th style="width: 120px;">看板 ID</th>
-                                                <th style="width: 250px;">看板名稱</th>
-                                                <th style="width: 150px;">建立者</th>
-                                                <th>建立日期</th>
+                                                <th style="width: 120px;" data-i18n="ts_th_menu_id">看板 ID</th>
+                                                <th style="width: 250px;" data-i18n="ts_th_menu_name">看板名稱</th>
+                                                <th style="width: 150px;" data-i18n="ts_th_creator">建立者</th>
+                                                <th data-i18n="ts_th_created">建立日期</th>
                                             </tr>
                                         </thead>
                                         <tbody id="tsZombieBody">
@@ -743,7 +758,7 @@
                                 <div class="custom-file-input-wrapper d-flex align-items-center mb-3 w-75 mx-auto border rounded" style="overflow: hidden; height: 34px;">
                                     <button type="button" class="btn btn-sm btn-outline-primary fw-bold px-3 border-0 border-end rounded-0 h-100" style="white-space: nowrap;" onclick="document.getElementById('configFile').click();" data-i18n="file_choose">選擇檔案</button>
                                     <span id="configFileName" class="px-2 text-muted small text-truncate" style="flex:1;" data-i18n="file_none">沒有選擇檔案</span>
-                                    <input type="file" id="configFile" class="d-none" accept=".xlsx, .xls" onchange="document.getElementById('configFileName').innerText = this.files.length ? this.files[0].name : t('file_none','沒有選擇檔案');">
+                                    <input type="file" id="configFile" class="d-none" accept=".xlsx, .xls" onchange="document.getElementById('configFileName').innerText = this.files.length ? this.files[0].name : t('file_none','沒有選擇檔案');" aria-label="選擇 Excel 檔案" data-i18n-aria-label="lbl_choose_excel">
                                 </div>
                                 <button class="btn btn-success fw-bold mx-auto" style="width: fit-content;" onclick="importConfig()"><i class="fas fa-upload me-1"></i><span data-i18n="btn_import_excel"> 匯入並覆蓋</span></button>
                             </div>
@@ -759,7 +774,34 @@
                     </div>
                 </div>
 
-                <div id="page-iframe" class="page-section"><h6 id="iframe-title" style="display: none;"></h6><iframe id="main-iframe" src="" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"></iframe></div>
+                <div id="page-iframe" class="page-section"><h6 id="iframe-title" style="display: none;"></h6>
+                    <!-- 看板載入指示與失敗回饋（由 navigation.js openDynamicIframe 控制）。
+                         iframe 需要 title 供螢幕閱讀器辨識，內容名稱由 JS 依當前看板動態填入。 -->
+                    <div id="iframe-loading" class="iframe-status-overlay" style="display:none;">
+                        <div class="spinner-border text-info mb-3" role="status" aria-hidden="true"></div>
+                        <div class="fw-bold" id="iframe-loading-text" data-i18n="iframe_loading">看板載入中…</div>
+                    </div>
+                    <div id="iframe-error" class="iframe-status-overlay" style="display:none;">
+                        <i class="fas fa-plug-circle-xmark text-warning mb-3" style="font-size:2.5rem;"></i>
+                        <div class="fw-bold mb-1" id="iframe-error-title" data-i18n="iframe_err_title">此看板沒有回應</div>
+                        <div class="small mb-3" style="color:var(--text-muted);" id="iframe-error-desc" data-i18n="iframe_err_desc">可能是來源網站較慢或需要另開視窗才能顯示。</div>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-sm btn-info fw-bold px-3" onclick="if(window.retryCurrentIframe) window.retryCurrentIframe()"><i class="fas fa-rotate-right me-1"></i><span id="iframe-btn-retry" data-i18n="btn_reload">重新載入</span></button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary fw-bold px-3" onclick="if(window.openCurrentIframeInNewTab) window.openCurrentIframeInNewTab()"><i class="fas fa-arrow-up-right-from-square me-1"></i><span id="iframe-btn-newtab" data-i18n="btn_open_newtab">另開視窗</span></button>
+                        </div>
+                    </div>
+                    <!-- ⚠️ sandbox 的 allow-scripts + allow-same-origin 看起來像「沙箱形同虛設」，但**不可以**拿掉
+                         allow-same-origin（2026-08-16 評估後刻意保留）：
+                           · 沙箱化文件若少了 allow-same-origin，會被指派一個 opaque origin →
+                             該頁的 cookie / localStorage / sessionStorage 全部讀不到，
+                             需要登入態的廠內看板會直接壞掉（而且是白畫面、無錯誤訊息的那種壞法）。
+                           · 這個組合的已知風險是「**同源**且**不可信**的內容可自行解除沙箱」。本站的情況是：
+                             跨來源看板 → 本來就碰不到 parent，沙箱與否不影響隔離；
+                             同源內容   → 是我們自己 wwwroot 底下的檔案，或由 admin 設定的同源路徑，本來就在信任範圍內。
+                         結論：真正的把關點是「誰能設定 menu.url」（已限管理權限），不是這個屬性。
+                         若哪天要開放一般使用者自填 URL，才需要回頭重新設計（例如改用獨立來源的 sandbox domain）。 -->
+                    <iframe id="main-iframe" src="" title="看板內容" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"></iframe>
+                </div>
                 <div id="page-app-grid" class="page-section"><div class="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2"><h5 class="mb-0 fw-bold text-success"><i class="fas fa-th-large me-2"></i><span id="app-grid-title">應用集合</span></h5></div><div class="app-grid" id="app-grid-container"></div></div>
                 <div id="page-under-construction" class="page-section"><div class="manage-alert" id="under-construction-text">內容建置中</div></div>
             </div>
@@ -770,12 +812,12 @@
     <!-- Modals 容器：由 partials/modals.html 動態載入 -->
     <div id="modals-container"></div>
 
-    <div class="modal fade" id="systemAlertModal" tabindex="-1" style="z-index: 1060;"><div class="modal-dialog modal-dialog-centered modal-sm"><div class="modal-content border-0 shadow"><div class="modal-body text-center py-4"><i class="fas fa-info-circle text-info mb-3" style="font-size: 2.5rem;"></i><p class="fs-6 fw-bold mb-0 text-dark" id="systemAlertMsg"></p></div><div class="modal-footer justify-content-center border-0 bg-light py-2"><button type="button" class="btn btn-primary btn-sm px-4 fw-bold" data-bs-dismiss="modal">確定</button></div></div></div></div>
-    <div class="modal fade" id="systemConfirmModal" tabindex="-1" style="z-index: 1060;"><div class="modal-dialog modal-dialog-centered modal-sm"><div class="modal-content border-0 shadow"><div class="modal-body text-center py-4"><i class="fas fa-exclamation-triangle text-warning mb-3" style="font-size: 2.5rem;"></i><p class="fs-6 fw-bold mb-0 text-dark" id="systemConfirmMsg"></p></div><div class="modal-footer justify-content-center border-0 bg-light py-2"><button type="button" class="btn btn-light btn-sm border px-3 fw-bold" data-bs-dismiss="modal" data-i18n="modal_btn_cancel">取消</button><button type="button" class="btn btn-danger btn-sm px-3 fw-bold" id="systemConfirmBtn" onclick="if(window.appState && window.appState.confirmActionCallback) window.appState.confirmActionCallback(); bootstrap.Modal.getInstance(document.getElementById('systemConfirmModal')).hide();">確定</button></div></div></div></div>
+    <div class="modal fade" id="systemAlertModal" tabindex="-1" style="z-index: 1060;" aria-labelledby="systemAlertMsg"><div class="modal-dialog modal-dialog-centered modal-sm"><div class="modal-content border-0 shadow"><div class="modal-body text-center py-4"><i class="fas fa-info-circle text-info mb-3" style="font-size: 2.5rem;"></i><p class="fs-6 fw-bold mb-0 text-dark" id="systemAlertMsg"></p></div><div class="modal-footer justify-content-center border-0 bg-light py-2"><button type="button" class="btn btn-primary btn-sm px-4 fw-bold" data-bs-dismiss="modal" data-i18n="modal_btn_ok">確定</button></div></div></div></div>
+    <div class="modal fade" id="systemConfirmModal" tabindex="-1" style="z-index: 1060;" aria-labelledby="systemConfirmMsg"><div class="modal-dialog modal-dialog-centered modal-sm"><div class="modal-content border-0 shadow"><div class="modal-body text-center py-4"><i class="fas fa-exclamation-triangle text-warning mb-3" style="font-size: 2.5rem;"></i><p class="fs-6 fw-bold mb-0 text-dark" id="systemConfirmMsg"></p></div><div class="modal-footer justify-content-center border-0 bg-light py-2"><button type="button" class="btn btn-light btn-sm border px-3 fw-bold" data-bs-dismiss="modal" data-i18n="modal_btn_cancel">取消</button><button type="button" class="btn btn-danger btn-sm px-3 fw-bold" id="systemConfirmBtn" onclick="if(window.appState && window.appState.confirmActionCallback) window.appState.confirmActionCallback(); bootstrap.Modal.getInstance(document.getElementById('systemConfirmModal')).hide();" data-i18n="modal_btn_ok">確定</button></div></div></div></div>
 
     <!-- ⭐️ 快取破解碼：必須在 modals.html fetch 之前定義，否則 ?v= 會是空字串、
          部署後使用者拿到舊版 modals (Round-7 修)。其他 <script src> 共用此版本碼。 -->
-    <script>window.__APP_VER__ = '20260607e';</script>
+    <script>window.__APP_VER__ = '20260816f';</script>
 
     <!-- ⭐️ 動態載入 Modals partial (跟 JS 共用同一個 cache-bust 版本碼)
          Round-5 B14：失敗時不再只 console.warn — 顯示明確錯誤 banner，因為沒有 modals 後續所有「新增/編輯」按鈕都會死掉。 -->
@@ -805,29 +847,22 @@
          IIS 子目錄部署時就自動帶到正確位置。 -->
     <script src="appbase.js"></script>
 
-    <!-- __APP_VER__ 已在 modals.html fetch 之前定義；以下 <script src> 共用同一版本碼 -->
-    <script type="module" src="js/config.js?v=20260810a"></script>
-    <script type="module" src="js/api.js?v=20260810a"></script>
-    <script type="module" src="js/auth.js?v=20260810a"></script>
-    <!-- ui 模組 (從 ui.js 拆分) -->
-    <script type="module" src="js/ui/layout.js?v=20260810a"></script>
-    <script type="module" src="js/ui/navigation.js?v=20260810a"></script>
-    <script type="module" src="js/ui/dialogs.js?v=20260810a"></script>
-    <!-- render 模組 (從 render.js 拆分) -->
-    <script type="module" src="js/render/sidebar.js?v=20260810a"></script>
-    <script type="module" src="js/render/sidebar-item.js?v=20260810a"></script>
-    <script type="module" src="js/render/tables.js?v=20260810a"></script>
-    <script type="module" src="js/render/account-ui.js?v=20260810a"></script>
-    <!-- admin 模組 (從 admin.js 拆分) -->
-    <script type="module" src="js/admin/modal-utils.js?v=20260810a"></script>
-    <script type="module" src="js/admin/fab-manage.js?v=20260810a"></script>
-    <script type="module" src="js/admin/role-manage.js?v=20260810a"></script>
-    <script type="module" src="js/admin/account-manage.js?v=20260810a"></script>
-    <script type="module" src="js/admin/menu-manage.js?v=20260810a"></script>
-    <script type="module" src="js/admin/activity-log.js?v=20260810a"></script>
-    <script type="module" src="js/admin/traffic-stats.js?v=20260810a"></script>
-    <script type="module" src="js/admin/misc-manage.js?v=20260810a"></script>
-    <script type="module" src="js/main.js?v=20260810a"></script>
+    <!-- ⭐️ 唯一 JS 入口點：main.js 的 import 圖已完整涵蓋全部 20 支模組
+         （store / config / api / auth / ui* / render* / admin*），故只需載入這一支。
+
+         ⚠️ 絕對不要在此列出其他模組的 <script src>，也不要在模組內的 import 加 ?v= 版本碼：
+            瀏覽器 module map 以「完整 URL（含 query）」為 key，api.js?v=A 與 api.js?v=B 會被
+            當成兩個不同模組各執行一次 → window.fetch 被包兩層、main.js 的 DOMContentLoaded
+            跑兩遍（GetInitialData 雙打、MenuClick 點擊統計被記兩次）、模組層級 guard 變數
+            （_autoLoginInProgress 等）各有兩份而失效。
+            子模組的即時更新已由 Program.cs 對 .js/.css/.html 設 Cache-Control: no-cache
+            （每次帶 ETag 重新驗證、未變更回 304）保證，不需要在 import 上帶版號。
+
+         ⚠️⚠️ 本行 src 也**刻意不帶 ?v=**：auth.js 與 admin/misc-manage.js 有反向 import
+            './main.js'（循環相依），若這裡寫成 main.js?v=xxx，就會與模組圖裡的 main.js
+            變成兩個 URL → main.js 依然被執行兩次（DOMContentLoaded 跑兩遍）。
+            JS 一律靠 no-cache 取得新版；?v= 只留給不在 module 圖內的 CSS 與 modals.html。 -->
+    <script type="module" src="js/main.js"></script>
 
 </body>
 </html>

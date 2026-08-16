@@ -1,6 +1,6 @@
-﻿import { enforceSystemModeUI } from './layout.js?v=20260727b';
-import { changeLanguage, renderLangSwitcher } from './navigation.js?v=20260727b';
-import { appState } from '../store.js?v=20260727b';
+﻿import { enforceSystemModeUI } from './layout.js';
+import { changeLanguage, renderLangSwitcher } from './navigation.js';
+import { appState } from '../store.js';
 
 
 ﻿// === ui/dialogs.js - 同步按鈕、自訂 Alert/Confirm、語系更新 ===
@@ -12,14 +12,10 @@ export function generateIconHtml(iconVal, colorCls, extraCls, isFolder = false) 
     return `<i class="${iconVal} ${colorCls} ${extraCls}"></i>`;
 }
 
-// 更新同步按鈕狀態 UI
-export function updateSyncButtonUI() {
-    const btn = document.getElementById('btn-sync-excel');
-    if (btn) {
-        if (appState.hasUnsavedChanges) { btn.classList.remove('d-none'); btn.classList.add('d-inline-flex'); }
-        else { btn.classList.add('d-none'); btn.classList.remove('d-inline-flex'); }
-    }
-}
+// （2026-08-13 移除 updateSyncButtonUI / appState.hasUnsavedChanges：
+//   `#btn-sync-excel` 這顆按鈕在 index.html 中並不存在，而 hasUnsavedChanges 全專案
+//   只被賦值 false、從未設為 true → 整組機制是永遠 no-op 的死碼。CRUD 現已全走 RESTful
+//   即時寫入，沒有「未儲存變更」這個狀態，故直接移除而非修復。）
 
 // === Alert 防重複 ===
 window.__alertState = window.__alertState || {
@@ -206,7 +202,6 @@ window.updateLangUI = function (langCode) {
 
 // Expose for HTML inline handlers
 window.generateIconHtml = generateIconHtml;
-window.updateSyncButtonUI = updateSyncButtonUI;
 window.customAlert = customAlert;
 window.customConfirm = customConfirm;
 window.showToast = showToast;

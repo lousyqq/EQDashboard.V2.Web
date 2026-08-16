@@ -1,17 +1,17 @@
 ﻿// === render/tables.js - 管理表格渲染 (Fab, Role, Account, Webpage, MenuConfig, Apply, Audit, AppGrid) ===
 
-import { getCustomMenus, getDataTableLang, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings, t } from '../config.js?v=20260727b';
+import { getCustomMenus, getDataTableLang, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings, t } from '../config.js';
 
 
-import { deleteAccount, editAccount } from '../admin/account-manage.js?v=20260727b';
-import { deleteFab, editFab } from '../admin/fab-manage.js?v=20260727b';
-import { deleteMenuNodeItem, deleteWebpageItem, editPersonalMenu, openAddMenuNodeModal, openAddWebpageModal } from '../admin/menu-manage.js?v=20260727b';
-import { handleDragLeave, handleDragOver, handleDragStart, handleDrop, openAuditModal, withdrawApply } from '../admin/misc-manage.js?v=20260727b';
-import { deleteRole, editRole } from '../admin/role-manage.js?v=20260727b';
-import { getDtPageLen, initDataTable, rememberDtPageLen, renderSidebarMenus, safeDestroyDataTable } from './sidebar.js?v=20260727b';
-import { generateIconHtml } from '../ui/dialogs.js?v=20260727b';
-import { getFullMenuPathStr } from '../ui/navigation.js?v=20260727b';
-import { appState } from '../store.js?v=20260727b';
+import { deleteAccount, editAccount } from '../admin/account-manage.js';
+import { deleteFab, editFab } from '../admin/fab-manage.js';
+import { deleteMenuNodeItem, deleteWebpageItem, editPersonalMenu, openAddMenuNodeModal, openAddWebpageModal } from '../admin/menu-manage.js';
+import { handleDragLeave, handleDragOver, handleDragStart, handleDrop, openAuditModal, withdrawApply } from '../admin/misc-manage.js';
+import { deleteRole, editRole } from '../admin/role-manage.js';
+import { applyPinnedNewFirst, getDtPageLen, initDataTable, rememberDtPageLen, renderSidebarMenus, safeDestroyDataTable } from './sidebar.js';
+import { generateIconHtml } from '../ui/dialogs.js';
+import { getFullMenuPathStr } from '../ui/navigation.js';
+import { appState } from '../store.js';
 
 
 // ⚠️ Stored XSS 防護：判斷 URL 是否安全到可以放進 href 或 window.open。
@@ -119,13 +119,16 @@ export function renderPersonalMenuManage() {
             const children = menus.filter(m => m.parentId === menu.id || (m.parentIds && m.parentIds.includes(menu.id)));
             const hasChildren = children.length > 0;
             const isExpanded = appState.expandedPerMenuIds.has(menu.id);
+            // ⚠️ ID 進 JS onclick / ondragstart / ondrop 一律 _jsArg()（CLAUDE.md §4-前端-5）
+            const menuJsId = window._jsArg(menu.id);
+            const parentJsId = window._jsArg(parentId || '');
 
             const expandBtn = (level === 0 && hasChildren)
-                ? `<span ${noDrag}><button type="button" onclick="togglePerMenuRow('${menu.id}')" class="chevron-btn text-secondary me-2 border-0 bg-transparent"><i class="fas fa-chevron-${isExpanded ? 'down' : 'right'}"></i></button></span>`
+                ? `<span ${noDrag}><button type="button" onclick="togglePerMenuRow('${menuJsId}')" class="chevron-btn text-secondary me-2 border-0 bg-transparent"><i class="fas fa-chevron-${isExpanded ? 'down' : 'right'}"></i></button></span>`
                 : `<span class="chevron-btn text-muted me-2" style="cursor:default; opacity:0.3; padding:0 10px;"><i class="fas fa-minus"></i></span>`;
 
             const iconHtml = generateIconHtml(menu.icon, isHidden ? 'text-muted' : 'text-primary', 'me-2 fs-6', menu.menuMode === 'folder');
-            const toggleHtml = `<div class="form-check form-switch m-0 d-flex justify-content-center" ${noDrag}><input class="form-check-input cursor-pointer" type="checkbox" onchange="togglePersonalProp('${menu.id}', 'hidden', !this.checked)" ${!isHidden ? 'checked' : ''} title="顯示/隱藏"></div>`;
+            const toggleHtml = `<div class="form-check form-switch m-0 d-flex justify-content-center" ${noDrag}><input class="form-check-input cursor-pointer" type="checkbox" onchange="togglePersonalProp('${menuJsId}', 'hidden', !this.checked)" ${!isHidden ? 'checked' : ''} title="顯示/隱藏"></div>`;
 
             // 開啟方式：folder/有子選單者顯示「-」；leaf 顯示彩色文字（與 TEST_20260429.html:3709 對齊）
             // 實際變更走右側「編輯」按鈕 → 個人選單設定 Modal 內的「開啟偏好」下拉
@@ -141,7 +144,7 @@ export function renderPersonalMenuManage() {
                 ? '<span class="text-muted">-</span>'
                 : (targetTextMap[currentTarget] || targetTextMap['iframe']);
 
-            const trAttr = `draggable="true" ondragstart="handleDragStart(event, '${menu.id}', '${parentId || ''}')" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, '${menu.id}', '${parentId || ''}', 'personal')"`;
+            const trAttr = `draggable="true" ondragstart="handleDragStart(event, '${menuJsId}', '${parentJsId}')" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, '${menuJsId}', '${parentJsId}', 'personal')"`;
             const levelMap = { 0: '主選單', 1: '子選單', 2: '次子選單' };
 
             let dName = menu.displayName || menu.name || '未命名選單';
@@ -161,12 +164,12 @@ export function renderPersonalMenuManage() {
                 </div>
             `;
 
-            return `<tr ${trAttr} class="draggable-row ${isHidden ? 'opacity-50' : ''}" data-menu-id="${menu.id}" data-level="${level}">
+            return `<tr ${trAttr} class="draggable-row ${isHidden ? 'opacity-50' : ''}" data-menu-id="${window.escapeHTML(String(menu.id ?? ''))}" data-level="${level}">
                 <td class="text-start ${pad} align-middle">${col1Html}</td>
                 <td class="align-middle"><span class="badge badge-pill-outline px-3 text-secondary">${levelMap[level]}</span></td>
                 <td class="align-middle">${toggleHtml}</td>
                 <td class="text-start align-middle">${targetSelectHtml}</td>
-                <td class="text-center align-middle" ${noDrag}><button class="action-btn edit btn btn-sm btn-outline-primary" onclick="editPersonalMenu('${menu.id}')"><i class="fas fa-edit"></i></button></td>
+                <td class="text-center align-middle" ${noDrag}><button class="action-btn edit btn btn-sm btn-outline-primary" onclick="editPersonalMenu('${menuJsId}')"><i class="fas fa-edit"></i></button></td>
             </tr>`;
         };
 
@@ -292,7 +295,10 @@ export function renderFabTable() {
         }).join('');
         if (!roleBadges) roleBadges = '<span class="text-muted small">未綁定</span>';
 
-        let actionBtns = `<div class="d-flex flex-nowrap justify-content-center gap-2"><button type="button" class="btn btn-sm btn-outline-primary btn-action-icon" onclick="event.stopPropagation(); editFab('${fId}');" title="編輯"><i class="fas fa-edit"></i></button><button type="button" class="btn btn-sm btn-outline-danger btn-action-icon" onclick="event.stopPropagation(); deleteFab('${fId}')" title="刪除"><i class="fas fa-trash-alt"></i></button></div>`;
+        // ⚠️ ID 進 JS onclick 一律 _jsArg()（CLAUDE.md §4-前端-5）：廠區 ID 是管理者自由輸入，
+        //   含 `'` 會直接讓 handler 語法錯誤、惡意內容則是注入。
+        const fJsId = window._jsArg(fId);
+        let actionBtns = `<div class="d-flex flex-nowrap justify-content-center gap-2"><button type="button" class="btn btn-sm btn-outline-primary btn-action-icon" onclick="event.stopPropagation(); editFab('${fJsId}');" title="編輯"><i class="fas fa-edit"></i></button><button type="button" class="btn btn-sm btn-outline-danger btn-action-icon" onclick="event.stopPropagation(); deleteFab('${fJsId}')" title="刪除"><i class="fas fa-trash-alt"></i></button></div>`;
         htmlBuffer.push(`<tr><td class="text-start ps-3 fw-bold align-middle">${fName}</td><td class="align-middle">${dName}</td><td class="align-middle">${dLang === 'en' ? 'English' : (dLang === 'ja' ? '日本語' : '繁體中文')}</td><td class="text-start align-middle">${roleBadges}</td><td class="text-center align-middle" style="white-space: nowrap; width: 1%;">${actionBtns}</td></tr>`);
     });
     tbody.innerHTML = htmlBuffer.join('');
@@ -311,7 +317,8 @@ export function renderRoleTable() {
         }).join('');
         if (!menuBadges) menuBadges = '<span class="text-muted small">無綁定看板</span>';
         const rId = r.id || r.roleId || r.RoleId || ''; const rName = window.escapeHTML(r.groupName || r.GroupName || rId);
-        let actionBtns = `<div class="d-flex flex-nowrap justify-content-center gap-2"><button type="button" class="btn btn-sm btn-outline-primary btn-action-icon" onclick="event.stopPropagation(); editRole('${rId}');" title="編輯"><i class="fas fa-edit"></i></button><button type="button" class="btn btn-sm btn-outline-danger btn-action-icon" onclick="event.stopPropagation(); deleteRole('${rId}')" title="刪除"><i class="fas fa-trash-alt"></i></button></div>`;
+        const rJsId = window._jsArg(rId);
+        let actionBtns = `<div class="d-flex flex-nowrap justify-content-center gap-2"><button type="button" class="btn btn-sm btn-outline-primary btn-action-icon" onclick="event.stopPropagation(); editRole('${rJsId}');" title="編輯"><i class="fas fa-edit"></i></button><button type="button" class="btn btn-sm btn-outline-danger btn-action-icon" onclick="event.stopPropagation(); deleteRole('${rJsId}')" title="刪除"><i class="fas fa-trash-alt"></i></button></div>`;
         htmlBuffer.push(`<tr><td class="text-start ps-3 fw-bold text-primary align-middle">${rName}</td><td class="text-start align-middle" style="max-width: 400px; white-space: normal;">${menuBadges}</td><td class="text-center align-middle" style="white-space: nowrap; width: 1%;">${actionBtns}</td></tr>`);
     });
     tbody.innerHTML = htmlBuffer.join('');
@@ -422,7 +429,12 @@ function _accScopeAndManagedHtml(assignedRoles, manageableMenus, roleLevel) {
 function _accRowData(a) {
     const aId = a.empId || a.EmpId || '';
     const aName = window.escapeHTML(a.name || a.Name || '');
-    const aDept = window.escapeHTML(a.department || a.Department || '');
+    // 部門可能為 null（AuthController 自動建帳查不到部門時刻意留 null，不再塞角色名稱）→
+    // 用三語齊備的 dept_unknown 明示「未設定」，避免只是留一格空白讓人以為是渲染失敗。
+    const aDeptRaw = a.department || a.Department || '';
+    const aDept = aDeptRaw
+        ? window.escapeHTML(aDeptRaw)
+        : `<span class="fst-italic opacity-75">${window.escapeHTML(t('dept_unknown', '未設定部門'))}</span>`;
     const aLevel = a.roleLevel || a.RoleLevel || '';
     const defPagesHtml = _accDefaultPagesHtml(a.defaultPages || a.DefaultPages || {});
     const roleStatusHtml = _accRoleAndStatusHtml(aLevel, a.canEditOthers || a.CanEditOthers, a.manageableMenus || a.MapAccountManageMenus);
@@ -518,16 +530,23 @@ export function renderAccountTable() {
 export function renderWebpageTable() {
     safeDestroyDataTable('dtWebpage'); const tbody = document.getElementById('webpageTableBody'); if (!tbody) return; tbody.innerHTML = '';
     // 對齊 TEST_20260429.html:3800 — 只列出「池中項目 (isPoolItem === true)」，依 order 排序
-    const menus = getCustomMenus()
+    let menus = getCustomMenus()
         .filter(m => String(m.isPoolItem || m.IsPoolItem).toLowerCase() === 'true')
         .sort((a, b) => (a.order || 0) - (b.order || 0));
+    // 剛新增的看板置頂（整頁重整後才回歸 order 排序）
+    menus = applyPinnedNewFirst('dtWebpage', menus);
     let htmlBuffer = [];
     menus.forEach(m => {
         const perms = window.getMenuPermissions(m.id || m.MenuId, m.createdBy || m.CreatedBy);
         if (!perms.canView) return;
         const mEnabled = m.enabled !== undefined ? m.enabled : (m.IsEnabled !== undefined ? m.IsEnabled : true);
         const mMode = m.menuMode || m.MenuMode; const mTarget = m.target || m.OpenTarget;
-        const mUrl = m.url || m.Url || m.targetPage || m.TargetPage || '';
+        // ⚠️ 外部網址與內部頁面必須分開，不可用 `url || targetPage` 併成一個值：
+        //    內部頁面（url 為空、targetPage = 'page-xxx'）不是可導覽的 URL，
+        //    渲染成 <a href="page-ze-content"> 會開新分頁到 /page-ze-content → 404 空白頁。
+        //    分流依據與 navigation.js 的 activateMenu 一致：有 url 走外部，否則看 targetPage。
+        const mExtUrl = m.url || m.Url || '';
+        const mIntPage = m.targetPage || m.TargetPage || '';
         const mIcon = m.icon || m.Icon; const mId = m.id || m.MenuId;
         const mDName = window.escapeHTML(m.displayName || m.DisplayName); const mSysName = window.escapeHTML(m.name || m.SysName);
 
@@ -556,13 +575,19 @@ export function renderWebpageTable() {
 
         // 網址（第二行，完整顯示、會自動換行；word-break 避免長網址撐破版面）
         // ⚠️ href 必須先過 safeExternalUrl，否則 `javascript:` 等 payload 通過 escapeHTML 後仍可點擊執行 (Stored XSS)
-        const safeUrlForHref = window.safeExternalUrl(mUrl);
-        const safeUrl = window.escapeHTML(mUrl);  // 顯示文字仍用 escapeHTML
-        const urlHtml = mMode === 'app_grid'
-            ? '<span class="text-success fw-bold small">內部應用集合區</span>'
-            : (mUrl
-                ? `<a href="${window.escapeHTML(safeUrlForHref)}" target="_blank" rel="noopener noreferrer" class="small text-decoration-none" style="word-break:break-all;"><i class="fas fa-info-circle text-secondary me-1"></i>${safeUrl}</a>`
-                : '<span class="text-muted small">無設定路徑</span>');
+        const safeUrlForHref = window.safeExternalUrl(mExtUrl);
+        const safeUrl = window.escapeHTML(mExtUrl);  // 顯示文字仍用 escapeHTML
+        let urlHtml;
+        if (mMode === 'app_grid') {
+            urlHtml = '<span class="text-success fw-bold small">內部應用集合區</span>';
+        } else if (mExtUrl) {
+            urlHtml = `<a href="${window.escapeHTML(safeUrlForHref)}" target="_blank" rel="noopener noreferrer" class="small text-decoration-none" style="word-break:break-all;"><i class="fas fa-info-circle text-secondary me-1"></i>${safeUrl}</a>`;
+        } else if (mIntPage) {
+            // 內部頁面：只顯示不可點的識別碼（點了也沒有對應路由）
+            urlHtml = `<span class="text-muted small" style="word-break:break-all;"><i class="fas fa-file-code text-secondary me-1"></i>${window.escapeHTML(mIntPage)}</span>`;
+        } else {
+            urlHtml = '<span class="text-muted small">無設定路徑</span>';
+        }
 
         const pathCellHtml = `
             <div class="d-flex flex-column align-items-start gap-1">
@@ -574,17 +599,19 @@ export function renderWebpageTable() {
         let iconHtml = typeof generateIconHtml === 'function' ? generateIconHtml(mIcon, 'text-primary', 'me-2') : '';
 
         // 按鈕依權限顯示：admin / 自己建立 一律 OK；委派 user 需 canEditOthers
+        // ⚠️ 看板 ID 進 onclick / ondragstart / ondrop 一律 _jsArg()（CLAUDE.md §4-前端-5）
+        const mJsId = window._jsArg(mId);
         let btnsHtml = '';
         if (perms.canEdit) {
-            btnsHtml += `<button type="button" class="btn btn-sm btn-outline-primary btn-action-icon" onclick="event.stopPropagation(); openAddWebpageModal('${mId}');" title="編輯"><i class="fas fa-edit"></i></button>`;
+            btnsHtml += `<button type="button" class="btn btn-sm btn-outline-primary btn-action-icon" onclick="event.stopPropagation(); openAddWebpageModal('${mJsId}');" title="編輯"><i class="fas fa-edit"></i></button>`;
         }
         if (perms.canDelete) {
-            btnsHtml += `<button type="button" class="btn btn-sm btn-outline-danger btn-action-icon" onclick="event.stopPropagation(); deleteWebpageItem('${mId}')" title="刪除"><i class="fas fa-trash-alt"></i></button>`;
+            btnsHtml += `<button type="button" class="btn btn-sm btn-outline-danger btn-action-icon" onclick="event.stopPropagation(); deleteWebpageItem('${mJsId}')" title="刪除"><i class="fas fa-trash-alt"></i></button>`;
         }
         if (!btnsHtml) btnsHtml = '<span class="badge bg-light text-muted border">僅檢視</span>';
         let actionBtns = `<div class="d-flex flex-nowrap justify-content-center gap-2">${btnsHtml}</div>`;
 
-        htmlBuffer.push(`<tr class="draggable-row" draggable="true" ondragstart="handleDragStart(event, '${mId}', null)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, '${mId}', null, 'webpage')"><td class="text-start ps-3 fw-bold text-dark align-middle"><i class="fas fa-grip-vertical text-muted me-2 opacity-50"></i>${iconHtml} ${mDName} <br><small class="text-muted fw-normal ms-4">${mSysName}</small></td><td class="align-middle">${typeBadge}</td><td class="align-middle">${statusBadge}</td><td class="text-start align-middle">${pathCellHtml}</td><td class="text-center align-middle" style="white-space: nowrap; width: 1%; vertical-align: middle;">${actionBtns}</td></tr>`);
+        htmlBuffer.push(`<tr class="draggable-row" draggable="true" ondragstart="handleDragStart(event, '${mJsId}', null)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, '${mJsId}', null, 'webpage')"><td class="text-start ps-3 fw-bold text-dark align-middle"><i class="fas fa-grip-vertical text-muted me-2 opacity-50"></i>${iconHtml} ${mDName} <br><small class="text-muted fw-normal ms-4">${mSysName}</small></td><td class="align-middle">${typeBadge}</td><td class="align-middle">${statusBadge}</td><td class="text-start align-middle">${pathCellHtml}</td><td class="text-center align-middle" style="white-space: nowrap; width: 1%; vertical-align: middle;">${actionBtns}</td></tr>`);
     });
     tbody.innerHTML = htmlBuffer.join('');
     initDataTable('dtWebpage', true);
@@ -604,6 +631,8 @@ export function renderMenuConfigTable() {
         return perms && perms.canView;
     });
     roots.sort((a, b) => (a.order || a.GlobalOrder || a.SortOrder || 0) - (b.order || b.GlobalOrder || b.SortOrder || 0));
+    // 剛新增的主選單配置置頂（整頁重整後才回歸 order 排序）
+    roots = applyPinnedNewFirst('dtMenuConfig', roots);
 
     // ⭐️ 遞迴取得所有子孫節點的膠囊 UI (加入 visited 防止無窮迴圈崩潰！)
     function getDescendantBadges(parentId, allMenus, visited = new Set()) {
@@ -654,14 +683,15 @@ export function renderMenuConfigTable() {
         }
 
         const perms = window.getMenuPermissions(m.id || m.MenuId, m.createdBy || m.CreatedBy);
+        const nodeJsId = window._jsArg(m.id);   // ⚠️ ID 進 JS onclick 一律 _jsArg()（CLAUDE.md §4-前端-5）
         let actionBtnsHtml = '';
         // 編輯：可編輯 或 可管理結構（後者讓被委派的祖先可以調整內部組合）
         if (perms.canEdit || perms.canManageStructure) {
-            actionBtnsHtml += `<button type="button" class="btn btn-sm btn-outline-primary shadow-sm btn-action-icon" onclick="event.stopPropagation(); openAddMenuNodeModal('${m.id}');" title="編輯"><i class="fas fa-edit"></i></button>`;
+            actionBtnsHtml += `<button type="button" class="btn btn-sm btn-outline-primary shadow-sm btn-action-icon" onclick="event.stopPropagation(); openAddMenuNodeModal('${nodeJsId}');" title="編輯"><i class="fas fa-edit"></i></button>`;
         }
         // 刪除：必須擁有 canDelete (admin / 自己 / 委派且 canEditOthers)
         if (perms.canDelete) {
-            actionBtnsHtml += `<button type="button" class="btn btn-sm btn-outline-danger shadow-sm btn-action-icon" onclick="event.stopPropagation(); deleteMenuNodeItem('${m.id}')" title="刪除"><i class="fas fa-trash-alt"></i></button>`;
+            actionBtnsHtml += `<button type="button" class="btn btn-sm btn-outline-danger shadow-sm btn-action-icon" onclick="event.stopPropagation(); deleteMenuNodeItem('${nodeJsId}')" title="刪除"><i class="fas fa-trash-alt"></i></button>`;
         }
         if (!actionBtnsHtml) actionBtnsHtml = '<span class="badge bg-light text-muted border">僅檢視</span>';
         let actionBtns = `<div class="d-flex flex-nowrap justify-content-center gap-2">${actionBtnsHtml}</div>`;
@@ -716,9 +746,10 @@ export function renderApplyTable() {
         const replyMsg = replyTxt ? `<div class="small text-primary fw-bold text-truncate" style="max-width: 250px;" title="${window.escapeHTML(replyTxt)}"><i class="fas fa-comment-dots me-1"></i>${window.escapeHTML(replyTxt)}</div>` : '<span class="text-muted small"><i class="fas fa-hourglass-half me-1"></i>等待管理員處理中...</span>';
 
         const rStatus = r.status || r.Status || 'pending'; const rId = r.id || r.RequestId || r.Id;
+        const reqJsId = window._jsArg(rId);   // ⚠️ ID 進 JS onclick 一律 _jsArg()（CLAUDE.md §4-前端-5）
         let actionBtnsHtml = '';
-        if (rStatus === 'withdrawn') actionBtnsHtml = `<button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 fw-bold text-nowrap" onclick="event.stopPropagation(); deleteApplyItem('${rId}')"><i class="fas fa-trash-alt me-1"></i> 刪除紀錄</button>`;
-        else if (rStatus === 'pending' || !rStatus) actionBtnsHtml = `<button type="button" class="btn btn-sm btn-outline-warning text-dark py-0 px-2 fw-bold text-nowrap" onclick="event.stopPropagation(); withdrawApply('${rId}');"><i class="fas fa-undo me-1"></i> 撤回</button>`;
+        if (rStatus === 'withdrawn') actionBtnsHtml = `<button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 fw-bold text-nowrap" onclick="event.stopPropagation(); deleteApplyItem('${reqJsId}')"><i class="fas fa-trash-alt me-1"></i> 刪除紀錄</button>`;
+        else if (rStatus === 'pending' || !rStatus) actionBtnsHtml = `<button type="button" class="btn btn-sm btn-outline-warning text-dark py-0 px-2 fw-bold text-nowrap" onclick="event.stopPropagation(); withdrawApply('${reqJsId}');"><i class="fas fa-undo me-1"></i> 撤回</button>`;
         else actionBtnsHtml = `<span class="badge bg-light text-muted border">審核中/已鎖定</span>`;
 
         let actionBtns = `<div class="d-flex flex-nowrap justify-content-center gap-2">${actionBtnsHtml}</div>`;
@@ -750,8 +781,9 @@ export function renderAuditTable() {
         const replyTxt = r.reply || r.Reply;
         const replyMsg = replyTxt ? `<div class="small text-primary fw-bold text-truncate" style="max-width: 200px;" title="${window.escapeHTML(replyTxt)}"><i class="fas fa-comment-dots me-1"></i>${window.escapeHTML(replyTxt)}</div>` : '<span class="text-muted small">尚未回覆</span>';
         const rId = r.id || r.RequestId || r.Id;
+        const auditJsId = window._jsArg(rId);   // ⚠️ ID 進 JS onclick 一律 _jsArg()（CLAUDE.md §4-前端-5）
 
-        let actionBtns = `<div class="d-flex flex-nowrap justify-content-center gap-2"><button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 fw-bold text-nowrap" onclick="event.stopPropagation(); openAuditModal('${rId}');"><i class="fas fa-reply me-1"></i>回覆</button></div>`;
+        let actionBtns = `<div class="d-flex flex-nowrap justify-content-center gap-2"><button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 fw-bold text-nowrap" onclick="event.stopPropagation(); openAuditModal('${auditJsId}');"><i class="fas fa-reply me-1"></i>回覆</button></div>`;
         htmlBuffer.push(`<tr><td class="align-middle"><div class="fw-bold text-dark">${window.escapeHTML(r.empName || r.EmpName)}</div><div class="small text-muted fw-normal">${window.escapeHTML(r.empId || r.EmpId)}</div></td><td class="small text-muted align-middle">${dateStr}</td><td class="align-middle">${typeBadge}<br><span class="fw-bold small text-dark">${window.escapeHTML(r.fab || r.FabId || '全域')}</span></td><td class="align-middle text-start" style="max-width: 250px;"><div class="text-truncate text-dark fw-bold" title="${window.escapeHTML(r.reason || r.Reason)}">${window.escapeHTML(r.reason || r.Reason)}</div>${wdInfo}</td><td class="align-middle">${statusMap[rStatus]}</td><td class="align-middle text-start">${replyMsg}</td><td class="text-center align-middle" onmouseenter="this.closest('tr').setAttribute('draggable', false)" onmouseleave="this.closest('tr').setAttribute('draggable', true)" style="white-space: nowrap; width: 1%;">${actionBtns}</td></tr>`);
     });
     tbody.innerHTML = htmlBuffer.join('');

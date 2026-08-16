@@ -19,6 +19,13 @@ public class Menu
     public bool? IsPoolItem { get; set; }
     public bool? IsEdited { get; set; }
     public int? GlobalOrder { get; set; }
+    
+    // Metadata (Added 2026-08-11)
+    public DateTime? CreatedAt { get; set; }
+    [MaxLength(255)]
+    public string? Description { get; set; }
+    [MaxLength(255)]
+    public string? Keywords { get; set; }
 
     public ICollection<MapMenuStructure>? MapMenuStructuresChild { get; set; }
     public ICollection<MapMenuAllowAccount>? MapMenuAllowAccounts { get; set; }

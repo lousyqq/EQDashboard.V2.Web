@@ -109,6 +109,12 @@ public class MenuDto : IValidatableObject
     public bool IsEdited { get; set; }
     public int? Order { get; set; }
 
+    [StringLength(255)]
+    public string? Description { get; set; }
+
+    [StringLength(255)]
+    public string? Keywords { get; set; }
+
     [StringLength(50)]
     public string? ParentId { get; set; }
 

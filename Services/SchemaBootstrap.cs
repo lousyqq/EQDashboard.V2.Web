@@ -26,6 +26,7 @@ public class SchemaBootstrap : ISchemaBootstrap
 
             await EnsureAccountStatsColumnsAsync(conn);
             await EnsurePersonalSettingsColumnsAsync(conn);
+            await EnsureMenusMetadataColumnsAsync(conn);
             await EnsureOverrideTableAsync(conn, "Map_Account_ExtraMenu");
             await EnsureOverrideTableAsync(conn, "Map_Account_DenyMenu");
             await EnsureMenuAclTableAsync(conn, "Map_Menu_AllowAccount");
@@ -72,6 +73,20 @@ public class SchemaBootstrap : ISchemaBootstrap
         const string sql = @"
             IF COL_LENGTH('dbo.PersonalSettings','IsFavorite') IS NULL
                 ALTER TABLE dbo.PersonalSettings ADD IsFavorite BIT NULL;";
+        using var cmd = new SqlCommand(sql, conn);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>確保 Menus 包含 CreatedAt, Description, Keywords</summary>
+    private async Task EnsureMenusMetadataColumnsAsync(SqlConnection conn)
+    {
+        const string sql = @"
+            IF COL_LENGTH('dbo.Menus','CreatedAt') IS NULL
+                ALTER TABLE dbo.Menus ADD CreatedAt DATETIME2 NULL;
+            IF COL_LENGTH('dbo.Menus','Description') IS NULL
+                ALTER TABLE dbo.Menus ADD Description NVARCHAR(255) NULL;
+            IF COL_LENGTH('dbo.Menus','Keywords') IS NULL
+                ALTER TABLE dbo.Menus ADD Keywords NVARCHAR(255) NULL;";
         using var cmd = new SqlCommand(sql, conn);
         await cmd.ExecuteNonQueryAsync();
     }
