@@ -123,69 +123,94 @@
 > **唯一未完成的動作：`sql/2026-08-16_Fix_Account_Department_RoleNamePollution.sql` 尚未人工執行** ——
 > 未跑之前，`Accounts` 既有的 3 筆假部門與 `DailyUserVisits` 的歷史紀錄仍會讓「各部門活躍比率」顯示不存在的部門。
 
-**倉庫衛生（仍待處理）**
-- [ ] `sql/` 腳本散在兩個目錄：`EQDashboard.V2.Web/sql/`（3 檔）與 repo 根目錄 `EQDashboard/sql/`（2 檔），而 `DB_Table.md` Changelog 一律寫成 `sql/xxx.sql` → 部署時容易漏帶。建議收斂到單一目錄並在 Changelog 註明。
-- [ ] `test.mjs`、`scratch/` 仍是 untracked 殘留（A10 當時留給使用者決定，至今未處理）。
+**倉庫衛生**
+- ~~`sql/` 腳本散在兩個目錄~~ → 2026-08-16 已收斂到 `EQDashboard.V2.Web/sql/` 且全數納入版控（見下方第四輪 F2）。
+- ~~`test.mjs`、`scratch/` untracked 殘留~~ → 2026-08-16 已處理：`scratch/` 由 `.gitignore` 涵蓋、`test.mjs` 已隨使用者的 commit 進版控。
+  ⚠️ `test.mjs` 只有 1 行（UTF-16、內容是 `import './wwwroot/js/admin/menu-manage.js';`），用途早已被更完整的模組驗證腳本取代 —— 若確定不再需要可直接 `git rm`，現在刪除是可從 git 復原的。
 - ~~**【已排除】`changeLanguage()` 過慢**~~：2026-08-12 曾量到 `data-i18n` 迴圈 10.3 秒、整個函式 30 秒逾時，一度列為效能疑慮。**2026-08-13 重測已排除**：頁面穩定後 `changeLanguage('en')` 只需 43ms、切回 zh 11ms，逐元素計時也沒有任何元素超過 20ms。原先的數字是「頁面初載時 iframe 正在載外部看板 + serverSide DataTable ajax」的競用假象。**教訓：初載期間量到的效能數字不可採信，要等頁面 settle 後再量。**
 - ~~**無障礙未完成的部分（靜態 HTML 部分）**~~：2026-08-15 實測 `index.html` 的 inline `onclick` 已全部合規（41 個中僅 2 個在非互動元素上、且都有 `role`+`tabindex`），`modals.html` 5 個全在 `<button>` 上。**剩下的是 JS 動態樣板與圖示鈕的 aria-label** → 已改列為 E10 / E12。
 - [ ] **深色模式補丁可精簡**：B2 已讓 Bootstrap 原生元件自己正確，`components.css` 內那 30+ 條 `:root[data-theme="dark"] .xxx { … !important }` 現在多為冗餘。確認視覺無回歸後可逐步移除，並把 `modals.html` 的 23 個 `bg-light`／11 個 `text-dark`／9 個 `bg-white` 換成 `bg-body-tertiary`／`text-body`／`bg-body` 語意類別。
 
-### 第四輪健檢 (2026-08-16 盤點；**本輪只做檢測、未改任何程式碼**)
+### 第四輪健檢 (2026-08-16 盤點 → **同日 F1~F12 全數修復完畢並實機驗證**)
 
-> **驗證方式**：`dotnet build --no-incremental`（0 錯 / 1 既有警告）＋ `dotnet test`（8/8 通過）＋ `dotnet run`（Development, port 5242，連正式 DB `Sariel/EQDashboardV2`）實機操作，量測 DOM／對比度／network／console。
+> **驗證方式**：`dotnet build --no-incremental`＋`dotnet test`＋`dotnet run`（Development, port 5242，連正式 DB `Sariel/EQDashboardV2`）實機操作，量測 DOM／對比度／network／console。
 > **量色前已注入 `*{transition:none!important}`**（沿用 2026-08-15 的教訓）。
-> **回歸確認（前三輪成果仍成立）**：暖重整請求序列乾淨 —— CsrfToken → MyProfile → GetInitialData → Config → **MenuClick 只 1 筆** → Preferences，共 6 支、console 0 紅字。
+> **修復後總驗收**：`dotnet build` **0 錯 0 警告**（CS8619 已清）｜`dotnet test` **8/8 通過**｜三語 key **465/465/465 對齊**｜`wwwroot/js` 內 `?v=` = 0｜`index.html` `type="module"` = 1｜巢狀 `data-i18n` = 0｜5 個 CSS 檔大括號與註解皆配對｜所有 `data-i18n*` 與 `t('key')` 參照都找得到 key｜`__APP_VER__` `20260816f` → **`20260816g`**（13 處 `?v=` 全部對齊、殘留 0）。
+> **回歸確認**：暖重整請求序列仍乾淨 —— CsrfToken → MyProfile → GetInitialData → Config → **MenuClick 只 1 筆** → Preferences，共 6 支、console **0 錯誤**。桌機 1280px 無任何回歸（導覽列 73/38/34 高度不變、cluster 不捲動、品牌文字／釘選鈕／分隔線／意見箱文字都在）。
 
-**F1｜⚠️ 最高風險：六天的成果全部未進版控**
-- `EQDashboard.V2.Web/.git` 最後一次 commit 是 **`c9cc64e` (2026-08-10)**。此後的 **40 個 modified ＋ 25 個 staged（E1 加入的 `wwwroot/lib` 16 支第三方資產）＋ 3 個 untracked** 全在工作區裸奔。
-- 亦即 **E1~E14、登入不因時間過期（三層修正）、pinNewRow 置頂機制、Department 污染修復** 全部只存在於本機工作目錄，一次誤刪／還原就全沒了。
-- untracked 的 3 個檔案裡有 **兩支 SQL 腳本**（`2026-08-11_Add_Menus_Metadata.sql`、`2026-08-16_Fix_Account_Department_RoleNamePollution.sql`）—— 它們是 `DB_Table.md` Changelog 指名的部署依據，沒進版控＝遠端 DB 同步的事實來源會斷。
-- **建議：先 commit 再談其他任何一項。**
+**~~F1｜六天的成果全部未進版控~~ → 已於 2026-08-16 結案**
+- 盤點當下：最後一次 commit 是 `c9cc64e (2026-08-10)`，此後 **40 modified ＋ 25 staged（E1 的 `wwwroot/lib` 16 支第三方資產）＋ 3 untracked** 全在工作區裸奔 —— E1~E14、登入不因時間過期（三層修正）、pinNewRow 置頂機制、Department 污染修復，全部只存在於本機。
+- **現況：`696195d 20260816` 已 commit 並 push 到 `origin/main`（`github.com/lousyqq/EQDashboard.V2.Web`），工作區 0 modified / 0 staged / 0 untracked。**
 
-**F2｜`sql/` 目錄分裂比原記錄更嚴重**：`EQDashboard.V2.Web/sql/` 有 4 檔、repo 根 `EQDashboard/sql/` 有 2 檔（`2026-08-09_Add_Accounts_Preferences.sql`、`2026-08-09_Add_PersonalSettings_IsFavorite.sql`）。根目錄那兩支**不在 web 專案內**，`DB_Table.md` 卻一律寫成 `sql/xxx.sql` → 依 Changelog 部署遠端 DB 必漏這兩支。
+**~~F2｜`sql/` 目錄分裂~~ → 已於 2026-08-16 結案**
+- 盤點當下：`EQDashboard.V2.Web/sql/` 4 檔、外層 `EQDashboard/sql/` 2 檔（Preferences、IsFavorite），而 `DB_Table.md` Changelog 一律寫 `sql/xxx.sql` → 依 Changelog 部署遠端 DB 必漏那兩支。
+- **現況：6 支全部收斂到 `EQDashboard.V2.Web/sql/` 且皆已納入版控（`git ls-files sql/` = 6）。Changelog 的 `sql/xxx.sql` 路徑現在一律對得上。**
 
-**F3｜語言選擇完全不持久化（實機證實，本輪最有感的 UX 缺陷）**
-- `changeLanguage()` 只寫 `appState.currentLang`，**沒有任何 localStorage 鍵**（現有的只有 `umc_theme_preference` / `umc_current_user` / `umc_personal_menus_*` / `app_shell_*`）。
-- 而 `main.js` 的 `initDashboardUI()` 每次都會 `changeLanguage(fabObj.defaultLang)` 無條件覆蓋。
-- **實測**：切到 English（`bc-name` → "Home"）→ F5 → `currentLang` 回 `zh`、顯示「繁體中文」。**英日文使用者每開一次頁就要重選一次語言**，等於三語 395×3 個 key 的投資在真實使用上被架空。
-- 修法：`changeLanguage` 寫入 `umc_lang_preference`；`initDashboardUI` 改為「有使用者偏好 → 用它；沒有 → 才用 `fab.defaultLang`」（與主題「首訪跟系統、之後跟使用者」同一套邏輯）。
+> **版控範圍決策（2026-08-16 定案）**：**唯一的事實來源是 `EQDashboard.V2.Web` 這個 repo**（有獨立 remote `github.com/lousyqq/EQDashboard.V2.Web`）。
+> 外層 `EQDashboard` repo 只是本機工作區容器，**刻意不再維護**：它雖把 `EQDashboard.V2.Web` 記成 gitlink（mode 160000）卻沒有 `.gitmodules`（`git submodule status` 會報 `no submodule mapping found`），其 gitlink 也長期落後。
+> **不要再把它當 submodule 處理、也不要為此新增 `.gitmodules`** —— 所有程式碼、SQL 腳本與文件一律以內層 repo 為準。
 
-**F4｜`<html lang>` 與 `document.title` 永不更新**：切 en 後 `document.documentElement.lang` 仍是 `zh-TW`、`document.title` 仍是「主系統儀表板 - EQ Performance Dashboard」。影響螢幕閱讀器選錯發音語系、瀏覽器翻譯提示、`:lang()` 樣式。`changeLanguage` 順手補兩行即可。
+**F3｜語言選擇不持久化 → 已修**（本輪最有感的一項）
+- 症狀：`changeLanguage()` 只寫 `appState.currentLang`、無任何 localStorage；而 `initDashboardUI()` 每次進站都無條件 `changeLanguage(fab.defaultLang)` → 英/日文使用者每重整一次就被打回中文（實測：切 en → F5 → `zh`）。三語 465 個 key 的投入等於被架空。
+- 修法：新增 `umc_lang_preference`（`ui/navigation.js` 的 `LANG_PREF_KEY` / `getStoredLangPreference()`），`changeLanguage(lang, persist = true)` 寫入偏好；`main.js` 的 `initDashboardUI` 改成 **使用者偏好 > `fab.defaultLang`**，套廠區預設時傳 `persist=false`（那不是使用者的選擇，不可覆寫其偏好）。與主題「首訪跟預設、之後跟使用者」同一套邏輯。
+- ⚠️ `changeLanguage` 的第二參數只有「套用廠區預設語言」該傳 `false`；使用者從語言下拉切換一律要落盤，不要為了「少寫一次 localStorage」而省略。
+- 實測：切 en → F5 → `currentLang='en'`、`localStorage.umc_lang_preference='en'`、下拉顯示 English。
 
-**F5｜手機／平板頂列版面實測不合格（D1 的修法被架空）**
-- **375px**：`documentElement.clientWidth=375` 但 `body.scrollWidth=570` → **整頁水平溢出 195px**。`.navbar-row-top` scrollWidth 570 / clientWidth 375。
-- 成因：D2/E12 給 `.utility-cluster` 底下的鈕加了 `min-width:44px`，整條 cluster 變成 **540px**，把 `.nav-brand-section` 擠成 **0px**。
-- **768px**：雖不溢出，但 `#bc-name` 實測寬度 **0** → D1「≤992px 保留當前位置麵包屑」的修法在實機上**完全沒有生效**（CSS 說 `display:block`，但 flex 分不到寬度）。
-- 修法方向：`.utility-cluster` 在 ≤768px 收進「更多」下拉，或給 `.nav-brand-section` `flex: 1 1 auto; min-width: 0`＋給 cluster `flex-shrink`。
+**F4｜`<html lang>` 與 `document.title` 永不更新 → 已修**
+- `changeLanguage()` 開頭同步 `document.documentElement.lang`（`HTML_LANG_TAG` = zh→`zh-TW` / en→`en` / ja→`ja`）與 `document.title`（新 key `page_title`）。
+- `index.html` 的防閃爍 inline script 也提早套用 `lang`（讀同一個 localStorage 鍵）—— 模組圖載完前的空窗期不讓螢幕閱讀器用錯發音語系。**該處的 `LANG_TAG` 是 `HTML_LANG_TAG` 的鏡像，改語系代碼時兩邊要一起改。**
+- 實測：en → `lang="en"` + `"Main Dashboard - …"`；ja → `lang="ja"` + `"メインダッシュボード - …"`；切回 zh 正確還原。
 
-**F6｜按 ESC 離開全螢幕後版面卡在 focus 模式**：`toggleFullscreen()` 自己 toggle `body.fullscreen-mode` 再呼叫 `requestFullscreen()`，但**全專案沒有任何 `fullscreenchange` 監聽器**。使用者按 ESC（或 F11）離開瀏覽器全螢幕時，class 殘留 → 實測 `#top-navbar` 仍是 `display:none`，只剩右上角小小的 FOCUS 浮層可以脫困。修法：`document.addEventListener('fullscreenchange', …)` 依 `document.fullscreenElement` 同步 class。
+**F5｜手機/平板頂列水平溢位 → 已修**（`css/responsive.css`）
+- 成因：D2/E12 的 `min-width:44px` 讓 `.utility-cluster` 撐到 540px，而 navbar.css 給它 `flex-shrink:0`（永不收縮）、給 `.nav-brand-section` `flex-shrink:1` → 壓力全由品牌區吸收、被擠成 0px，總量仍溢出。
+- 修法（≤992px）：① cluster 改 `flex:0 1 auto` + `min-width:0` + `overflow-x:auto`（隱藏捲軸，同 E4 對 `.top-menu-link` 的套路），內部項目 `flex:0 0 auto`；② `.nav-brand-section` 給 **`min-width:150px`** 保底；③ 隱藏 `.util-divider`；④ 隱藏 `#btn-pin`。
+  - **`min-width:150px` 是關鍵，只寫 `flex:1 1 auto`無效**：負剩餘空間依「基準寬度」比例分配，cluster 基準遠大於品牌區 → 品牌區照樣被壓到只剩漢堡鈕（第一版就是這樣，`#bc-name` 仍為 0）。
+  - **隱藏釘選鈕不是砍功能**：整套自動隱藏/喚醒依賴 `mouseenter`/`mouseleave`（`ui/dialogs.js` + `.edge-trigger`），觸控裝置沒有 hover，那顆鈕本來就按不出正確行為。
+- ≤768px 另外隱藏 `.nav-logo-text` —— 手機上「我在哪」比「站台叫什麼」重要（D1 的原意）。
+- 實測 375px：`body.scrollWidth` **570 → 375**（＝`clientWidth`，溢出歸零）；`.nav-brand-section` 0 → **150px**；`#bc-name` 0 → **15px 且顯示「ZE」**（D1 的麵包屑終於真的看得到）；cluster 197px、內部可捲動，所有工具鈕仍可取用。768px 亦無溢位、`#bc-name` 正常。**桌機 1280px 零回歸**（cluster 不捲動、logo/釘選/分隔線/意見箱文字全在、導覽列 73/38/34 高度不變）。
 
-**F7｜深色模式仍有 AA 未達標（E13 漏掉的一批）**：`.badge.bg-info.text-dark` 在深色主題實測 **2.05:1**（前景 `#f8fafc` on `rgba(56,189,248,0.15)`，AA 需 4.5）。出現在「流量與使用率」的**常用看板／各部門活躍比率／每日造訪明細**三個分頁的「N 人」徽章（`traffic-stats.js:157/190/289`）。E13 之所以沒抓到：這些列要**點進該分頁且當下有資料**才會渲染。
+**F6｜按 ESC 離開全螢幕後卡在 focus 模式 → 已修**
+- `ui/layout.js` 新增 `fullscreenchange` 監聽器：偵測到「瀏覽器已不在全螢幕、但 `body.fullscreen-mode` 還在」就移除該 class。
+- ⚠️ **只做單向同步**（移除，不自動加）：看板可以用 `iframe_fullscreen` 進沉浸模式而不要求瀏覽器全螢幕，那是合法狀態，反向自動加 class 會弄壞它。
+- 實測：派發 `fullscreenchange` 後 class 已移除、`#top-navbar` 由 `display:none` 回到 `flex`。
 
-**F8｜`.feedback-link`（意見箱）觸控目標 17×19px**：低於 WCAG 2.5.8 AA 的 24×24。D2/E12 只放大了 `.utility-cluster` 與 `.nav-brand-section` 的鈕，`.navbar-row-bottom` 的意見箱沒涵蓋到；且 ≤768px 會 `display:none` 掉文字 span，只剩一個信封圖示。
+**F7｜深色模式 `.badge.bg-info.text-dark` 對比 2.05:1 → 已修**（`css/components.css`）
+- 成因是兩條既有規則疊加：`:root[data-theme="dark"] .text-dark { color: var(--text-main) }`（近白字）＋ `:root[data-theme="dark"] .bg-info { background: rgba(56,189,248,.15) }`（幾乎透明的底）。那條 15% 色調是為 alert/區塊背景設計的，套到小面積徽章上就爆掉。
+- 修法：新增 `:root[data-theme="dark"] .badge.bg-info` / `.badge.bg-warning` → 實心底 `#38bdf8`/`#fbbf24` + 深色字 `#0b1220`（**8.7:1**）。選擇器帶 `.badge` 多一級具體性才壓得過上面兩條同為 `!important` 的規則。
+- 實測（深色主題，量色前已關 transition）：流量與使用率 **5 個分頁全部 0 項未達 AA**（原本光是常用看板就 10+ 筆）。
 
-**F9｜i18n 第二戰場：JS 動態字串與屬性（前三輪只掃了靜態 HTML 文字節點）**
-- **48 處** `customAlert` / `customConfirm` / `showToast` 直接寫中文字串、未走 `t()`（misc-manage 25、menu-manage 7、api 4、auth 4、account/fab/tables 各 2、role 1）。**實測**：英文模式下按刪除帳號，確認視窗按鈕是 "OK/Cancel"、內文仍是「確定要刪除此帳號嗎？」。
-- **`index.html` 20 處 `title=` / `aria-label=` 硬編中文**（modals.html 的 18 處已用 `data-i18n-title/aria-label` 修好，index.html 只有 5 處有掛）。實測英文模式下 `btn-pin`／`btn-recent-menus`／`btn-system-settings`／`themeToggleBtn`／品牌標題的 tooltip、漢堡鈕 aria-label、`#main-iframe` 的 `title` 全是中文。
-- **`showToast` 動態產生的 `.btn-close` 寫死 `aria-label="關閉"`**（dialogs.js:79）。
-- **後端回傳的顯示字串硬編中文**，前端無從翻譯：`AnalyticsController` 的 `"已刪除看板"`(:252)、`"未指定/其他"`(:114)、`"未指定"`(:202)。建議改回代碼（如 `menuName: null` + `deleted: true`）由前端 `t()` 呈現。
-- 其餘散落：`main.js` 初始化遮罩／15 秒逾時卡片／未預期錯誤畫面、`index.html` modals 載入失敗 banner、`layout.js:214/216` 的 `navTo(..., '帳號管理'/'需求申請')`、`navigation.js:394` 的 `${dName} 內容建置中`、`traffic-stats.js` 常用看板分頁的 `次`／`人`／`目前無看板點擊紀錄`／`載入失敗`。
+**F8｜意見箱觸控目標 17×19px → 已修**
+- `.feedback-link` 在 ≤768px 補 `min-width:44px; height:34px`。⚠️ **不可寫 `min-height:44px`** —— `.navbar-row-bottom` 是固定 `height:34px`，硬撐會讓連結溢出列外。34×44 已遠超 WCAG 2.5.8 AA 的 24×24。
+- 實測 375px：**17×19 → 44×34**，`#top-navbar` 內小於 24px 的可點目標歸零。
+- ⚠️ 過程踩到：第一版把說明文字寫在 `*/` **之後**又補一個 `*/`，CSS 解析器直接吃掉整條 `.feedback-link` 規則（量測顯示仍是 17×19 才發現）。**驗收腳本已加「註解 `/*` 與 `*/` 數量配對」與「去註解後不得有殘留 `*/`」兩項檢查。**
 
-**F10｜`renderLangSwitcher()` 是死碼**（與 A5 撤搜尋框同一類殘留）：它渲染的目標 `#lang-dropdown-menu` 在 `index.html` / `modals.html` 中**都不存在**（語言下拉是靜態 `<ul>`、無此 id），函式一進去就 early return。`dialogs.js:134` 每次 DOMContentLoaded 白呼叫一次，且 `window.renderLangSwitcher` 被匯出兩次（navigation.js:101 與 :714）。建議整組移除。
+**F9｜i18n 第二戰場（JS 動態字串 + 屬性 + 後端）→ 已修**
+- **三語 key 397 → 465**（zh/en/ja 完全對齊）。
+- **60 處**硬編中文字串改走 `t()`（以逐條斷言命中次數的腳本替換，避免改錯地方）：`misc-manage` 23、`menu-manage` 10、`api` 8、`auth` 4、`traffic-stats` 4、`account/fab` 各 2、`role/tables` 各 1，外加 `main.js` 初始化遮罩／15 秒逾時卡片／未預期錯誤畫面、`layout.js` 的 `navTo(..., '帳號管理'/'需求申請')`、`navigation.js` 的 `${dName} 內容建置中`、`dialogs.js` 的 toast `btn-close`。
+- **`index.html` 20 處 `title`/`aria-label`** 補上 `data-i18n-title` / `data-i18n-aria-label`；純圖示一律補 `aria-hidden="true"`。
+- **後端顯示字串代碼化**（`AnalyticsController`）：`"已刪除看板"` → `menuName: null`、`GroupBy(x => x.Department ?? "未指定/其他")` → `GroupBy(x => x.Department)`、`department = x.Department ?? "未指定"` → `x.Department`。一律由前端 `t('menu_deleted')` / `t('dept_unspecified_other')` 呈現。
+- ⚠️ **`#main-iframe` 刻意不掛 `data-i18n-title`**：`openDynamicIframe` 會動態填當前看板名稱，掛了就會在切語言時被洗回通用字串（正是 §4-9「JS 會動態填值的元素不可掛 data-i18n」的同款陷阱）。翻譯改在 `openDynamicIframe` 內用 `t('iframe_content')` 當 fallback。
+- ⚠️ **踩過**：腳本把 `${...}` 插進 `api.js` 一段**單引號**字串（同步遮罩），會原字輸出 `${escHtml(...)}`。改 `t()` 時務必確認目標是樣板字面值。
+- 實測（英文）：刪除帳號確認框內文 "Delete this account?"、navbar 五個 tooltip 全英文、toast 關閉鈕 `aria-label="Close"`、`各部門活躍比率` 的 null 部門顯示 "Unspecified / Other"（API 實際回 `null`）、`ZE is under construction`。日文亦全數通過。
 
-**F11｜其他技術債**
-- [ ] `CS8619 @ Services/IconStorageService.cs:62`：完整重編下唯一的警告，2026-08-16 記錄「待另行處理」，仍未處理。
-- [ ] `main.js:342` 的 `isDev` 判定含 `window.location.port !== ''` → **IIS 若部署在非 80 埠，正式站會把 stack trace 印給使用者**。應改用後端注入的環境旗標（`/api/Auth/Config` 已有現成管道）。
-- [ ] `AnalyticsController` 月趨勢那段 raw SQL 用了 `WITH (NOLOCK)`（髒讀），與同檔其他三個端點走 EF 的做法不一致；統計場景影響有限，但屬不必要的例外。
-- [ ] `GetDetails` 的 `q` / `dept` 走 `Contains`（前綴萬用字元 LIKE，non-sargable），而 `DailyUserVisits` 只有 `IX_DailyUserVisits_Date_Dept (VisitDate, Department)` → 資料量長大後是全表掃描。若要保留模糊比對，考慮加 `EmpId`／`EmpName` 索引或改前綴比對。
-- [ ] `test.mjs`、`scratch/` 仍是 untracked 殘留（A10 以來一直沒處理）。
+**F10｜死碼 `renderLangSwitcher()` → 已移除**
+- 它渲染的 `#lang-dropdown-menu` 在 `index.html` / `modals.html` 都不存在（語言下拉是靜態 `<ul>` + `updateLangUI()`），函式一進去就 early return，且 `window.renderLangSwitcher` 被重複匯出兩次。整組移除（含 `dialogs.js` 的呼叫點與 import）。與 A5「撤掉搜尋框卻留著 JS」同一類殘留。
 
-**F12｜功能面建議（非缺陷）**
-- [ ] **「流量與使用率」沒有任何圖表**：六個分頁全是表格＋`progress-bar`。CSP 已收斂為 `script-src 'self'`，不需引外部函式庫，用 inline SVG 畫每日／月度折線圖即可，趨勢判讀效率會明顯提升。
-- [ ] **統計與操作紀錄無法匯出**：管理員要把 DAU/部門比率帶去開會只能截圖。可比照「設定檔管理」既有的 SheetJS 匯出。
-- [ ] **`Menus.Description` / `Keywords` 仍是「只寫不讀」**（A5 註記至今）。建議接進「看板網頁管理」的表格搜尋 —— 這符合 §5「不做全域模糊搜尋、但可放在結構化位置」的決策。
-- [ ] **釘選狀態不持久化**：`appState.isPinned` 只存記憶體，主題有記住、釘選沒有，體感不一致。
-- [ ] **`customConfirm` 的確認鈕永遠是 `btn-danger`**：連「放棄這次的拖曳變更」這種非破壞性確認也是紅色，稀釋了紅色的警示意義。建議加第三個參數決定按鈕樣式。
+**F11｜技術債 → 已修**
+- **CS8619 @ `IconStorageService.cs:62`**：`return Task.FromResult(icon)` 在 null 檢查後 `icon` 被收斂成 `string`，推斷出 `Task<string>` 而 `Task<T>` 不變 → 顯式寫 `Task.FromResult<string?>(icon)`。**`dotnet build` 現為 0 錯 0 警告。**
+- **`main.js` 的 `isDev` 判定**：移除 `window.location.port !== ''` —— IIS 內網站台常掛非 80 埠，等於在正式站把 stack trace 印給使用者。改為只認 loopback（`localhost` / `127.0.0.1` / `::1`）。
+- **`AnalyticsController` 月趨勢移除 `WITH (NOLOCK)`**：同檔其他三個端點都走 EF + `AsNoTracking`，只有這裡開髒讀。`DailyUserVisits` 是每人每日一列的小表、寫入走單句 UPSERT，鎖持有極短，不值得為此讓對外報告的數字承擔漏列/重複列風險。
+- **新增索引 `IX_DailyUserVisits_Date_Emp (VisitDate, EmpId, EmpName)`**：`/api/Analytics/details` 的關鍵字查詢跑 `EmpId/EmpName LIKE '%…%'`（non-sargable），該表原本只有 `(VisitDate, Department)` → 整表掃描。刻意不加 `INCLUDE`（主機僅 6GB RAM，索引寬度優先）。已同步 `SchemaBootstrap.EnsureIndexesAsync`、`DB_Table.md` 快照與 Changelog，並產出 `sql/2026-08-16_Add_DailyUserVisits_Emp_Index.sql`。
+  - **已於 2026-08-16 在線上執行並驗證**：查 `sys.indexes`，`dbo.DailyUserVisits` 現有兩條非叢集索引 —— `IX_DailyUserVisits_Date_Dept (VisitDate, Department)` 與 `IX_DailyUserVisits_Date_Emp (VisitDate, EmpId, EmpName)`。
+  - 💡 **本機可直接查線上 DB 驗證 schema**：`sqlcmd` 在 `C:\Program Files\Microsoft SQL Server\Client SDK\ODBC\170\Tools\Binn\`，連線資訊從 `appsettings.json` 取。⚠️ 用 PowerShell 讀 `appsettings.json` 必須 `[System.IO.File]::ReadAllText(path, [Text.Encoding]::UTF8)` —— 直接 `Get-Content` 會以 ANSI 解讀，中文註解變亂碼並讓 `ConvertFrom-Json` 解析失敗（本輪踩過，還順帶把連線字串連同明碼密碼印到 console）。
+- **E5 的 Department 污染清理已完成並驗證**（使用者於 2026-08-16 手動執行 `2026-08-16_Fix_Account_Department_RoleNamePollution.sql`）：`Accounts` 與 `DailyUserVisits` 兩表的 `一般使用者`／`系統管理員` 假部門皆為 **0 筆**；`DailyUserVisits` 現有 5 筆 `Department IS NULL`（＝正確地留白，前端以 `t('dept_unspecified_other')` 呈現）。
+
+**F12｜功能建議**
+- [x] **釘選狀態持久化**：新增 `umc_pin_preference`（`ui/layout.js` 的 `PIN_PREF_KEY`），`syncPinButtonUI()` 一併同步 `is-pinned` class（否則還原成「取消釘選」時樣式會不一致）。實測：取消釘選 → F5 → 仍為未釘選、圖示為 `fa-unlock`。
+- [x] **`customConfirm` 按鈕樣式可選**：新增第四參數 `variant`（`'danger'` 預設＝維持既有呼叫端行為不變、`'primary'` ＝一般確認），同時切換標題圖示（驚嘆三角 ↔ 問號）。實測兩種 variant 的 class 與圖示都正確。
+- [ ] **「流量與使用率」沒有任何圖表**（未做，使用者決定另案）：六個分頁全是表格＋`progress-bar`。CSP 已收斂為 `script-src 'self'`，不需引外部函式庫，用 inline SVG 畫每日／月度折線圖即可。
+- [ ] **統計與操作紀錄無法匯出**（未做，另案）：可比照「設定檔管理」既有的 SheetJS 匯出。
+- [ ] **`Menus.Description` / `Keywords` 仍是「只寫不讀」**（未做，另案）：建議接進「看板網頁管理」的表格搜尋 —— 符合 §5「不做全域模糊搜尋、但可放在結構化位置」的決策。
 
 ## 4. Known Issues (已知 Bug 或技術債)
 - ~~**Tracking API Console Noise**~~：已於 2026-08-12 修復（見 §2 的 A2）。留一句給未來：**若這類「首發 POST 400」再出現，先查 `_csrfToken` 的初始化時序，不要再往「金鑰輪換」方向猜**（當年那個研判是錯的，害這個 bug 掛了很久）。

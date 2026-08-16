@@ -99,7 +99,7 @@ export async function saveFabItem(e) {
             let fabs = getFabs();
             if (fabs.some(f => window.cleanId(f.fabName) === window.cleanId(fabName))) {
                 window.shakeInput('fabNameInput');
-                customAlert('廠區名稱已存在！');
+                customAlert(t('err_fab_name_exists', '廠區名稱已存在！'));
                 return false;
             }
         }
@@ -136,7 +136,7 @@ export async function saveFabItem(e) {
 
 export async function deleteFab(id) {
     try {
-        customConfirm('確定要刪除此廠區嗎？', async () => {
+        customConfirm(t('confirm_delete_fab', '確定要刪除此廠區嗎？'), async () => {
             try {
                 const result = await deleteFabAPI(id);
                 if (!result.success) {

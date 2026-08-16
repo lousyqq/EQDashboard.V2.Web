@@ -11,11 +11,16 @@
 **核心目標**：依據使用者的廠區與職務權限，結構化地呈現並管理可存取的各項效能報表與看板連結。提供極致流暢的使用者體驗（App Shell 快取、SPA 級路由切換）與嚴謹的權限隔離。
 
 ## 2. 當前最高優先級開發任務 (Current Focus)
-- **⚠️ 先把工作區 commit 掉**：最後一次 commit 是 `c9cc64e (2026-08-10)`，此後 E1~E14、登入不過期、pinNewRow 等六天成果（40 modified + 25 staged + 3 untracked，含兩支 SQL 腳本）全部未進版控。詳見 `memory.md` §3 第四輪健檢 F1。
-- 執行 `sql/2026-08-16_Fix_Account_Department_RoleNamePollution.sql`（尚未人工執行）。
-- 第四輪健檢待修清單（`memory.md` §3，F3~F12：語言不持久化、手機頂列溢位、ESC 全螢幕殘留、深色徽章對比、JS 動態字串 i18n…）。
 - 產出完整的使用者操作手冊 (PPT 規劃)。
+- 第四輪健檢 F12 未做的三項功能建議（另案）：流量統計 inline SVG 圖表、統計/操作紀錄 CSV 匯出、`Description`/`Keywords` 接進看板網頁管理的表格搜尋。
+- ~~`sql/2026-08-16_Fix_Account_Department_RoleNamePollution.sql`~~ → 已於 2026-08-16 執行並查 DB 驗證：`Accounts` / `DailyUserVisits` 的假部門（`一般使用者`／`系統管理員`）皆為 **0 筆**。
+- ~~`sql/2026-08-16_Add_DailyUserVisits_Emp_Index.sql`~~ → 已於 2026-08-16 執行並查 `sys.indexes` 驗證：`IX_DailyUserVisits_Date_Emp (VisitDate, EmpId, EmpName)` 已存在於線上 `EQDashboardV2`。
+- **目前線上 DB 與 `DB_Table.md` 快照一致，無待執行的 SQL 腳本。**
+- ~~第四輪健檢 F3~F12 待修清單~~ → 2026-08-16 全數修復並實機驗證（細節見 `memory.md` §3）。
+- ~~工作區未 commit（六天成果裸奔）~~ → 2026-08-16 已 commit + push（`696195d`），`sql/` 6 支亦全數收斂進本 repo 並納入版控。
 - ~~`TrackingController` 點擊統計偶發 `400 (Invalid CSRF Token)`~~ → 已於 2026-08-12 由 A2 修復（根因是 `_csrfToken` 初始化時序，非金鑰輪換）；2026-08-16 實機複驗暖重整請求序列乾淨、MenuClick 只 1 筆。
+
+> **版控範圍**：唯一事實來源是本 repo（`EQDashboard.V2.Web`，remote `github.com/lousyqq/EQDashboard.V2.Web`）。外層 `EQDashboard` 只是本機容器，**不維護、不視為 submodule**（詳見 `memory.md` §3 F1/F2 下方的決策註記）。
 
 ---
 
@@ -72,8 +77,15 @@
      正確作法：把 key 下移到「包住父層自身裸文字」的 `<span>`，父層不掛 `data-i18n`。驗收腳本要檢查「巢狀 data-i18n = 0」。
    - **JS 會動態填值的元素不可掛 `data-i18n`**：同樣因為切語言會把 innerHTML 洗回預設字串。已知名單：`#current-lang-display`、`#user-name`/`#user-role`、`#dropdown-user-*`、`#tsZombieDesc`、`#app-grid-title`、`#under-construction-text`、`#whoami-status`。這些請改在 JS 內用 `t('key', '中文預設')`。
    - **`aria-label` / `title` 也要翻譯**：2026-08-16 起 `changeLanguage()` 支援 `data-i18n-aria-label` 與 `data-i18n-title`。純圖示按鈕新增 `aria-label` 時請一併掛上，否則英日文使用者用讀螢幕聽到的仍是中文。
+   - **JS 動態字串一律走 `t(key, '中文預設')`，包含 `customAlert`／`customConfirm`／`showToast`（2026-08-16 第四輪補完 60 處）**：前三輪的掃描只看靜態 HTML 文字節點，導致「英文介面下按刪除，按鈕是 OK/Cancel、內文卻是中文」長期沒被發現。動態建立的節點（如 toast 的 `.btn-close`）掛不了 `data-i18n-*`（`changeLanguage` 掃不到還不存在的節點），一律在建立當下用 `t()`。
+   - **後端不准回傳「要直接顯示給使用者」的中文字面值**：`AnalyticsController` 曾回 `"已刪除看板"`／`"未指定/其他"`／`"未指定"`，前端無從翻譯。一律回 `null` 或代碼，由前端 `t()` 呈現（現有 key：`menu_deleted`／`dept_unspecified_other`／`unspecified`）。
+   - **語系偏好的事實來源是 `umc_lang_preference`**：`changeLanguage(lang, persist = true)` 會落盤；`initDashboardUI` 的順序是 **使用者偏好 > `fab.defaultLang`**，套廠區預設語言時必須傳 `persist=false`。**不要退回「每次進站無條件套 `fab.defaultLang`」的舊行為** —— 那會讓英/日文使用者每重整一次就被打回中文。`changeLanguage` 同時負責 `<html lang>` 與 `document.title`（`index.html` 的防閃爍 inline script 有一份 `LANG_TAG` 鏡像，改語系代碼要兩邊一起改）。
    - **掃描器要用 DOM 走訪、不要只用正則**：`<div><i class="…"></i>提示：…</div>` 這種「巢狀元素之後的裸文字」，用 `<tag …>text` 的正則會完全掃不到（本輪就是這樣先漏了 37 處）。
-10. **導航所有權單一化**：`initDashboardUI()` 是唯一負責初始導航的地方（依 `stayOnCurrentPage` 決定是否 `goDefaultHome()`）。呼叫 `switchLayoutMode(mode, navigate)` 時若只是要同步版面模式狀態，**必須傳 `navigate=false`**，否則它內部也會 `goDefaultHome()` → `activateMenu` 跑兩遍（MenuClick 統計膨脹一倍）並架空 `stayOnCurrentPage`。判斷「是否重複執行」請以實機 Network 紀錄為準，不要只看程式碼推論。
+10. **RWD 版面：`.utility-cluster` 不可再設 `flex-shrink: 0`（2026-08-16 F5）**：D2/E12 給工具鈕加的 `min-width:44px` 會把整條 cluster 撐到 540px，配上 `flex-shrink:0` 就會在 375px 下讓整頁水平溢出 195px，並把 `.nav-brand-section` 壓成 0px（D1 保留麵包屑的修法因此完全失效）。現況：≤992px 時 cluster 為 `flex:0 1 auto` + `overflow-x:auto`（內部捲動），`.nav-brand-section` 靠 **`min-width:150px`** 保底。**只寫 `flex:1 1 auto` 不夠** —— 負剩餘空間依基準寬度比例分配，品牌區照樣被壓扁。
+    - **CSS 驗收要連「註解配對」一起檢查**：本輪曾把說明文字寫在 `*/` 之後又補一個 `*/`，CSS 解析器直接吃掉整條規則、量測才發現。驗收腳本需檢查 `/*` 與 `*/` 數量相等，且去除註解後不得有殘留的 `*/`。
+    - 版面數字以實機量測為準（`documentElement.clientWidth` vs `body.scrollWidth`、目標元素的 `getBoundingClientRect()`），不要只看程式碼推論。
+
+11. **導航所有權單一化**：`initDashboardUI()` 是唯一負責初始導航的地方（依 `stayOnCurrentPage` 決定是否 `goDefaultHome()`）。呼叫 `switchLayoutMode(mode, navigate)` 時若只是要同步版面模式狀態，**必須傳 `navigate=false`**，否則它內部也會 `goDefaultHome()` → `activateMenu` 跑兩遍（MenuClick 統計膨脹一倍）並架空 `stayOnCurrentPage`。判斷「是否重複執行」請以實機 Network 紀錄為準，不要只看程式碼推論。
 
 ---
 

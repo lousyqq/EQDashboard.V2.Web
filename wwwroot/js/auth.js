@@ -6,7 +6,7 @@
 //   window.retryWhoAmI()     - 「重試偵測」按鈕
 //   window.logout()          - 右上頭像下拉的登出
 
-import { getAccounts } from './config.js';
+import { getAccounts, t } from './config.js';
 import { fetchInitialDataFromDB } from './api.js';
 import { initDashboardUI, restoreLoginFromStorage } from './main.js';
 import { customAlert } from './ui/dialogs.js';
@@ -230,7 +230,7 @@ window.retryWhoAmI = retryWhoAmI;
 // =============================================================
 export async function doWindowsLogin() {
     if (!_whoamiResult || !_whoamiResult.success || !_whoamiResult.empId) {
-        customAlert('尚未偵測到可用的 Windows 帳號');
+        customAlert(t('err_no_windows_account', '尚未偵測到可用的 Windows 帳號'));
         return;
     }
     // Windows 模式：直接以 empId 走 completeLoginAfterAuth，不打 /api/Auth/Login（避免又被擋密碼）
@@ -239,7 +239,7 @@ export async function doWindowsLogin() {
     // 改採：另開一個 SignIn 端點。為了不增加複雜度，這裡直接複用前端 appState.currentUser，
     //   cookie 不發 — 任何後端 API 都不檢查 cookie（目前後端的 controller 都是 [AllowAnonymous]）。
     const ok = await completeLoginAfterAuth(_whoamiResult.empId, 'windows');
-    if (!ok) customAlert('登入失敗');
+    if (!ok) customAlert(t('err_login_failed', '登入失敗'));
 }
 window.doWindowsLogin = doWindowsLogin;
 
@@ -327,7 +327,7 @@ export async function completeLoginAfterAuth(empId, source, fallbackAccount) {
     if ((!window.appState.accounts || window.appState.accounts.length === 0 || (window._currentServerEmpId && String(window._currentServerEmpId).toLowerCase() !== String(empId).toLowerCase())) && typeof fetchInitialDataFromDB === 'function') {
         const ok = await fetchInitialDataFromDB();
         if (!ok) {
-            if (typeof customAlert === 'function') customAlert("無法載入資料庫，請重新整理網頁");
+            if (typeof customAlert === 'function') customAlert(t('err_db_load_failed', '無法載入資料庫，請重新整理網頁'));
             return false;
         }
     }
@@ -366,7 +366,7 @@ export async function completeLoginAfterAuth(empId, source, fallbackAccount) {
     }
 
     if (!acc) {
-        customAlert(`工號 [${empId}] 未在系統建立，請聯絡管理員。`);
+        customAlert(t('err_account_not_registered', '工號 [{0}] 未在系統建立，請聯絡管理員。').replace('{0}', empId));
         return false;
     }
 

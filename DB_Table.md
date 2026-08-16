@@ -389,6 +389,12 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_DailyUserVisits_Date_
     CREATE NONCLUSTERED INDEX IX_DailyUserVisits_Date_Dept ON dbo.DailyUserVisits (VisitDate, Department);
 GO
 
+/* 2026-08-16：/api/Analytics/details 的關鍵字查詢走 EmpId/EmpName 的 LIKE '%…%'（無法 seek），
+   原本只有上面那條 (VisitDate, Department) → 整表掃描。此索引供「日期收斂 + 人名比對」使用。 */
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_DailyUserVisits_Date_Emp' AND object_id = OBJECT_ID(N'dbo.DailyUserVisits'))
+    CREATE NONCLUSTERED INDEX IX_DailyUserVisits_Date_Emp ON dbo.DailyUserVisits (VisitDate, EmpId, EmpName);
+GO
+
 /* DailyMenuClicks：以日期與看板組合查詢 */
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_DailyMenuClicks_Date_MenuId' AND object_id = OBJECT_ID(N'dbo.DailyMenuClicks'))
     CREATE NONCLUSTERED INDEX IX_DailyMenuClicks_Date_MenuId ON dbo.DailyMenuClicks (ClickDate, MenuId);
@@ -420,3 +426,4 @@ GO
 - **2026-08-09 [新增帳號偏好設定欄位]** (`sql/2026-08-09_Add_Accounts_Preferences.sql`)：於 `Accounts` 表新增 `Preferences` 欄位供存放跨裝置同步之個人化設定 (如最近瀏覽紀錄 JSON)，已同步於 `SchemaBootstrap.cs` 自動冪等建立。
 - **2026-08-11 [新增看板 Metadata 欄位]** (`sql/2026-08-11_Add_Menus_Metadata.sql`)：於 `Menus` 表新增 `CreatedAt`、`Description`、`Keywords` 欄位供過濾殭屍看板與優化搜尋體驗使用，已同步於 `SchemaBootstrap.cs` 自動冪等建立。
 - **2026-08-16 [資料修正：清除 Department 內的角色名稱污染]** (`sql/2026-08-16_Fix_Account_Department_RoleNamePollution.sql`)：**無 Schema 變更，純資料清理**。`AuthController` 四個自動建帳分支在查不到部門時，曾把角色名稱（`一般使用者` / `系統管理員`）當成部門寫入 `Accounts.Department`，並經 `UpdateLoginStats` 抄進 `DailyUserVisits.Department` → 「各部門活躍比率」報表長出不存在的部門。程式面已於同日改為「查不到就留 `NULL`」；本腳本把既有的兩表髒資料一併改回 `NULL`（冪等，含稽核與驗收查詢）。⚠️ 此腳本**不在** `SchemaBootstrap` 的冪等修復範圍內（它只補表/欄位/索引，不做資料清理），**必須手動執行一次**。
+- **2026-08-16 [新增 DailyUserVisits 查詢索引]** (`sql/2026-08-16_Add_DailyUserVisits_Emp_Index.sql`)：新增 `IX_DailyUserVisits_Date_Emp (VisitDate, EmpId, EmpName)`。第四輪健檢 F11 —— `/api/Analytics/details`（每日造訪明細）的關鍵字查詢跑 `EmpId LIKE '%…%' OR EmpName LIKE '%…%'`，前綴萬用字元無法 index seek，而該表原本只有 `IX_DailyUserVisits_Date_Dept (VisitDate, Department)` → 每次查詢皆為整表掃描。刻意不加 `INCLUDE`（主機僅 6GB RAM，索引寬度優先）。已同步於 `SchemaBootstrap.EnsureIndexesAsync` 自動冪等建立，故**新環境啟動即自動補上**；既有線上 DB 亦可直接執行本腳本立即生效。

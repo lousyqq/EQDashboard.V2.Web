@@ -4,7 +4,7 @@
 //    其餘 getter / 渲染函式皆透過 window.* 呼叫，毋須在此 import。
 import { logout } from './auth.js';
 import { customAlert, showToast } from './ui/dialogs.js';
-import { appState } from './store.js';
+import { appState, escHtml } from './store.js';
 import { t } from './config.js';   // 401 提示訊息要走 i18n（config.js 只依賴 store.js，不會造成循環）
 
 
@@ -161,14 +161,14 @@ window.fetch = async function (...args) {
             //   （對齊 CLAUDE.md 的訊息分流：不為這種暫時性狀況彈 Modal 打斷使用者）。
             console.warn('收到 401 但身分複驗仍有效，視為暫時性失敗，不強制登出:', urlStr);
             if (typeof showToast === 'function') {
-                showToast('連線暫時中斷，請再試一次', 'warning');
+                showToast(t('conn_interrupted', '連線暫時中斷，請再試一次'), 'warning');
             }
         }
     } else if (response.status === 403) {
         if (typeof customAlert === 'function') {
-            customAlert("權限不足，拒絕存取！");
+            customAlert(t('err_forbidden', '權限不足，拒絕存取！'));
         } else {
-            alert("權限不足，拒絕存取！");
+            alert(t('err_forbidden', '權限不足，拒絕存取！'));
         }
     }
     return response;
@@ -721,7 +721,8 @@ export async function syncDataToDB(showFeedback) {
     if (showFeedback === true) {
         loadingOverlay = document.createElement('div');
         loadingOverlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; display:flex; flex-direction:column; justify-content:center; align-items:center; color:white; font-family:sans-serif;';
-        loadingOverlay.innerHTML = '<div class="spinner-border text-info mb-3" style="width: 3rem; height: 3rem;"></div><h2>正在同步資料庫...</h2><p class="text-secondary">請勿關閉網頁</p>';
+        // ⚠️ 必須是樣板字面值（反引號）：改成 t() 之後要插值，寫成單引號字串會把 ${...} 原字輸出。
+        loadingOverlay.innerHTML = `<div class="spinner-border text-info mb-3" style="width: 3rem; height: 3rem;" role="status"></div><h2>${escHtml(t('syncing_db', '正在同步資料庫...'))}</h2><p class="text-secondary">${escHtml(t('dont_close_page', '請勿關閉網頁'))}</p>`;
         document.body.appendChild(loadingOverlay);
     }
 
@@ -738,17 +739,17 @@ export async function syncDataToDB(showFeedback) {
         if (result.success) {            // ⭐️ 自動清除 App Shell 與本地殘留快照，確保 Ctrl+F5 或切換畫面能立即從 DB 更新
             if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
             if (showFeedback === true && typeof showToast === 'function') {
-                showToast(result.message || "資料已成功同步至資料庫！");
+                showToast(result.message || t('sync_ok', '資料已成功同步至資料庫！'));
             }
         } else {
-            if (typeof customAlert === 'function') customAlert("寫入失敗: " + result.message);
-            else alert("寫入失敗: " + result.message);
+            if (typeof customAlert === 'function') customAlert(t('err_write_failed', '寫入失敗：') + result.message);
+            else alert(t('err_write_failed', '寫入失敗：') + result.message);
         }
     } catch (error) {
         if (loadingOverlay) loadingOverlay.remove();
         console.error("同步失敗:", error);
         if (showFeedback === true && typeof customAlert === 'function') {
-            customAlert("網路錯誤或伺服器無回應，請確認 C# 後端是否正常運作。");
+            customAlert(t('err_network', '網路錯誤或伺服器無回應，請確認後端服務是否正常運作。'));
         }
     }
 }

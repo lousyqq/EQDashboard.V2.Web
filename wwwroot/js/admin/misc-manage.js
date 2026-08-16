@@ -1,6 +1,7 @@
 ﻿// === admin/misc-manage.js - AppGrid + 需求申請 + 審核 + Excel 匯出 + 圖示工具 ===
 
-import { getAppItems, getCustomMenus, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings } from '../config.js';
+import { getAppItems, getCustomMenus, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings, t } from '../config.js';
+import { escHtml } from '../store.js';
 
 
 import { hideModalSafely, showModalSafely } from './modal-utils.js';
@@ -80,7 +81,7 @@ export async function reorderSystemMenu(srcId, targetId, parentId) {
 
         const result = await batchSaveMenusAPI(affected);
         if (!result || !result.success) {
-            if (typeof customAlert === 'function') customAlert('儲存看板順序失敗，已還原為伺服器最新狀態');
+            if (typeof customAlert === 'function') customAlert(t('err_order_save_failed', '儲存看板順序失敗，已還原為伺服器最新狀態'));
             await fetchInitialDataFromDB();
             if (typeof renderMenuConfigTable === 'function') renderMenuConfigTable();
             if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
@@ -194,7 +195,7 @@ window.commitPersonalPendingOrder = async function () {
     //    DB 寫入失敗時保留 pending、提示使用者，避免假報成功又清掉未存的拖曳。
     const ok = await savePersonalSettings(appState.currentUser.id, pSets);
     if (!ok) {
-        if (typeof customAlert === 'function') customAlert('儲存失敗，請稍後再試');
+        if (typeof customAlert === 'function') customAlert(t('err_save_retry', '儲存失敗，請稍後再試'));
         return;
     }
 
@@ -205,14 +206,14 @@ window.commitPersonalPendingOrder = async function () {
     if (typeof renderPersonalMenuManage === 'function') renderPersonalMenuManage();
     if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
 
-    if (typeof showToast === 'function') showToast('已儲存個人版面順序，並同步到上方導覽列');
+    if (typeof showToast === 'function') showToast(t('personal_order_saved', '已儲存個人版面順序，並同步到上方導覽列'));
 };
 
 // 「放棄」按鈕：清掉 pending、回到 localStorage 既有狀態
 window.discardPersonalPendingOrder = function () {
     if (!window._personalPendingDirty) return;
     if (typeof customConfirm === 'function') {
-        customConfirm('放棄這次的拖曳變更？', () => {
+        customConfirm(t('confirm_discard_drag', '放棄這次的拖曳變更？'), () => {
             window._personalPendingPSets = null;
             window._personalPendingDirty = false;
             if (typeof window.updatePersonalSaveButton === 'function') window.updatePersonalSaveButton();
@@ -250,7 +251,7 @@ export async function reorderWebpageMenu(srcId, targetId) {
         if (affected.length > 0) {
             const result = await batchSaveMenusAPI(affected);
             if (!result || !result.success) {
-                if (typeof customAlert === 'function') customAlert('儲存看板順序失敗，已還原為伺服器最新狀態');
+                if (typeof customAlert === 'function') customAlert(t('err_order_save_failed', '儲存看板順序失敗，已還原為伺服器最新狀態'));
                 await fetchInitialDataFromDB();
                 if (typeof renderWebpageTable === 'function') renderWebpageTable();
                 if (typeof renderMenuConfigTable === 'function') renderMenuConfigTable();
@@ -347,7 +348,7 @@ window.setIconPreviewBoxVisible = setIconPreviewBoxVisible;
 
 export function openAppGridModal(id = null) {
     if (!canManageCurrentAppGrid()) {
-        if (typeof customAlert === 'function') customAlert("您沒有管理此應用集合的權限");
+        if (typeof customAlert === 'function') customAlert(t('err_no_appgrid_permission', '您沒有管理此應用集合的權限'));
         return;
     }
     try {
@@ -384,7 +385,7 @@ export async function saveAppItem(e) {
     else if (window.event && typeof window.event.preventDefault === 'function') window.event.preventDefault();
 
     if (!canManageCurrentAppGrid()) {
-        if (typeof customAlert === 'function') customAlert("您沒有管理此應用集合的權限");
+        if (typeof customAlert === 'function') customAlert(t('err_no_appgrid_permission', '您沒有管理此應用集合的權限'));
         return false;
     }
 
@@ -425,7 +426,7 @@ export async function saveAppItem(e) {
         if (appData) {
             let result = await saveAppAPI(isNew, appData);
             if (!result.success) {
-                if (typeof customAlert === 'function') customAlert("儲存失敗: " + result.message);
+                if (typeof customAlert === 'function') customAlert(t('err_save_failed', '儲存失敗：') + result.message);
                 else alert("儲存失敗: " + result.message);
                 return false;
             }
@@ -441,18 +442,18 @@ export async function saveAppItem(e) {
 
 export function deleteAppItem(id) {
     if (!canManageCurrentAppGrid()) {
-        if (typeof customAlert === 'function') customAlert("您沒有管理此應用集合的權限");
+        if (typeof customAlert === 'function') customAlert(t('err_no_appgrid_permission', '您沒有管理此應用集合的權限'));
         return;
     }
     try {
-        customConfirm('確定要刪除此 APP 嗎？', async () => {
+        customConfirm(t('confirm_delete_app', '確定要刪除此 APP 嗎？'), async () => {
             let apps = getAppItems().filter(a => window.cleanId(a.id) !== window.cleanId(id));
             window.appState.apps = apps;
 
             // App 刪除一律走 RESTful deleteAppAPI（靜態 import，必為 function）；不再有 syncDataToDB 後備。
             let result = await deleteAppAPI(id);
             if (!result.success) {
-                if (typeof customAlert === 'function') customAlert("刪除失敗: " + result.message);
+                if (typeof customAlert === 'function') customAlert(t('err_delete_failed', '刪除失敗：') + result.message);
                 else alert("刪除失敗: " + result.message);
                 return false;
             }
@@ -467,7 +468,7 @@ export function handleAppIconUpload(e) {
     if (file) {
         compressImageFile(file, function (base64Str) {
             if (base64Str.length > 32700) {
-                customAlert("圖檔太複雜，無法壓縮至安全大小，請更換較簡單的圖標。");
+                customAlert(t('err_icon_too_complex', '圖檔太複雜，無法壓縮至安全大小，請更換較簡單的圖標。'));
                 setIconPreviewBoxVisible(false);
                 e.target.value = '';
             } else {
@@ -521,7 +522,7 @@ export async function submitApplyItem(e) {
         const reqType = document.getElementById('applyType') ? document.getElementById('applyType').value : '系統需求';
         const fab = document.getElementById('applyFab') ? document.getElementById('applyFab').value : '全域';
 
-        if (!reason) { customAlert('請填寫需求說明！'); return false; }
+        if (!reason) { customAlert(t('err_reason_required', '請填寫需求說明！')); return false; }
 
         const payload = {
             requestId: id || ('req_' + Date.now()),
@@ -546,14 +547,14 @@ export async function submitApplyItem(e) {
         
         hideModalSafely('applyModal');
         if (typeof renderApplyTable === 'function') renderApplyTable();
-        showToast(id ? '需求申請已重新送出！' : '您的需求申請已成功送出！系統管理員將盡快為您處理。', 'success', 5000);
+        showToast(id ? t('apply_resubmitted', '需求申請已重新送出！') : t('apply_submitted', '您的需求申請已成功送出！系統管理員將盡快為您處理。'), 'success', 5000);
     } catch (error) { console.error("[submitApplyItem] 錯誤:", error); }
     return false;
 }
 
 window.deleteApplyItem = function (id) {
     if (typeof customConfirm !== 'function') return;
-    customConfirm('確定要刪除此申請紀錄嗎？', async () => {
+    customConfirm(t('confirm_delete_request', '確定要刪除此申請紀錄嗎？'), async () => {
         try {
             await fetch('/api/Requests/' + id, { method: 'DELETE' });
             await window.fetchInitialDataFromDB();
@@ -643,7 +644,7 @@ export async function saveAuditItem(e) {
         hideModalSafely('auditModal');
 
         if (typeof renderAuditTable === 'function') renderAuditTable();
-        showToast("已成功儲存並同步回覆狀態給使用者！");
+        showToast(t('audit_reply_saved', '已成功儲存並同步回覆狀態給使用者！'));
 
     } catch (error) { console.error("[saveAuditItem] 錯誤:", error); }
     return false;
@@ -653,7 +654,7 @@ export async function saveAuditItem(e) {
 // ⚠️ O3 重構後 getAccounts()（appState.accounts）只回呼叫者自己一列，無法用來匯出全部帳號。
 //    故帳號相關 sheet 一律改打 admin-only 的 GET /api/Accounts/export 取完整明細（async）。
 export async function createWorkbookData() {
-    if (typeof XLSX === 'undefined') { customAlert('SheetJS 套件未載入'); return null; }
+    if (typeof XLSX === 'undefined') { customAlert(t('err_sheetjs_missing', 'SheetJS 套件未載入')); return null; }
     const wb = XLSX.utils.book_new();
 
     const appendSafeData = (data, sheetName) => {
@@ -689,7 +690,7 @@ export async function createWorkbookData() {
         if (!Array.isArray(accs)) accs = [];
     } catch (e) {
         console.error('[createWorkbookData] 取得帳號匯出資料失敗:', e);
-        if (typeof customAlert === 'function') customAlert('取得帳號清單失敗，匯出已取消：' + (e.message || e));
+        if (typeof customAlert === 'function') customAlert(t('err_export_accounts_failed', '取得帳號清單失敗，匯出已取消：') + (e.message || e));
         return null;
     }
     const apps = getAppItems();
@@ -744,7 +745,7 @@ export async function createWorkbookData() {
 //   實際刷新 = 清快取 + 強制 fetchInitialDataFromDB() 重新拉，appState 立刻換成 DB 最新值
 export async function refreshServerCache() {
     if (!appState.currentUser || String(appState.currentUser.roleLevel || '').toLowerCase() !== 'admin') {
-        if (typeof customAlert === 'function') customAlert('僅管理員可執行此操作');
+        if (typeof customAlert === 'function') customAlert(t('admin_only', '僅管理員可執行此操作'));
         return;
     }
     try {
@@ -759,10 +760,10 @@ export async function refreshServerCache() {
         }
         if (typeof initDashboardUI === 'function') initDashboardUI();
         if (typeof customAlert === 'function') {
-            customAlert('已清空快取並重新載入。<br><span class="small text-muted">⚠️ 若改了 RoleLevel，使用者需登出再登入才會生效。</span>', true);
+            customAlert(escHtml(t('cache_cleared', '已清空快取並重新載入。')) + '<br><span class="small text-muted">' + escHtml(t('cache_cleared_hint', '⚠️ 若改了 RoleLevel，使用者需登出再登入才會生效。')) + '</span>', true);
         }
     } catch (e) {
-        if (typeof customAlert === 'function') customAlert('清快取失敗：' + (e.message || e));
+        if (typeof customAlert === 'function') customAlert(t('err_clear_cache_failed', '清快取失敗：') + (e.message || e));
     }
 }
 window.refreshServerCache = refreshServerCache;
@@ -774,7 +775,7 @@ export async function exportConfig() {
         XLSX.writeFile(wb, "EQDashboard_Setting.xlsx");
     } catch (e) {
         console.error("[exportConfig] 錯誤:", e);
-        if (typeof customAlert === 'function') customAlert("匯出 Excel 失敗：" + e.message);
+        if (typeof customAlert === 'function') customAlert(t('err_export_excel_failed', '匯出 Excel 失敗：') + e.message);
     }
 }
 window.exportConfig = exportConfig;
@@ -829,11 +830,11 @@ export function compressImageFile(file, callback) {
 // === Excel 手動匯入與解析 ===
 export async function importConfig() {
     const fileInput = document.getElementById('configFile'); const file = fileInput.files[0];
-    if (!file) return customAlert("請先選擇 Excel 檔案！");
+    if (!file) return customAlert(t('err_choose_excel_first', '請先選擇 Excel 檔案！'));
 
     // ⚠️ O-extra：Excel 匯入會以檔案內容「全量覆寫」DB（DELETE→INSERT 大部分資料表），
     //    為不可逆的破壞性操作，匯入前必須二次確認，避免誤點。
-    customConfirm('匯入 Excel 會以檔案內容「全量覆寫」資料庫設定（看板、廠區、角色、帳號等），此動作無法復原。確定要繼續嗎？', () => {
+    customConfirm(t('confirm_import_excel', '匯入 Excel 會以檔案內容「全量覆寫」資料庫設定（看板、廠區、角色、帳號等），此動作無法復原。確定要繼續嗎？'), () => {
         runImportConfig(fileInput, file);
     });
 }
@@ -867,7 +868,7 @@ function runImportConfig(fileInput, file) {
                 if(loadingOverlay) loadingOverlay.remove();
                 
                 // 匯入完畢後，提示並在背景重新載入最新資料，避免畫面閃爍
-                showToast("匯入成功！系統即將無縫載入新資料。");
+                showToast(t('import_ok', '匯入成功！系統即將無縫載入新資料。'));
                 setTimeout(async () => {
                     try {
                         if (typeof window.fetchInitialDataFromDB === 'function') {
@@ -883,7 +884,7 @@ function runImportConfig(fileInput, file) {
             } catch (err) {
                 console.error(err);
                 if(loadingOverlay) loadingOverlay.remove();
-                customAlert("匯入失敗，格式錯誤或網路異常。");
+                customAlert(t('err_import_failed', '匯入失敗，格式錯誤或網路異常。'));
             }
         };
         reader.readAsArrayBuffer(file);

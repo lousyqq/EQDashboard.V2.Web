@@ -216,8 +216,8 @@ export async function saveAccountItem(e) {
 
 export async function deleteAccount(empId) {
     try {
-        if (window.cleanId(empId) === 'admin') { customAlert('系統預設管理員無法刪除！'); return; }
-        customConfirm('確定要刪除此帳號嗎？', async () => {
+        if (window.cleanId(empId) === 'admin') { customAlert(t('err_cannot_delete_admin', '系統預設管理員無法刪除！')); return; }
+        customConfirm(t('confirm_delete_account', '確定要刪除此帳號嗎？'), async () => {
             try {
                 const result = await deleteAccountAPI(empId);
                 if (!result.success) {

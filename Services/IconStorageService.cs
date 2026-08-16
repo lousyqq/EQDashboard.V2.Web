@@ -59,7 +59,10 @@ public class IconStorageService : IIconStorageService
         if (normalized != null) return Task.FromResult<string?>(normalized);
 
         // 3) 其餘（FontAwesome class、外部 URL 等）→ 原值回傳
-        return Task.FromResult(icon);
+        //    ⚠️ 型別參數要顯式寫 <string?>：走到這裡 icon 已被上方的 IsNullOrWhiteSpace 檢查收斂成 string，
+        //       讓編譯器推斷會得到 Task<string>，而 Task<T> 是不變的（invariant）→ 無法轉成宣告的 Task<string?>
+        //       （CS8619，全專案唯一的建置警告，2026-08-16 修）。
+        return Task.FromResult<string?>(icon);
     }
 
     public Task DeleteIfLocalUnreferencedAsync(string? oldIcon)

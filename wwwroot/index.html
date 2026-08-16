@@ -16,6 +16,14 @@
                 } else {
                     document.documentElement.setAttribute('data-bs-theme', 'light');
                 }
+                // 語系標籤也一併提早套用（F4）：changeLanguage() 要等模組圖載完才跑，
+                //   中間這段空窗期 <html lang> 若停在 zh-TW，英/日文使用者的螢幕閱讀器會用錯發音語系、
+                //   瀏覽器也可能誤跳「要翻譯這一頁嗎」。值的事實來源仍是 ui/navigation.js 的 HTML_LANG_TAG。
+                const langPref = localStorage.getItem('umc_lang_preference');
+                const LANG_TAG = { zh: 'zh-TW', en: 'en', ja: 'ja' };
+                if (langPref && LANG_TAG[langPref]) {
+                    document.documentElement.setAttribute('lang', LANG_TAG[langPref]);
+                }
             } catch (e) {}
         })();
     </script>
@@ -35,29 +43,29 @@
          ⚠️ 移除 integrity/crossorigin 是刻意的：SRI 的用途是防「第三方主機被竄改」，
             同源檔案由自己的 IIS 供應，不適用（保留反而會在檔案有任何位元差異時整支資產被擋掉）。
          版本：Bootstrap 5.3.2 / FontAwesome 6.4.0 / jQuery 3.7.0 / DataTables 1.13.6 / SheetJS 0.18.5 -->
-    <link href="lib/bootstrap/bootstrap.min.css?v=20260816f" rel="stylesheet">
-    <link href="lib/fontawesome/css/all.min.css?v=20260816f" rel="stylesheet">
-    <script src="lib/xlsx/xlsx.full.min.js?v=20260816f"></script>
+    <link href="lib/bootstrap/bootstrap.min.css?v=20260816g" rel="stylesheet">
+    <link href="lib/fontawesome/css/all.min.css?v=20260816g" rel="stylesheet">
+    <script src="lib/xlsx/xlsx.full.min.js?v=20260816g"></script>
 
     <!-- DataTables CSS & JS + jQuery -->
-    <link href="lib/datatables/dataTables.bootstrap5.min.css?v=20260816f" rel="stylesheet">
-    <script src="lib/jquery/jquery-3.7.0.min.js?v=20260816f"></script>
-    <script src="lib/datatables/jquery.dataTables.min.js?v=20260816f"></script>
-    <script src="lib/datatables/dataTables.bootstrap5.min.js?v=20260816f"></script>
-    <script src="lib/bootstrap/bootstrap.bundle.min.js?v=20260816f"></script>
+    <link href="lib/datatables/dataTables.bootstrap5.min.css?v=20260816g" rel="stylesheet">
+    <script src="lib/jquery/jquery-3.7.0.min.js?v=20260816g"></script>
+    <script src="lib/datatables/jquery.dataTables.min.js?v=20260816g"></script>
+    <script src="lib/datatables/dataTables.bootstrap5.min.js?v=20260816g"></script>
+    <script src="lib/bootstrap/bootstrap.bundle.min.js?v=20260816g"></script>
 
     <!-- CSS 模組 (從 style.css 拆分) -->
-    <link href="css/variables.css?v=20260816f" rel="stylesheet">
-    <link href="css/navbar.css?v=20260816f" rel="stylesheet">
-    <link href="css/sidebar.css?v=20260816f" rel="stylesheet">
-    <link href="css/components.css?v=20260816f" rel="stylesheet">
-    <link href="css/responsive.css?v=20260816f" rel="stylesheet">
+    <link href="css/variables.css?v=20260816g" rel="stylesheet">
+    <link href="css/navbar.css?v=20260816g" rel="stylesheet">
+    <link href="css/sidebar.css?v=20260816g" rel="stylesheet">
+    <link href="css/components.css?v=20260816g" rel="stylesheet">
+    <link href="css/responsive.css?v=20260816g" rel="stylesheet">
 </head>
 <body>
 
     <div id="focus-exit-btn" class="focus-exit-overlay">
         <span class="text-white" style="font-size: 10px; font-weight: bold; letter-spacing: 1px;">FOCUS</span>
-        <button class="btn btn-sm btn-light py-0 px-2" style="font-size: 0.75rem;" onclick="document.getElementById('main-iframe').src = document.getElementById('main-iframe').src" title="重新整理"><i class="fas fa-sync-alt"></i></button>
+        <button class="btn btn-sm btn-light py-0 px-2" style="font-size: 0.75rem;" onclick="document.getElementById('main-iframe').src = document.getElementById('main-iframe').src" title="重新整理" data-i18n-title="btn_refresh" aria-label="重新整理" data-i18n-aria-label="btn_refresh"><i class="fas fa-sync-alt" aria-hidden="true"></i></button>
         <button class="btn btn-sm btn-danger py-0 px-2 fw-bold" style="font-size: 0.75rem;" onclick="toggleFullscreen()"><i class="fas fa-compress me-1"></i> <span data-i18n="btn_exit">退出</span></button>
     </div>
 
@@ -82,20 +90,20 @@
     </div>
 
     <!-- 邊緣觸發區 (沉浸模式專用) -->
-    <div class="edge-trigger trigger-top" id="trigger-top" title="喚醒導覽列"></div>
-    <div class="edge-trigger trigger-left" id="trigger-left" title="喚醒選單"></div>
+    <div class="edge-trigger trigger-top" id="trigger-top" title="喚醒導覽列" data-i18n-title="tip_wake_navbar"></div>
+    <div class="edge-trigger trigger-left" id="trigger-left" title="喚醒選單" data-i18n-title="tip_wake_sidebar"></div>
 
     <!-- 頂部導航列 -->
     <div class="top-navbar-group" id="top-navbar">
         <div class="navbar-row-top">
             <div class="nav-brand-section">
-                <button class="btn p-0 text-white me-3" style="opacity: 0.7;" onclick="toggleSidebar()" aria-label="切換側邊選單" title="切換側邊選單"><i class="fas fa-bars"></i></button>
+                <button class="btn p-0 text-white me-3" style="opacity: 0.7;" onclick="toggleSidebar()" aria-label="切換側邊選單" data-i18n-aria-label="tip_toggle_sidebar" title="切換側邊選單" data-i18n-title="tip_toggle_sidebar"><i class="fas fa-bars" aria-hidden="true"></i></button>
                 <!-- ⚠️ 不要再加 inline onkeydown：Enter/Space 一律由 main.js 的委派 keydown 處理
                      （它會對任何 [role=button][tabindex] 呼叫 .click()）。兩邊都寫會觸發兩次。 -->
-                <h1 class="nav-logo-text" onclick="goDefaultHome()" role="button" tabindex="0" title="回預設首頁"><span class="text-info">UMC</span> EQ Dashboard</h1>
+                <h1 class="nav-logo-text" onclick="goDefaultHome()" role="button" tabindex="0" title="回預設首頁" data-i18n-title="tip_go_home"><span class="text-info">UMC</span> EQ Dashboard</h1>
                 <div class="nav-breadcrumb-inline align-items-center" id="top-breadcrumb">
-                    <div class="monitoring-dot me-2" title="系統即時監控運作中"></div>
-                    <i class="fas fa-satellite-dish me-2" style="color: var(--navbar-accent); font-size: 0.95rem;" title="系統即時監控運作中"></i>
+                    <div class="monitoring-dot me-2" title="系統即時監控運作中" data-i18n-title="tip_monitoring"></div>
+                    <i class="fas fa-satellite-dish me-2" style="color: var(--navbar-accent); font-size: 0.95rem;" title="系統即時監控運作中" data-i18n-title="tip_monitoring" aria-hidden="true"></i>
                     <span id="bc-path" style="display:none;"></span><span class="current" id="bc-name" data-i18n="nav_breadcrumb_home">首頁總覽</span>
                 </div>
             </div>
@@ -112,15 +120,15 @@
                 </div>
                 <div class="util-divider"></div>
 
-                <div class="layout-toggle-wrapper" id="layout-toggle-wrapper" onclick="switchLayoutMode((window.appState && window.appState.currentLayoutMode) === 'system' ? 'personal' : 'system')" role="button" tabindex="0" aria-label="切換版面配置（系統／自訂）" title="切換版面配置">
+                <div class="layout-toggle-wrapper" id="layout-toggle-wrapper" onclick="switchLayoutMode((window.appState && window.appState.currentLayoutMode) === 'system' ? 'personal' : 'system')" role="button" tabindex="0" aria-label="切換版面配置（系統／自訂）" data-i18n-aria-label="aria_switch_layout" title="切換版面配置" data-i18n-title="tip_switch_layout">
                     <div class="layout-toggle-slider"></div>
                     <div class="pill-btn-text active" id="btn-layout-system" data-i18n="nav_sys">系統</div>
                     <div class="pill-btn-text" id="btn-layout-personal" data-i18n="nav_personal">自訂</div>
                 </div>
                 <div class="util-divider"></div>
 
-                <button class="btn btn-sm text-white border-0 fw-bold" type="button" id="themeToggleBtn" onclick="if(window.toggleTheme) window.toggleTheme()" title="切換深淺色主題 (Dark Mode)" style="font-size: 0.9rem; padding: 4px 8px;">
-                    <i class="fas fa-moon" id="theme-icon"></i>
+                <button class="btn btn-sm text-white border-0 fw-bold" type="button" id="themeToggleBtn" onclick="if(window.toggleTheme) window.toggleTheme()" title="切換深淺色主題 (Dark Mode)" data-i18n-title="tip_toggle_theme" aria-label="切換深淺色主題 (Dark Mode)" data-i18n-aria-label="tip_toggle_theme" style="font-size: 0.9rem; padding: 4px 8px;">
+                    <i class="fas fa-moon" id="theme-icon" aria-hidden="true"></i>
                 </button>
 
                 <div class="dropdown">
@@ -146,17 +154,17 @@
                     </ul>
                 </div>
 
-                <button id="btn-pin" class="util-item text-danger" style="font-size: 0.85rem;" onclick="togglePin()" title="切換自動隱藏/固定版面">
-                    <i class="fas fa-thumbtack"></i>
+                <button id="btn-pin" class="util-item text-danger" style="font-size: 0.85rem;" onclick="togglePin()" title="切換自動隱藏/固定版面" data-i18n-title="tip_toggle_pin" aria-label="切換自動隱藏/固定版面" data-i18n-aria-label="tip_toggle_pin">
+                    <i class="fas fa-thumbtack" aria-hidden="true"></i>
                 </button>
                 <div class="util-divider"></div>
 
-                <button id="btn-recent-menus" class="util-item" onclick="if(window.openRecentOffcanvas) window.openRecentOffcanvas()" title="最近瀏覽" style="position:relative;">
-                    <i class="fas fa-history" style="font-size: 0.95rem;"></i>
+                <button id="btn-recent-menus" class="util-item" onclick="if(window.openRecentOffcanvas) window.openRecentOffcanvas()" title="最近瀏覽" data-i18n-title="lbl_recent" aria-label="最近瀏覽" data-i18n-aria-label="lbl_recent" style="position:relative;">
+                    <i class="fas fa-history" style="font-size: 0.95rem;" aria-hidden="true"></i>
                 </button>
 
-                <button id="btn-system-settings" class="util-item" onclick="selectTopMenu('system_settings')" title="系統設定">
-                    <i class="fas fa-cog" style="font-size: 0.95rem;"></i>
+                <button id="btn-system-settings" class="util-item" onclick="selectTopMenu('system_settings')" title="系統設定" data-i18n-title="nav_sys_settings" aria-label="系統設定" data-i18n-aria-label="nav_sys_settings">
+                    <i class="fas fa-cog" style="font-size: 0.95rem;" aria-hidden="true"></i>
                 </button>
 
                 <div class="dropdown ms-1">
@@ -182,7 +190,7 @@
             </script>
             <!-- 意見箱：導向系統既有的「需求申請」頁（openFeedbackPage @ ui/navigation.js），
                  使用者可直接提交意見/需求，管理員於「申請審核管理」查看與回覆。 -->
-            <a href="#" onclick="event.preventDefault(); if (typeof openFeedbackPage==='function') openFeedbackPage();" class="feedback-link" title="提供您的寶貴意見"><i class="fas fa-envelope-open-text me-1"></i><span data-i18n="nav_feedback"> 意見箱</span></a>
+            <a href="#" onclick="event.preventDefault(); if (typeof openFeedbackPage==='function') openFeedbackPage();" class="feedback-link" title="提供您的寶貴意見" data-i18n-title="tip_feedback" aria-label="提供您的寶貴意見" data-i18n-aria-label="tip_feedback"><i class="fas fa-envelope-open-text me-1" aria-hidden="true"></i><span data-i18n="nav_feedback"> 意見箱</span></a>
         </div>
     </div>
 
@@ -271,7 +279,7 @@
                                 <i class="fas fa-save me-1"></i> <span data-i18n="btn_save_changes">儲存變更</span>
                                 <span class="badge bg-white text-warning ms-1" id="btn-per-pending-count" style="font-size:0.65rem;">0</span>
                             </button>
-                            <button class="btn btn-sm btn-outline-secondary fw-bold shadow-sm d-none" id="btn-per-discard-pending" onclick="discardPersonalPendingOrder()" title="放棄這次的拖曳變更">
+                            <button class="btn btn-sm btn-outline-secondary fw-bold shadow-sm d-none" id="btn-per-discard-pending" onclick="discardPersonalPendingOrder()" title="放棄這次的拖曳變更" data-i18n-title="tip_discard_drag">
                                 <i class="fas fa-undo me-1"></i> <span data-i18n="btn_discard">放棄</span>
                             </button>
                             <button class="btn btn-sm btn-outline-danger fw-bold shadow-sm" onclick="restoreDefaultPersonalMenu()"><i class="fas fa-trash-restore me-1"></i><span data-i18n="btn_restore_default"> 還原預設版面</span></button>
@@ -800,6 +808,10 @@
                              同源內容   → 是我們自己 wwwroot 底下的檔案，或由 admin 設定的同源路徑，本來就在信任範圍內。
                          結論：真正的把關點是「誰能設定 menu.url」（已限管理權限），不是這個屬性。
                          若哪天要開放一般使用者自填 URL，才需要回頭重新設計（例如改用獨立來源的 sandbox domain）。 -->
+                    <!-- ⚠️ 這裡**刻意不掛** data-i18n-title（CLAUDE.md §4-9「JS 會動態填值的元素不可掛 data-i18n」的同款陷阱）：
+                         title 由 openDynamicIframe 依當前看板名稱動態覆寫，掛了的話使用者一切語言就會被洗回
+                         「看板內容」這個通用字串、螢幕閱讀器再也讀不到正在看哪一張看板。
+                         翻譯改在 openDynamicIframe 內用 t('iframe_content') 當 fallback。 -->
                     <iframe id="main-iframe" src="" title="看板內容" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"></iframe>
                 </div>
                 <div id="page-app-grid" class="page-section"><div class="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2"><h5 class="mb-0 fw-bold text-success"><i class="fas fa-th-large me-2"></i><span id="app-grid-title">應用集合</span></h5></div><div class="app-grid" id="app-grid-container"></div></div>
@@ -817,7 +829,7 @@
 
     <!-- ⭐️ 快取破解碼：必須在 modals.html fetch 之前定義，否則 ?v= 會是空字串、
          部署後使用者拿到舊版 modals (Round-7 修)。其他 <script src> 共用此版本碼。 -->
-    <script>window.__APP_VER__ = '20260816f';</script>
+    <script>window.__APP_VER__ = '20260816g';</script>
 
     <!-- ⭐️ 動態載入 Modals partial (跟 JS 共用同一個 cache-bust 版本碼)
          Round-5 B14：失敗時不再只 console.warn — 顯示明確錯誤 banner，因為沒有 modals 後續所有「新增/編輯」按鈕都會死掉。 -->
@@ -836,7 +848,12 @@
                 // 直接在頁頂插一條警告 banner — 不依賴 modal 本身（因為 modal 沒載入）
                 const banner = document.createElement('div');
                 banner.style.cssText = 'position:fixed; top:0; left:0; right:0; z-index:10000; background:#dc3545; color:#fff; padding:10px 20px; font-weight:bold; text-align:center; box-shadow:0 2px 8px rgba(0,0,0,0.3);';
-                banner.innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i> 載入 Modal 失敗，請重新整理頁面 (' + (e.message || e) + ') <button onclick="location.reload()" style="margin-left:15px; padding:2px 12px; background:#fff; color:#dc3545; border:0; border-radius:3px; font-weight:bold; cursor:pointer;">重新整理</button>';
+                // 這支 inline script 跑在 ES module 圖之前，拿不到 t()／i18n 表 → 直接讀 localStorage 的語系偏好挑字串。
+                //   （只有三句，維護成本低；此處若硬等模組載入，反而會在「模組載入失敗」時完全沒有提示。）
+                var _lp = (function () { try { return localStorage.getItem('umc_lang_preference'); } catch (err) { return null; } })();
+                var _msg = { en: 'Failed to load dialogs. Please reload the page', ja: 'ダイアログの読み込みに失敗しました。ページを再読み込みしてください' }[_lp] || '載入 Modal 失敗，請重新整理頁面';
+                var _btn = { en: 'Reload', ja: '再読み込み' }[_lp] || '重新整理';
+                banner.innerHTML = '<i class="fas fa-exclamation-triangle me-2" aria-hidden="true"></i> ' + _msg + ' (' + (e.message || e) + ') <button onclick="location.reload()" style="margin-left:15px; padding:2px 12px; background:#fff; color:#dc3545; border:0; border-radius:3px; font-weight:bold; cursor:pointer;">' + _btn + '</button>';
                 document.body.appendChild(banner);
             });
     </script>

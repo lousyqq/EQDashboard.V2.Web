@@ -1,4 +1,4 @@
-﻿import { getCustomMenus } from '../config.js';
+﻿import { getCustomMenus, t } from '../config.js';
 
 
 import { renderSidebarMenus } from '../render/sidebar.js';
@@ -66,11 +66,23 @@ export function toggleSidebar() {
     document.body.classList.toggle('sidebar-hidden');
 }
 
-// 全域釘選狀態（對齊 TEST：預設固定）
-appState.isPinned = (typeof appState.isPinned === 'boolean') ? appState.isPinned : true;
+// 全域釘選狀態（預設固定）。
+//   F12（2026-08-16）：改為持久化 —— 主題（umc_theme_preference）記得住、釘選卻每次重整就跳回固定，
+//   對「習慣把版面放開來看看板」的使用者是每天都要重按一次的摩擦。與主題同一套鍵值命名。
+const PIN_PREF_KEY = 'umc_pin_preference';
+function readPinPreference() {
+    try {
+        const v = localStorage.getItem(PIN_PREF_KEY);
+        if (v === 'true') return true;
+        if (v === 'false') return false;
+    } catch (e) { /* 隱私模式等限制 */ }
+    return true;   // 無偏好 → 維持原本的「預設固定」
+}
+appState.isPinned = readPinPreference();
 
 export function togglePin() {
     appState.isPinned = !appState.isPinned;
+    try { localStorage.setItem(PIN_PREF_KEY, String(appState.isPinned)); } catch (e) { /* 靜默忽略 */ }
 
     const btnPin = document.getElementById('btn-pin');
 
@@ -121,7 +133,7 @@ export function togglePin() {
 // 讓 index.html 的 onclick="togglePin()" 一定能呼叫到
 window.togglePin = togglePin;
 
-// 切換全螢幕
+// 切換全螢幕（沉浸／FOCUS 模式）
 export function toggleFullscreen() {
     document.body.classList.toggle('fullscreen-mode');
     if (document.body.classList.contains('fullscreen-mode')) {
@@ -130,6 +142,19 @@ export function toggleFullscreen() {
         if (document.fullscreenElement) { document.exitFullscreen().catch(err => console.log(err)); }
     }
 }
+
+// ⭐️ F6（2026-08-16）：瀏覽器全螢幕狀態 → body.fullscreen-mode 的單向同步。
+//   舊行為：`fullscreen-mode` 這個 class 只有 toggleFullscreen() 會動，但使用者按 **ESC / F11**
+//   離開瀏覽器全螢幕時瀏覽器不會通知我們 → class 殘留 → 導覽列與側欄維持 display:none，
+//   使用者卡在沉浸模式，只剩右上角那顆小小的 FOCUS 浮層能脫困（實測 #top-navbar 仍為 display:none）。
+//   fullscreenchange 是「離開」與「進入」都會觸發的官方事件，以它為準回寫 class 即可。
+//   ⚠️ 只在「瀏覽器已不在全螢幕、但 class 還在」時移除；不要反過來自動加 class ——
+//      看板可以用 iframe_fullscreen 進沉浸模式而不要求瀏覽器全螢幕，那是合法狀態。
+document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement && document.body.classList.contains('fullscreen-mode')) {
+        document.body.classList.remove('fullscreen-mode');
+    }
+});
 
 // ============================================================================
 // ⭐️ 重構：安全、精準補獲側邊欄「個人頁面管理」按鈕 (絕不影響主畫面 Table 內容)
@@ -211,8 +236,9 @@ export function switchLayoutMode(mode, navigate = true) {
                 const personalPage = document.getElementById('page-personal-manage');
                 if (finalMode === 'system' && personalPage && personalPage.classList.contains('active')) {
                     if (typeof navTo === 'function') {
-                        if (typeof appState.currentUser !== 'undefined' && appState.currentUser?.roleLevel === 'admin') navTo('page-account-manage', null, '帳號管理');
-                        else navTo('page-apply', null, '需求申請');
+                        // 麵包屑名稱走 t()：舊版硬編中文，英/日文使用者切到這裡會看到中文標題。
+                        if (typeof appState.currentUser !== 'undefined' && appState.currentUser?.roleLevel === 'admin') navTo('page-account-manage', null, t('menu_account_manage', '帳號管理'));
+                        else navTo('page-apply', null, t('menu_apply', '需求申請'));
                     }
                 }
             } else {

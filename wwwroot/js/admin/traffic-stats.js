@@ -153,7 +153,7 @@ export async function loadTrafficStats() {
                     const pct = Math.min(100, Math.round(((item.visits || 0) / totalDeptVisits) * 100));
                     return `
                         <tr>
-                            <td class="fw-bold text-dark"><i class="fas fa-building text-info me-2"></i>${escHtml(item.department || t('unspecified', '未指定'))}</td>
+                            <td class="fw-bold text-dark"><i class="fas fa-building text-info me-2" aria-hidden="true"></i>${escHtml(item.department || t('dept_unspecified_other', '未指定/其他'))}</td>
                             <td><span class="badge bg-info text-dark px-3 py-1" style="font-size: 0.85rem;">${t('ts_people_fmt', '{0} 人').replace('{0}', (item.activeUsers || 0).toLocaleString())}</span></td>
                             <td class="fw-bold">${t('ts_times_fmt', '{0} 人次').replace('{0}', (item.visits || 0).toLocaleString())}</td>
                             <td style="min-width: 180px;">
@@ -181,13 +181,13 @@ export async function loadTrafficStats() {
                 .then(r => r.ok ? r.json() : Promise.reject('HTTP ' + r.status))
                 .then(d => {
                     if (!d.items || d.items.length === 0) {
-                        popularBody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-muted">目前無看板點擊紀錄</td></tr>`;
+                        popularBody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-muted">${escHtml(t('ts_no_popular', '目前無看板點擊紀錄'))}</td></tr>`;
                     } else {
                         popularBody.innerHTML = d.items.map(item => `
                             <tr>
-                                <td class="fw-bold text-dark"><i class="fas fa-desktop text-primary me-2"></i>${escHtml(item.menuName)}</td>
-                                <td><span class="badge bg-primary px-3 py-1">${(item.totalClicks || 0).toLocaleString()} 次</span></td>
-                                <td><span class="badge bg-info text-dark px-3 py-1">${(item.activeUsers || 0).toLocaleString()} 人</span></td>
+                                <td class="fw-bold text-dark"><i class="fas fa-desktop text-primary me-2" aria-hidden="true"></i>${escHtml(item.menuName || t('menu_deleted', '已刪除看板'))}</td>
+                                <td><span class="badge bg-primary px-3 py-1">${t('ts_count_fmt', '{0} 次').replace('{0}', (item.totalClicks || 0).toLocaleString())}</span></td>
+                                <td><span class="badge bg-info text-dark px-3 py-1">${t('ts_people_fmt', '{0} 人').replace('{0}', (item.activeUsers || 0).toLocaleString())}</span></td>
                                 <td class="text-muted small">${escHtml(item.lastClick)}</td>
                             </tr>
                         `).join('');
@@ -195,7 +195,7 @@ export async function loadTrafficStats() {
                 })
                 .catch(e => {
                     console.error('載入常用看板失敗', e);
-                    popularBody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-danger">載入失敗: ${escHtml(e.message || e)}</td></tr>`;
+                    popularBody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-danger">${escHtml(t('load_failed', '載入失敗: '))}${escHtml(e.message || e)}</td></tr>`;
                 });
         }
 
@@ -224,7 +224,7 @@ export async function loadTrafficStats() {
                 })
                 .catch(e => {
                     console.error('載入殭屍看板失敗', e);
-                    zombieBody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-danger">載入失敗: ${escHtml(e.message || e)}</td></tr>`;
+                    zombieBody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-danger">${escHtml(t('load_failed', '載入失敗: '))}${escHtml(e.message || e)}</td></tr>`;
                 });
         }
 

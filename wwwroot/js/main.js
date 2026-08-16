@@ -1,5 +1,5 @@
 ﻿import { appState, escHtml } from './store.js';
-import './config.js';
+import { t } from './config.js';
 import './api.js';
 import './auth.js';
 import './ui/layout.js';
@@ -51,9 +51,16 @@ export function initDashboardUI(stayOnCurrentPage = false) {
                 appState.currentFab = exists.fabName;
             }
 
+            // 語系決定順序（F3，2026-08-16 定案）：**使用者手動選過的偏好 > 廠區 defaultLang**。
+            //   舊版無條件套 fab.defaultLang，導致英/日文使用者每次重整都被打回中文
+            //   （實測：切 en → F5 → 回 zh）—— 三語 465 個 key 的投入等於被架空。
+            //   套廠區預設語言時傳 persist=false：那不是使用者的選擇，不可覆寫他的偏好。
             const fabObj = exists || fabs[0];
-            if (fabObj && fabObj.defaultLang && typeof changeLanguage === 'function') {
-                changeLanguage(fabObj.defaultLang);
+            if (typeof changeLanguage === 'function') {
+                const userLang = (typeof window.getStoredLangPreference === 'function')
+                    ? window.getStoredLangPreference() : null;
+                if (userLang) changeLanguage(userLang);
+                else if (fabObj && fabObj.defaultLang) changeLanguage(fabObj.defaultLang, false);
             }
         }
     }
@@ -244,21 +251,27 @@ document.addEventListener('click', function(e) {
 });
 
 document.addEventListener("DOMContentLoaded", async () => {
-    // console.log("正在從資料庫載入資料...");
+    // ⭐️ 語系偏好要「最早」套用（F3/F4）：底下的初始化遮罩、逾時卡片與錯誤畫面都走 t()，
+    //    而 changeLanguage() 要等 initDashboardUI() 才跑 —— 中間這段空窗期若 currentLang 還是預設的 zh，
+    //    英/日文使用者一進站就先看到一整頁中文。這裡只設狀態值（不掃 DOM），完整的 DOM 替換仍由
+    //    initDashboardUI → changeLanguage 負責。
+    const _prefLang = (typeof window.getStoredLangPreference === 'function') ? window.getStoredLangPreference() : null;
+    if (_prefLang) appState.currentLang = _prefLang;
+
     const loadingOverlay = document.createElement('div');
     loadingOverlay.id = 'db-loading-overlay';
     loadingOverlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:9999; display:flex; flex-direction:column; justify-content:center; align-items:center; color:white; font-family:sans-serif;';
-    loadingOverlay.innerHTML = '<div class="spinner-border text-info mb-3" style="width: 3rem; height: 3rem;" role="status"></div><h2>系統初始化中...</h2><p class="text-secondary">正在與資料庫連線同步資料</p>';
+    loadingOverlay.innerHTML = `<div class="spinner-border text-info mb-3" style="width: 3rem; height: 3rem;" role="status"></div><h2>${escHtml(t('init_loading_title', '系統初始化中...'))}</h2><p class="text-secondary">${escHtml(t('init_loading_desc', '正在與資料庫連線同步資料'))}</p>`;
     document.body.appendChild(loadingOverlay);
 
     // Round-5 B13：fetchInitialDataFromDB 卡住 (DB 連線失敗 / 後端 hang) → loading 螢幕會永遠不收。
     //   15 秒 timeout，若還在顯示就把 spinner 換成錯誤訊息 + 重新整理按鈕，避免使用者乾瞪眼。
     const loadingTimeoutId = setTimeout(() => {
         if (document.body.contains(loadingOverlay)) {
-            loadingOverlay.innerHTML = '<i class="fas fa-exclamation-triangle text-warning mb-3" style="font-size: 4rem;"></i>'
-                + '<h3 class="text-warning">資料庫連線逾時</h3>'
-                + '<p class="text-secondary mb-4">後端在 15 秒內沒有回應，可能是 DB 連線異常或網路問題。</p>'
-                + '<button class="btn btn-info fw-bold px-4" onclick="location.reload()"><i class="fas fa-sync-alt me-2"></i>重新整理</button>';
+            loadingOverlay.innerHTML = '<i class="fas fa-exclamation-triangle text-warning mb-3" style="font-size: 4rem;" aria-hidden="true"></i>'
+                + `<h3 class="text-warning">${escHtml(t('init_timeout_title', '資料庫連線逾時'))}</h3>`
+                + `<p class="text-secondary mb-4">${escHtml(t('init_timeout_desc', '後端在 15 秒內沒有回應，可能是 DB 連線異常或網路問題。'))}</p>`
+                + `<button class="btn btn-info fw-bold px-4" onclick="location.reload()"><i class="fas fa-sync-alt me-2" aria-hidden="true"></i>${escHtml(t('btn_refresh', '重新整理'))}</button>`;
         }
     }, 15000);
 
@@ -339,9 +352,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     } catch (error) {
         clearTimeout(loadingTimeoutId);
         if (!document.body.contains(loadingOverlay)) document.body.appendChild(loadingOverlay);
-        const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.port !== '';
+        // ⚠️ 只認 loopback（F11，2026-08-16 修）：舊版還把 `window.location.port !== ''` 當成開發環境，
+        //    但 IIS 內網站台常常就是掛在非 80 埠（例如 http://sariel:8080/）→ 正式站會把完整 stack trace
+        //    連同內部路徑印在畫面上給使用者看。埠號完全不能拿來判斷環境。
+        const host = window.location.hostname;
+        const isDev = host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1';
         const stackHtml = isDev && error.stack ? '<div class="text-warning text-start mt-3" style="max-width:800px; overflow:auto; max-height:300px;"><pre>' + escHtml(error.stack) + '</pre></div>' : '';
-        loadingOverlay.innerHTML = '<i class="fas fa-times-circle text-danger" style="font-size: 4rem; margin-bottom: 20px;"></i><h2 class="text-danger">系統發生非預期錯誤</h2><p class="fs-5">' + escHtml(error.message || '未知錯誤') + '</p>' + stackHtml;
+        loadingOverlay.innerHTML = '<i class="fas fa-times-circle text-danger" style="font-size: 4rem; margin-bottom: 20px;" aria-hidden="true"></i>'
+            + `<h2 class="text-danger">${escHtml(t('init_error_title', '系統發生非預期錯誤'))}</h2>`
+            + `<p class="fs-5">${escHtml(error.message || t('err_unknown', '未知錯誤'))}</p>` + stackHtml;
     }
 });
 

@@ -203,7 +203,7 @@ export async function saveRoleItem(e) {
 
 export async function deleteRole(id) {
     try {
-        customConfirm('確定要刪除此群組嗎？(若有廠區或帳號綁定此群組將自動解除)', async () => {
+        customConfirm(t('confirm_delete_role', '確定要刪除此群組嗎？(若有廠區或帳號綁定此群組將自動解除)'), async () => {
             try {
                 const result = await deleteRoleAPI(id);
                 if (!result.success) {

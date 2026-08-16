@@ -761,6 +761,26 @@ div.dataTables_wrapper div.dataTables_filter input {
     background-color: rgba(251, 191, 36, 0.15) !important;
 }
 
+/* ⚠️ 徽章不能沿用上面那兩條「15% 透明色調」（F7，2026-08-16 修）。
+   那兩條是為 alert / 區塊背景設計的：大面積淡色底 + 亮色字很好看。
+   但 .badge.bg-info.text-dark 這種組合會同時吃到
+     ① 上面的 .bg-info → 幾乎透明的底（實際呈現接近卡片底色）
+     ② 更上面的 `:root[data-theme="dark"] .text-dark { color: var(--text-main) }` → 近白色字
+   兩者疊起來實測只有 **2.05:1**（WCAG AA 需 4.5）。流量與使用率的
+   「常用看板 / 各部門活躍比率 / 每日造訪明細」三個分頁的「N 人」徽章全中。
+   （E13 那輪沒抓到，是因為這些列要點進該分頁且當下有資料才會渲染。）
+   徽章是小面積強調元素，正解是「實心底 + 深色字」，量測後為 8.7:1。
+   選擇器帶 .badge 多一級具體性（specificity），確保勝過上面兩條同為 !important 的規則。 */
+:root[data-theme="dark"] .badge.bg-info {
+    background-color: #38bdf8 !important;
+    color: #0b1220 !important;
+}
+
+:root[data-theme="dark"] .badge.bg-warning {
+    background-color: #fbbf24 !important;
+    color: #0b1220 !important;
+}
+
 .text-purple {
     color: #6f42c1;
 }

@@ -51,7 +51,7 @@ export function togglePerAllMenus() {
 }
 
 export function restoreDefaultPersonalMenu() {
-    customConfirm('確定要還原成預設系統版面嗎？您所有的個人自訂排序與隱藏設定將會被清除（包含未儲存的拖曳變更）。', async () => {
+    customConfirm(t('confirm_restore_default', '確定要還原成預設系統版面嗎？您所有的個人自訂排序與隱藏設定將會被清除（包含未儲存的拖曳變更）。'), async () => {
         // 清掉本地 + pending；DB 端透過 savePersonalSettings([]) 改成空 list 即可同步
         localStorage.removeItem('umc_personal_menus_' + appState.currentUser.id);
         window._personalPendingPSets = null;
@@ -62,7 +62,7 @@ export function restoreDefaultPersonalMenu() {
         if (typeof window.updatePersonalSaveButton === 'function') window.updatePersonalSaveButton();
         if (typeof renderPersonalMenuManage === 'function') renderPersonalMenuManage();
         if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
-        if (typeof showToast === 'function') showToast('已成功還原為預設版面！');
+        if (typeof showToast === 'function') showToast(t('restore_default_ok', '已成功還原為預設版面！'));
     });
 }
 
@@ -229,7 +229,7 @@ export async function saveWebpageItem(e) {
 
         const result = await saveMenuAPI(!id, mObj);
         if (!result.success) {
-            customAlert(t('err_save_failed', '儲存失敗：') + (result.message || '未知錯誤'));
+            customAlert(t('err_save_failed', '儲存失敗：') + (result.message || t('err_unknown', '未知錯誤')));
             return false;
         }
 
@@ -259,13 +259,13 @@ export async function saveWebpageItem(e) {
 
 export async function deleteWebpageItem(id) {
     try {
-        customConfirm('確定要刪除此看板嗎？', async () => {
+        customConfirm(t('confirm_delete_menu', '確定要刪除此看板嗎？'), async () => {
             try {
                 const delResult = await deleteMenuAPI(id);
 
                 if (!delResult.success) {
                     // 舊版只寫「刪除失敗」不帶原因，使用者與客服都無從判斷 → 帶出後端訊息
-                    customAlert(t('err_delete_failed', '刪除失敗：') + (delResult.message || '未知錯誤'));
+                    customAlert(t('err_delete_failed', '刪除失敗：') + (delResult.message || t('err_unknown', '未知錯誤')));
                     return;
                 }
 
@@ -657,7 +657,7 @@ export async function saveMenuNodeItem(e) {
         }
 
         if (!result.success) {
-            customAlert("儲存失敗: " + (result.message || '未知錯誤'));
+            customAlert(t('err_save_failed', '儲存失敗：') + (result.message || t('err_unknown', '未知錯誤')));
             return false;
         }
 
@@ -676,14 +676,14 @@ export async function saveMenuNodeItem(e) {
         } catch (e) { console.error('render 失敗', e); }
     } catch (error) {
         console.error("[saveMenuNodeItem] 錯誤:", error);
-        try { customAlert("儲存發生未預期錯誤：" + (error?.message || error)); } catch (_) { }
+        try { customAlert(t('err_unexpected', '發生非預期的錯誤：') + (error?.message || error)); } catch (_) { }
     }
     return false;
 }
 
 export async function deleteMenuNodeItem(id) {
     try {
-        customConfirm('確定要刪除此選單配置嗎？(底下包含的子看板將會被釋放回池中，不會被刪除)', async () => {
+        customConfirm(t('confirm_delete_menu_node', '確定要刪除此選單配置嗎？(底下包含的子看板將會被釋放回池中，不會被刪除)'), async () => {
             let menus = getCustomMenus();
 
             let oldDescendants = [];
@@ -741,7 +741,7 @@ export async function deleteMenuNodeItem(id) {
 
             if (!result.success || !delResult.success) {
                 // 帶出真正失敗的那一支的訊息，不要只丟「刪除失敗」三個字
-                customAlert(t('err_delete_failed', '刪除失敗：') + (result.message || delResult.message || '未知錯誤'));
+                customAlert(t('err_delete_failed', '刪除失敗：') + (result.message || delResult.message || t('err_unknown', '未知錯誤')));
                 return;
             }
             try { await window.fetchInitialDataFromDB(); } catch (e) { console.error('fetch 失敗', e); }
@@ -765,7 +765,7 @@ window.toggleMenuEnable = async function (id, isEnabled) {
 
     const result = await saveMenuAPI(false, m);
     if (!result.success) {
-        customAlert("儲存狀態失敗");
+        customAlert(t('err_save_status_failed', '儲存狀態失敗'));
         // 還原：儲存失敗時把記憶體模型退回原值並重畫，讓開關回到 DB 真實狀態。
         // （此分支少見，故此處重畫造成的短暫閃爍可接受。）
         m.enabled = !isEnabled;

@@ -293,6 +293,13 @@ public class SchemaBootstrap : ISchemaBootstrap
             ("IX_Map_Menu_DenyAccount_EmpId",        "Map_Menu_DenyAccount",  "EmpId"),
             ("IX_DailyUserVisits_Date_Dept",         "DailyUserVisits",       "VisitDate, Department"),
             ("IX_DailyMenuClicks_Date_MenuId",       "DailyMenuClicks",       "ClickDate, MenuId"),
+            // 2026-08-16（第四輪健檢 F11）：/api/Analytics/details 的關鍵字查詢跑
+            //   `EmpId LIKE '%term%' OR EmpName LIKE '%term%'`。前綴萬用字元讓 LIKE 無法 seek，
+            //   在只有 (VisitDate, Department) 索引的情況下每次查詢都是整表掃描。
+            //   這條覆蓋索引讓「日期 + 人」的查詢至少能以 VisitDate 收斂範圍後，在索引內完成
+            //   EmpId/EmpName 的比對，不必回主表（details 的其餘欄位仍需 lookup，故 INCLUDE 不加，
+            //   避免小記憶體主機（6GB）上索引過胖）。
+            ("IX_DailyUserVisits_Date_Emp",          "DailyUserVisits",       "VisitDate, EmpId, EmpName"),
         };
 
         foreach (var ix in indexes)

@@ -7,8 +7,37 @@ import { renderAccountTable, renderApplyTable, renderAuditTable, renderFabTable,
 import { appState } from '../store.js';
 
 
-export function changeLanguage(lang) {
+// 語系代碼 → BCP 47 標籤（供 <html lang> 用）。
+//   影響螢幕閱讀器選用的發音語系、瀏覽器的「要翻譯這一頁嗎」判定、以及 :lang() 樣式。
+const HTML_LANG_TAG = { zh: 'zh-TW', en: 'en', ja: 'ja' };
+
+// 使用者手動選過的語系（F3）。
+//   ⚠️ 這是「使用者偏好」的唯一事實來源，優先於 fab.defaultLang ——
+//      main.js 的 initDashboardUI() 每次進站都會套用廠區預設語言，
+//      沒有這一層的話，英/日文使用者每重整一次就被打回中文（2026-08-16 實測確認）。
+//      與主題偏好（umc_theme_preference）同一套「首訪跟預設、之後跟使用者」的邏輯。
+export const LANG_PREF_KEY = 'umc_lang_preference';
+
+export function getStoredLangPreference() {
+    try {
+        const v = localStorage.getItem(LANG_PREF_KEY);
+        return (v && HTML_LANG_TAG[v]) ? v : null;   // 只接受已知語系，防呆髒值
+    } catch (e) { return null; }
+}
+window.getStoredLangPreference = getStoredLangPreference;
+
+// persist=false 供「套用廠區預設語言」使用 —— 那不是使用者的選擇，不該覆寫他的偏好。
+export function changeLanguage(lang, persist = true) {
+    if (!HTML_LANG_TAG[lang]) lang = 'zh';
     appState.currentLang = lang;
+
+    if (persist) {
+        try { localStorage.setItem(LANG_PREF_KEY, lang); } catch (e) { /* 隱私模式等限制，靜默忽略 */ }
+    }
+
+    // 0. 文件層級語系與標題（F4）：兩者都不在 data-i18n 的掃描範圍內，必須手動同步。
+    document.documentElement.setAttribute('lang', HTML_LANG_TAG[lang]);
+    document.title = t('page_title', '主系統儀表板 - EQ Performance Dashboard');
 
     // 1. 全面掃描 data-i18n 屬性，替換靜態 HTML 文字
     if (typeof i18n !== 'undefined') {
@@ -77,28 +106,11 @@ export function changeLanguage(lang) {
 window.changeLanguage = changeLanguage;
 
 
-export function renderLangSwitcher() {
-    const container = document.getElementById('lang-dropdown-menu');
-    if (!container) return;
-
-    const langs = [
-        { code: 'zh', label: '繁體中文' },
-        { code: 'en', label: 'English' },
-        { code: 'ja', label: '日本語' }
-    ];
-
-    container.innerHTML = langs.map(l => `
-        <li>
-            <a class="dropdown-item py-1 fw-bold cursor-pointer d-flex justify-content-between align-items-center
-                ${appState.currentLang === l.code ? 'active bg-light text-primary' : ''}"
-               onclick="changeLanguage('${l.code}')">
-                ${l.label}
-                ${appState.currentLang === l.code ? '<i class="fa-solid fa-check"></i>' : ''}
-            </a>
-        </li>
-    `).join('');
-}
-window.renderLangSwitcher = renderLangSwitcher;
+// （2026-08-16 移除 renderLangSwitcher()：它渲染的 #lang-dropdown-menu 在 index.html / modals.html
+//   中都不存在 —— 語言下拉是 index.html 內寫死的靜態 <ul>（三個 <a onclick="updateLangUI(...)">），
+//   打勾狀態由 changeLanguage() 的 .lang-check / #check-{lang} 邏輯維護。
+//   此函式一進去就 `if (!container) return;`，是與 A5「撤掉搜尋框卻留著 JS」同一類的死碼，
+//   且 window.renderLangSwitcher 還被重複匯出兩次。整組移除，不要再加回來。）
 
 // 取得上方導覽列名稱
 export function getTopMenuName() {
@@ -391,7 +403,7 @@ export function activateMenu(menuId) {
                 if (mainContent) mainContent.appendChild(underConstructionPage);
             }
             const textEl = document.getElementById('under-construction-text');
-            if (textEl) textEl.innerText = `${dName} 內容建置中`;
+            if (textEl) textEl.innerText = t('under_construction_fmt', '{0} 內容建置中').replace('{0}', dName || '');
             navTo('page-under-construction', targetEl, dName);
         }
     } catch (error) {
@@ -666,8 +678,9 @@ export function openDynamicIframe(url, title, element, isFullscreen = false) {
     navTo('page-iframe', element, title);
     const iframe = document.getElementById('main-iframe');
     iframe.removeAttribute('srcdoc');
-    // 螢幕閱讀器可辨識當前載入的是哪個看板
-    if (title) iframe.setAttribute('title', String(title));
+    // 螢幕閱讀器可辨識當前載入的是哪個看板。沒有名稱時退回三語的通用字串
+    //   （index.html 上刻意沒掛 data-i18n-title，避免切語言把看板名稱洗掉，見該行註解）。
+    iframe.setAttribute('title', String(title || t('iframe_content', '看板內容')));
 
     let finalUrl = normalizeTargetUrl(url);
     if (!finalUrl.startsWith('page-') && !finalUrl.includes('fab=')) {
@@ -711,7 +724,6 @@ export function openDynamicIframe(url, title, element, isFullscreen = false) {
 
 // Expose for HTML inline handlers
 window.changeLanguage = changeLanguage;
-window.renderLangSwitcher = renderLangSwitcher;
 // 意見箱：導向既有的「需求申請」頁（使用者提交意見/需求，管理員於申請審核管理回覆）
 export function openFeedbackPage() {
     selectTopMenu('system_settings');

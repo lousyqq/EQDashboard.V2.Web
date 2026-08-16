@@ -88,11 +88,15 @@ public class AnalyticsController : ControllerBase
                 await conn.OpenAsync();
             using (var cmd = conn.CreateCommand())
             {
+                // ⚠️ 2026-08-16 移除 WITH (NOLOCK)：本檔另外三個端點都走 EF + AsNoTracking，只有這裡開髒讀，
+                //    是不必要的例外。NOLOCK 除了讀到未提交資料，還可能在頁面分裂時漏列/重複列 ——
+                //    對「月度活躍人數」這種要拿去對外報告的數字，換來的那點鎖競爭節省並不划算
+                //    （DailyUserVisits 是每人每日一列的小表，且寫入走單句 UPSERT、鎖持有時間極短）。
                 cmd.CommandText = @"
                     SELECT LEFT(CONVERT(varchar, VisitDate, 120), 7) AS YearMonth,
                            COUNT(DISTINCT EmpId) AS Mau,
                            SUM(VisitCount) AS Visits
-                    FROM DailyUserVisits WITH (NOLOCK)
+                    FROM DailyUserVisits
                     WHERE VisitDate >= DATEADD(month, -12, CONVERT(date, GETDATE()))
                     GROUP BY LEFT(CONVERT(varchar, VisitDate, 120), 7)
                     ORDER BY YearMonth ASC;";
@@ -109,9 +113,12 @@ public class AnalyticsController : ControllerBase
             }
 
             // 4. Department Breakdown (for selected days window)
+            // ⚠️ 分群鍵維持「原始的 Department（可為 null）」，**不要**在後端塞中文預設值（2026-08-16 F9 修）：
+            //    這個值會直接被前端渲染出來，硬編中文的話英/日文介面照樣顯示中文。
+            //    null 由前端以 t('dept_unspecified_other') 呈現。
             var deptRaw = await _context.DailyUserVisits.AsNoTracking()
                 .Where(x => x.VisitDate >= cutoffDate)
-                .GroupBy(x => x.Department ?? "未指定/其他")
+                .GroupBy(x => x.Department)
                 .Select(g => new
                 {
                     Department = g.Key,
@@ -199,7 +206,8 @@ public class AnalyticsController : ControllerBase
                     visitDate = x.VisitDate.ToString("yyyy-MM-dd"),
                     empId = x.EmpId,
                     empName = x.EmpName ?? x.EmpId,
-                    department = x.Department ?? "未指定",
+                    // null 原樣回傳，由前端 t('unspecified') 呈現（見上方 departmentBreakdown 的說明）
+                    department = x.Department,
                     visitCount = x.VisitCount,
                     firstVisitTime = x.FirstVisitTime.ToString("HH:mm:ss"),
                     lastVisitTime = x.LastVisitTime.ToString("HH:mm:ss")
@@ -246,10 +254,12 @@ public class AnalyticsController : ControllerBase
 
             var menus = await _context.Menus.AsNoTracking().ToDictionaryAsync(m => m.MenuId, m => m.DisplayName);
 
+            // menuName 查不到時回 null（不要塞「已刪除看板」這種中文字面值 —— 前端無從翻譯），
+            //   由前端以 t('menu_deleted') 呈現。
             var items = query.Select(x => new
             {
                 menuId = x.MenuId,
-                menuName = menus.TryGetValue(x.MenuId, out var name) ? name : "已刪除看板",
+                menuName = menus.TryGetValue(x.MenuId, out var name) ? name : null,
                 totalClicks = x.TotalClicks,
                 activeUsers = x.ActiveUsers,
                 lastClick = x.LastClick.ToString("yyyy-MM-dd HH:mm:ss")

@@ -246,7 +246,7 @@ window.togglePersonalProp = async function (menuId, prop, value) {
     // ⭐️ H2 修復：偵測 DB 寫入失敗，避免假報成功；失敗則重抓 DB 還原。
     const ok = await savePersonalSettings(appState.currentUser.id, pSets);
     if (!ok) {
-        if (typeof window.customAlert === 'function') window.customAlert('儲存個人設定失敗，已還原為伺服器最新狀態');
+        if (typeof window.customAlert === 'function') window.customAlert(t('err_personal_save_failed', '儲存個人設定失敗，已還原為伺服器最新狀態'));
         if (typeof window.fetchInitialDataFromDB === 'function') await window.fetchInitialDataFromDB();
         if (typeof renderPersonalMenuManage === 'function') renderPersonalMenuManage();
         if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
@@ -264,7 +264,7 @@ window.setPersonalTarget = async function (menuId, target) {
     // ⭐️ H2 修復：偵測 DB 寫入失敗，避免假報成功；失敗則重抓 DB 還原。
     const ok = await savePersonalSettings(appState.currentUser.id, pSets);
     if (!ok) {
-        if (typeof window.customAlert === 'function') window.customAlert('儲存個人設定失敗，已還原為伺服器最新狀態');
+        if (typeof window.customAlert === 'function') window.customAlert(t('err_personal_save_failed', '儲存個人設定失敗，已還原為伺服器最新狀態'));
         if (typeof window.fetchInitialDataFromDB === 'function') await window.fetchInitialDataFromDB();
         if (typeof renderSidebarMenus === 'function') renderSidebarMenus();
         return;

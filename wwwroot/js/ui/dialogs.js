@@ -1,6 +1,7 @@
 ﻿import { enforceSystemModeUI } from './layout.js';
-import { changeLanguage, renderLangSwitcher } from './navigation.js';
+import { changeLanguage } from './navigation.js';
 import { appState } from '../store.js';
+import { t } from '../config.js';
 
 
 ﻿// === ui/dialogs.js - 同步按鈕、自訂 Alert/Confirm、語系更新 ===
@@ -76,7 +77,9 @@ export function showToast(msg, type = 'success', delay = 3200, isHtml = false) {
     el.className = `toast align-items-center border-0 shadow ${style.bg} toast-${type}`;
     el.setAttribute('role', 'status');
     el.setAttribute('aria-live', 'polite');
-    el.innerHTML = `<div class="d-flex position-relative pb-1"><div class="toast-body fw-bold position-relative z-1"><i class="fas ${style.icon} me-2"></i>${safeHtml}</div><button type="button" class="btn-close btn-close-white me-2 m-auto position-relative z-1" data-bs-dismiss="toast" aria-label="關閉"></button><div class="toast-progress" style="animation-duration: ${delay}ms;"></div></div>`;
+    // aria-label 走 t()：toast 是 JS 動態產生的，掛不了 data-i18n-aria-label（changeLanguage 掃不到還沒建立的節點）。
+    const closeLabel = window.escapeHtml ? window.escapeHtml(t('btn_close', '關閉')) : t('btn_close', '關閉');
+    el.innerHTML = `<div class="d-flex position-relative pb-1"><div class="toast-body fw-bold position-relative z-1"><i class="fas ${style.icon} me-2" aria-hidden="true"></i>${safeHtml}</div><button type="button" class="btn-close btn-close-white me-2 m-auto position-relative z-1" data-bs-dismiss="toast" aria-label="${closeLabel}"></button><div class="toast-progress" style="animation-duration: ${delay}ms;"></div></div>`;
     container.appendChild(el);
 
     if (typeof bootstrap !== 'undefined' && bootstrap.Toast) {
@@ -106,11 +109,30 @@ export function skeletonRows(colCount, rowCount = 6) {
     return rows;
 }
 
-export function customConfirm(msg, callback, isHtml = false) {
+// variant（F12，2026-08-16）：確認鈕的樣式。
+//   舊版一律 btn-danger —— 連「放棄這次的拖曳變更？」這種可反悔的操作也是紅色，
+//   紅色代表「不可逆／會刪資料」的訊號被稀釋掉，真正的刪除confirm 反而不顯眼。
+//   'danger'（預設，維持既有呼叫端行為不變）＝ 刪除／不可復原；'primary' ＝ 一般確認。
+//   ⚠️ 每次都要顯式設 class：這顆按鈕是共用的，不重設會殘留上一次的樣式。
+const CONFIRM_BTN_CLASS = {
+    danger: 'btn btn-danger btn-sm px-3 fw-bold',
+    primary: 'btn btn-primary btn-sm px-3 fw-bold'
+};
+
+export function customConfirm(msg, callback, isHtml = false, variant = 'danger') {
     const msgEl = document.getElementById('systemConfirmMsg');
     if (msgEl) {
         let rawStr = (typeof msg === 'object' && msg !== null) ? (msg.message || JSON.stringify(msg)) : String(msg ?? '');
         msgEl.innerHTML = isHtml ? rawStr : (window.escapeHtml ? window.escapeHtml(rawStr) : rawStr.replace(/</g, "&lt;").replace(/>/g, "&gt;"));
+    }
+    const okBtn = document.getElementById('systemConfirmBtn');
+    if (okBtn) okBtn.className = CONFIRM_BTN_CLASS[variant] || CONFIRM_BTN_CLASS.danger;
+    // 標題圖示同步：非破壞性確認不用驚嘆號三角形，避免每個確認都像出事了
+    const iconEl = document.querySelector('#systemConfirmModal .modal-body > i');
+    if (iconEl) {
+        iconEl.className = (variant === 'primary')
+            ? 'fas fa-circle-question text-primary mb-3'
+            : 'fas fa-exclamation-triangle text-warning mb-3';
     }
     appState.confirmActionCallback = callback;
     if (appState.systemConfirmModalObj) appState.systemConfirmModalObj.show();
@@ -130,8 +152,9 @@ if (typeof window !== 'undefined') {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // ✅ 初始化：先渲染語言下拉（active + 打勾）
-    if (typeof renderLangSwitcher === 'function') renderLangSwitcher();
+    // （2026-08-16 移除 renderLangSwitcher() 呼叫：它渲染的目標 #lang-dropdown-menu 在 index.html /
+    //   modals.html 中都不存在，函式一進去就 early return —— 與 A5「撤掉搜尋框卻留著 JS」同一類死碼。
+    //   語言下拉是 index.html 內的靜態 <ul>，打勾狀態由 changeLanguage() 的 .lang-check 邏輯維護。）
     // ✅ 初始化：同步釘選圖示（避免 icon 空白）
     if (typeof syncPinButtonUI === 'function') syncPinButtonUI();
     const contentZone = document.getElementById('main-content');
@@ -179,8 +202,11 @@ export function syncPinButtonUI() {
     const pinned = (typeof appState.isPinned !== 'undefined') ? appState.isPinned : (appState.isPinned ?? true);
 
     btnPin.innerHTML = pinned
-        ? '<i class="fa-solid fa-thumbtack text-danger" style="font-size: 0.9rem;"></i>'
-        : '<i class="fa-solid fa-unlock text-white-50" style="font-size: 0.9rem;"></i>';
+        ? '<i class="fa-solid fa-thumbtack text-danger" style="font-size: 0.9rem;" aria-hidden="true"></i>'
+        : '<i class="fa-solid fa-unlock text-white-50" style="font-size: 0.9rem;" aria-hidden="true"></i>';
+    // is-pinned class 也要一起同步：釘選狀態自 2026-08-16 起會從 localStorage 還原（layout.js PIN_PREF_KEY），
+    //   只設 icon 不設 class 會讓「上次取消釘選」的使用者重整後看到不一致的樣式。
+    btnPin.classList.toggle('is-pinned', !!pinned);
 }
 
 // =========================================================================

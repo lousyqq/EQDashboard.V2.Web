@@ -69,13 +69,69 @@
         justify-content: center;
     }
 
-    .navbar-row-top,
-    .navbar-row-bottom {
-        padding: 0 10px;
+    /* ⭐️ F5（2026-08-16）：頂列水平溢位修復。
+       症狀（375px 實測）：documentElement.clientWidth=375 但 body.scrollWidth=570 → 整頁往右溢出 195px；
+       且 768px 下 #bc-name 實測寬度 0 —— D1「小螢幕保留當前位置麵包屑」的修法完全沒生效。
+       成因：上面那條 min-width:44px（D2/E12 為觸控目標加的）讓 .utility-cluster 撐到 540px，
+             而 navbar.css 給它的是 flex-shrink:0（永不收縮）、給 .nav-brand-section 的是 flex-shrink:1
+             → 所有壓力都由品牌區吸收，被擠成 0px，剩下的量還是超出視窗。
+       修法三件事，缺一不可：
+         ① 讓 cluster 可收縮並在內部水平捲動（與 E4 對 .top-menu-link 的做法同一套路），
+            所有工具鈕都還在、只是需要橫向滑動就能取用；
+         ② 品牌區改 flex:1 1 auto + min-width:0，把「我在哪」的空間搶回來；
+         ③ 拿掉純裝飾的 .util-divider，省下約 5×9px。 */
+    .navbar-row-top {
+        min-width: 0;
+    }
+
+    /* min-width 是關鍵：只寫 flex:1 1 auto 不夠 —— 負的剩餘空間會依「基準寬度」比例分配，
+       cluster 的基準遠大於品牌區，實測品牌區照樣被壓到只剩漢堡鈕（#bc-name 寬度 0），
+       D1 的麵包屑等於還是看不到。這裡替「漢堡鈕 + 一段可讀的麵包屑」保底 150px，
+       cluster 拿剩下的並在內部捲動。 */
+    .nav-brand-section {
+        flex: 1 1 auto;
+        min-width: 150px;
+        margin-right: 8px;
+    }
+
+    .nav-breadcrumb-inline {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .utility-cluster {
+        flex: 0 1 auto;
+        min-width: 0;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: none;          /* Firefox：不佔用 38px 高的列 */
+        -webkit-overflow-scrolling: touch;
+    }
+
+        .utility-cluster::-webkit-scrollbar {
+            display: none;              /* Chromium/WebKit：同上 */
+        }
+
+        /* cluster 內的項目不可再被壓扁，否則捲動就失去意義（同 E4 對 .top-menu-link 的 flex:0 0 auto） */
+        .utility-cluster > * {
+            flex: 0 0 auto;
+        }
+
+    /* 釘選鈕在觸控裝置上是**無法運作**的功能：整套自動隱藏/喚醒依賴 mouseenter/mouseleave
+       （見 ui/dialogs.js 的 contentZone/topNavbar/sidebar 監聽器與 .edge-trigger），
+       觸控螢幕沒有 hover 就永遠觸發不了。這裡隱藏它不是「砍功能」，而是移除一顆在此裝置上按了
+       只會讓版面行為變得無法預期的鈕，順便把 44px 還給其他真的能用的控制項。 */
+    #btn-pin {
+        display: none !important;
     }
 
     .util-divider {
-        margin: 0 4px;
+        display: none;
+    }
+
+    .navbar-row-top,
+    .navbar-row-bottom {
+        padding: 0 10px;
     }
 
     #main-content {
@@ -85,8 +141,17 @@
 
 /* ---------- ≤768px：手機（品牌字縮小、工具列只留圖示） ---------- */
 @media (max-width: 768px) {
+    /* F5：手機上「我在哪」比「站台叫什麼」重要 —— 品牌文字讓位給麵包屑。
+       （D1 當初保留 #bc-name 的理由：此斷點側欄預設收起，沒有麵包屑使用者就完全失去定位。
+         漢堡鈕仍在原位，品牌識別在登入頁與桌機版都還看得到。） */
     .nav-logo-text {
-        font-size: var(--fs-sm);
+        display: none;
+    }
+
+    .nav-breadcrumb-inline {
+        margin-left: 4px;
+        padding-left: 4px;
+        max-width: none;   /* 交給 #bc-name 的 34vw 上限控制，不要再疊一層 40vw 夾擠 */
     }
 
     /* 語言切換僅留地球圖示（下拉內仍有完整語言名稱） */
@@ -97,6 +162,21 @@
     /* 意見箱僅留信封圖示 */
     .feedback-link span {
         display: none;
+    }
+
+    /* F8（2026-08-16）：意見箱實測只有 17×19px，未達 WCAG 2.5.8 AA 的 24×24。
+       D2/E12 那兩輪只放大了 .utility-cluster 與 .nav-brand-section 的鈕，
+       .navbar-row-bottom 裡的這顆連結被漏掉了 —— 而它在 ≤768px 還會把文字 span 藏起來、
+       只剩一個信封圖示，是全站最小的可點目標。
+       ⚠️ 高度只能吃滿 .navbar-row-bottom 的 34px，不可寫 min-height:44px ——
+          那一列是固定 height:34px，硬撐 44 會讓連結溢出列外、蓋到下方內容。
+          34×44 已遠超 2.5.8 要求的 24×24。 */
+    .feedback-link {
+        min-width: 44px;
+        height: 34px;
+        justify-content: center;
+        align-items: center;
+        padding-bottom: 0;
     }
 
     #main-content {
