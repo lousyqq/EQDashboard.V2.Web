@@ -34,6 +34,91 @@ function zombieCreateCell(item) {
     return `<span class="fst-italic opacity-75">${escHtml(t('ts_created_unknown', '未知'))}</span>`;
 }
 
+function renderTrendChartSVG(containerId, data, labelKey, valueKeys, colors, labels) {
+    const container = document.getElementById(containerId);
+    if (!container || !data || data.length === 0) return;
+    
+    // Determine bounds
+    const width = 800;
+    const height = 200;
+    const padding = { top: 25, right: 30, bottom: 25, left: 55 };
+    const plotW = width - padding.left - padding.right;
+    const plotH = height - padding.top - padding.bottom;
+    
+    let maxVal = 1;
+    data.forEach(d => {
+        valueKeys.forEach(k => {
+            if ((d[k] || 0) > maxVal) maxVal = d[k];
+        });
+    });
+    // Add 15% headroom for legend
+    maxVal = Math.ceil(maxVal * 1.15);
+
+    const xStep = data.length > 1 ? plotW / (data.length - 1) : plotW;
+
+    let svg = `<svg viewBox="0 0 ${width} ${height}" style="width:100%; height:100%; overflow:visible; font-family:var(--bs-font-sans-serif, system-ui, sans-serif);">`;
+
+    // Grid lines and Y-axis labels
+    const yTicks = 4;
+    for(let i=0; i<=yTicks; i++) {
+        const y = padding.top + plotH - (i/yTicks)*plotH;
+        const val = Math.round((i/yTicks)*maxVal);
+        svg += `<line x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}" stroke="var(--border-color)" stroke-dasharray="4" stroke-width="1" />`;
+        svg += `<text x="${padding.left - 10}" y="${y + 4}" font-size="11" fill="var(--text-muted)" text-anchor="end">${val.toLocaleString()}</text>`;
+    }
+
+    // X-axis labels
+    const maxLabels = 10;
+    const labelStep = Math.max(1, Math.floor(data.length / maxLabels));
+    data.forEach((d, i) => {
+        if (i % labelStep === 0 || i === data.length - 1) {
+            const x = padding.left + i * xStep;
+            const y = height - 5;
+            let labelStr = d[labelKey];
+            if (labelKey === 'date' && labelStr.length > 5) labelStr = labelStr.substring(5); // e.g. 2026-08-01 -> 08-01
+            svg += `<text x="${x}" y="${y}" font-size="11" fill="var(--text-muted)" text-anchor="middle">${labelStr}</text>`;
+        }
+    });
+
+    // Draw lines and points
+    valueKeys.forEach((key, kIdx) => {
+        const color = colors[kIdx] || '#000';
+        let points = [];
+        data.forEach((d, i) => {
+            const x = padding.left + i * xStep;
+            const y = padding.top + plotH - ((d[key] || 0) / maxVal) * plotH;
+            points.push(`${x},${y}`);
+        });
+        
+        // Polyline
+        svg += `<polyline points="${points.join(' ')}" fill="none" stroke="${color}" stroke-width="2" />`;
+        
+        // Points
+        data.forEach((d, i) => {
+            const x = padding.left + i * xStep;
+            const y = padding.top + plotH - ((d[key] || 0) / maxVal) * plotH;
+            const tip = `${d[labelKey]} - ${labels[kIdx]}: ${(d[key]||0).toLocaleString()}`;
+            svg += `<circle cx="${x}" cy="${y}" r="4" fill="${color}" stroke="var(--card-bg)" stroke-width="1.5">
+                      <title>${tip}</title>
+                    </circle>`;
+        });
+    });
+
+    // Legend
+    let legendX = padding.left + 10;
+    valueKeys.forEach((key, kIdx) => {
+        const color = colors[kIdx];
+        const text = labels[kIdx];
+        svg += `<circle cx="${legendX}" cy="${padding.top - 15}" r="4" fill="${color}" />`;
+        svg += `<text x="${legendX + 8}" y="${padding.top - 11}" font-size="12" fill="var(--text-main)">${text}</text>`;
+        legendX += text.length * 12 + 30; // Approx spacing
+    });
+
+    svg += `</svg>`;
+    container.innerHTML = svg;
+    container.style.display = 'block';
+}
+
 export async function loadTrafficStats() {
     if (!appState.currentUser || String(appState.currentUser.roleLevel || '').toLowerCase() !== 'admin') {
         if (typeof customAlert === 'function') customAlert(t('admin_only', '僅管理員可執行此操作'));
@@ -111,6 +196,10 @@ export async function loadTrafficStats() {
                         </tr>
                     `;
                 }).join('');
+                
+                // SVG Chart
+                // DAU: blue (#0d6efd), Visits: purple (#8b5cf6)
+                renderTrendChartSVG('tsDailyChartContainer', dailyArr, 'date', ['dau', 'visits'], ['#0d6efd', '#8b5cf6'], [t('ts_th_dau', '獨立訪客 (DAU)'), t('ts_th_visits', '總造訪人次')]);
             }
         }
 
@@ -139,6 +228,10 @@ export async function loadTrafficStats() {
                         </tr>
                     `;
                 }).join('');
+                
+                // SVG Chart
+                // MAU: green (#198754), Visits: purple (#8b5cf6)
+                renderTrendChartSVG('tsMonthlyChartContainer', monthArr, 'month', ['mau', 'visits'], ['#198754', '#8b5cf6'], [t('ts_th_mau', '月度活躍 (MAU)'), t('ts_th_mvisits', '當月造訪總人次')]);
             }
         }
 
