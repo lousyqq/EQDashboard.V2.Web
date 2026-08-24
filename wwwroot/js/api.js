@@ -150,11 +150,9 @@ window.fetch = async function (...args) {
                 if (typeof logout === 'function') {
                     logout();
                 }
-                if (typeof customAlert === 'function') {
-                    customAlert(t('session_expired', '無法確認您的登入身分，請重新登入或聯絡系統管理員。'));
-                } else {
-                    alert('無法確認您的登入身分，請重新登入或聯絡系統管理員。');
-                }
+                // customAlert / t 皆為本檔靜態 import，必然存在 —— 不再留原生 alert() 後備
+                //（阻斷式、不套主題、且那句 fallback 是硬編中文，英/日介面照樣顯示中文）。
+                customAlert(t('session_expired', '無法確認您的登入身分，請重新登入或聯絡系統管理員。'));
             }
         } else {
             // 身分仍有效：不登出、不阻斷。用非阻斷式 toast 告知這一次操作沒成功即可
@@ -165,11 +163,7 @@ window.fetch = async function (...args) {
             }
         }
     } else if (response.status === 403) {
-        if (typeof customAlert === 'function') {
-            customAlert(t('err_forbidden', '權限不足，拒絕存取！'));
-        } else {
-            alert(t('err_forbidden', '權限不足，拒絕存取！'));
-        }
+        customAlert(t('err_forbidden', '權限不足，拒絕存取！'));
     }
     return response;
 };
@@ -239,7 +233,7 @@ export async function fetchInitialDataFromDB() {
         }
 
         if (result.error) {
-            console.error("後端回傳錯誤:", result.message);
+            console.error("後端回傳錯誤:", result.errorCode);
             return false;
         }
 
@@ -711,6 +705,78 @@ export function clearAppCache(preserveCurrentUser = false) {
 }
 window.clearAppCache = clearAppCache;
 
+/**
+ * 讀取失敗回應並轉成「可顯示且已翻譯」的訊息（L3，全站唯一實作）。
+ * 依序嘗試：① `errorCode`（G10 起的統一契約）② ModelState 的 `errors`（DataAnnotations，值也是 i18n key）
+ * ③ `title`（ProblemDetails）④ 退回 `HTTP {status}`。
+ * ⚠️ 舊版是 `await res.text()` 直接把整包 JSON 當訊息丟給使用者 —— 畫面會出現一整串
+ *    `{"errors":{"SysName":["名稱必填"]}}`，而且裡面的中文永遠翻不了。
+ */
+export async function readApiError(response) {
+    try {
+        const body = await response.json();
+        if (body) {
+            if (body.errorCode) return t(body.errorCode, `HTTP ${response.status}`);
+            if (body.errors && typeof body.errors === 'object') {
+                const msgs = [];
+                for (const key of Object.keys(body.errors)) {
+                    const arr = body.errors[key];
+                    (Array.isArray(arr) ? arr : [arr]).forEach(code => { if (code) msgs.push(t(String(code), String(code))); });
+                }
+                if (msgs.length) return msgs.join('\n');
+            }
+            if (body.title) return t(String(body.title), String(body.title));
+        }
+    } catch (e) { /* 非 JSON 回應（或已被讀過）→ 退回狀態碼 */ }
+    return `HTTP ${response.status}`;
+}
+window.readApiError = readApiError;
+
+/**
+ * 把 /Settings/SaveData 的結果組成可顯示的訊息（L3）。
+ * 後端只回代碼與數字（`messageCode` / `errorCode` / `count` / `skipped`），句子一律在這裡用 t() 組；
+ * 唯一的例外是 `detail` —— 那是 SQL 例外訊息與資料表名，本來就沒有譯文，原樣附上給 admin 定位問題。
+ * @returns {{html: string, isHtml: boolean}}
+ */
+function renderSaveDataResult(result) {
+    const code = result.success ? result.messageCode : result.errorCode;
+    const count = result.count || 0;
+    const skipped = Array.isArray(result.skipped) ? result.skipped : [];
+
+    // 成功且完全沒有略過 → 單行 toast 即可
+    if (result.success && skipped.length === 0) {
+        return { html: t('sync_ok_fmt', '全部資料 ({0} 筆) 已成功同步至資料庫！').replace('{0}', count), isHtml: false };
+    }
+
+    if (result.success) {
+        const head = t('sync_partial_fmt', '匯入完畢，成功 {0} 筆，略過 {1} 筆。')
+            .replace('{0}', count).replace('{1}', skipped.length);
+        const lines = skipped.map(s => {
+            const key = s.code === 'skip_empty' ? 'sync_skip_empty_fmt' : 'sync_skip_shrink_fmt';
+            const fallback = s.code === 'skip_empty'
+                ? '[{0}] 拒絕覆寫：原 {1} 筆，新資料為 0 筆（完全清空），本表略過。'
+                : '[{0}] 拒絕覆寫：原 {1} 筆，新資料僅 {2} 筆（縮減超過 80%），本表略過。';
+            return '• ' + escHtml(t(key, fallback)
+                .replace('{0}', s.table).replace('{1}', s.oldCount).replace('{2}', s.newCount));
+        });
+        // 樣式改用語意類別（原本後端硬塞 inline style 的 #f8d7da/#721c24，深色主題下完全走鐘）
+        return {
+            html: `<b>${escHtml(head)}</b>`
+                + `<div class="text-start small mt-2 p-2 rounded bg-danger-subtle text-danger-emphasis" style="max-height:250px; overflow-y:auto;">${lines.join('<br>')}</div>`
+                + `<div class="text-muted small mt-2">${escHtml(t('sync_skip_hint', '請檢查上述資料是否包含不合法的空值或是文字塞入數字欄位。正常的資料已順利寫入資料庫。'))}</div>`,
+            isHtml: true
+        };
+    }
+
+    // 後端的每條失敗路徑都有代碼；真的沒有時才退回通用句（不要用 err_write_failed —— 那是帶冒號的前綴詞）
+    const errText = t(code || 'err_server_write_failed', t('err_server_write_failed', '伺服器寫入發生錯誤，請聯繫系統管理員。'));
+    if (!result.detail) return { html: errText, isHtml: false };
+    return {
+        html: `${escHtml(errText)}<div class="text-start small mt-2 p-2 rounded bg-body-tertiary text-body font-monospace" style="max-height:200px; overflow-y:auto; word-break:break-all;">${escHtml(result.detail)}</div>`,
+        isHtml: true
+    };
+}
+
 // 將前端資料同步寫入後端 DB 的核心功能
 // showFeedback=true 時會顯示 loading 遮罩與成功訊息（手動觸發匯入時用）；
 // 一般 CRUD 操作走 showFeedback=false（靜默同步，避免干擾使用者）。
@@ -739,11 +805,14 @@ export async function syncDataToDB(showFeedback) {
         if (result.success) {            // ⭐️ 自動清除 App Shell 與本地殘留快照，確保 Ctrl+F5 或切換畫面能立即從 DB 更新
             if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
             if (showFeedback === true && typeof showToast === 'function') {
-                showToast(result.message || t('sync_ok', '資料已成功同步至資料庫！'));
+                const rendered = renderSaveDataResult(result);
+                // 有略過的表＝需要 admin 逐條檢視，走阻斷式 customAlert；全部成功才走 toast（§4-前端-6）
+                if (rendered.isHtml) customAlert(rendered.html, true);
+                else showToast(rendered.html);
             }
         } else {
-            if (typeof customAlert === 'function') customAlert(t('err_write_failed', '寫入失敗：') + result.message);
-            else alert(t('err_write_failed', '寫入失敗：') + result.message);
+            const failed = renderSaveDataResult(result);
+            customAlert(failed.html, failed.isHtml);
         }
     } catch (error) {
         if (loadingOverlay) loadingOverlay.remove();
@@ -773,8 +842,8 @@ export async function saveFabAPI(isNew, fabData) {
         });
 
         if (!res.ok) {
-            const err = await res.text();
-            throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
+            const err = await readApiError(res);
+            throw new Error(err); // readApiError 保證有值（最差是 `HTTP {status}`）
         }
 
         if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
@@ -790,8 +859,8 @@ export async function deleteFabAPI(id) {
     try {
         const res = await fetch(`/api/Fabs/${encodeURIComponent(id)}`, { method: 'DELETE' });
         if (!res.ok) {
-            const err = await res.text();
-            throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
+            const err = await readApiError(res);
+            throw new Error(err); // readApiError 保證有值（最差是 `HTTP {status}`）
         }
         if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
         return { success: true };
@@ -814,8 +883,8 @@ export async function saveRoleAPI(isNew, roleData) {
         });
 
         if (!res.ok) {
-            const err = await res.text();
-            throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
+            const err = await readApiError(res);
+            throw new Error(err); // readApiError 保證有值（最差是 `HTTP {status}`）
         }
 
         if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
@@ -831,8 +900,8 @@ export async function deleteRoleAPI(id) {
     try {
         const res = await fetch(`/api/Roles/${encodeURIComponent(id)}`, { method: 'DELETE' });
         if (!res.ok) {
-            const err = await res.text();
-            throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
+            const err = await readApiError(res);
+            throw new Error(err); // readApiError 保證有值（最差是 `HTTP {status}`）
         }
         if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
         return { success: true };
@@ -855,8 +924,8 @@ export async function saveAccountAPI(isNew, accountData) {
         });
 
         if (!res.ok) {
-            const err = await res.text();
-            throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
+            const err = await readApiError(res);
+            throw new Error(err); // readApiError 保證有值（最差是 `HTTP {status}`）
         }
 
         if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
@@ -872,8 +941,8 @@ export async function deleteAccountAPI(id) {
     try {
         const res = await fetch(`/api/Accounts/${encodeURIComponent(id)}`, { method: 'DELETE' });
         if (!res.ok) {
-            const err = await res.text();
-            throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
+            const err = await readApiError(res);
+            throw new Error(err); // readApiError 保證有值（最差是 `HTTP {status}`）
         }
         if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
         return { success: true };
@@ -896,8 +965,8 @@ export async function saveMenuAPI(isNew, menuData) {
         });
 
         if (!res.ok) {
-            const err = await res.text();
-            throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
+            const err = await readApiError(res);
+            throw new Error(err); // readApiError 保證有值（最差是 `HTTP {status}`）
         }
 
         if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
@@ -913,8 +982,8 @@ export async function deleteMenuAPI(id) {
     try {
         const res = await fetch(`/api/Menus/${encodeURIComponent(id)}`, { method: 'DELETE' });
         if (!res.ok) {
-            const err = await res.text();
-            throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
+            const err = await readApiError(res);
+            throw new Error(err); // readApiError 保證有值（最差是 `HTTP {status}`）
         }
         if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
         return { success: true };
@@ -934,8 +1003,8 @@ export async function batchSaveMenusAPI(menusData) {
         });
 
         if (!res.ok) {
-            const err = await res.text();
-            throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
+            const err = await readApiError(res);
+            throw new Error(err); // readApiError 保證有值（最差是 `HTTP {status}`）
         }
         if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
         return { success: true };
@@ -955,8 +1024,8 @@ export async function batchDeleteMenusAPI(ids) {
         });
 
         if (!res.ok) {
-            const err = await res.text();
-            throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
+            const err = await readApiError(res);
+            throw new Error(err); // readApiError 保證有值（最差是 `HTTP {status}`）
         }
         if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
         return { success: true };
@@ -979,8 +1048,8 @@ export async function saveAppAPI(isNew, appData) {
         });
 
         if (!res.ok) {
-            const err = await res.text();
-            throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
+            const err = await readApiError(res);
+            throw new Error(err); // readApiError 保證有值（最差是 `HTTP {status}`）
         }
 
         if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
@@ -996,8 +1065,8 @@ export async function deleteAppAPI(id) {
     try {
         const res = await fetch(`/api/Apps/${encodeURIComponent(id)}`, { method: 'DELETE' });
         if (!res.ok) {
-            const err = await res.text();
-            throw new Error(err || `伺服器回傳錯誤: ${res.status}`);
+            const err = await readApiError(res);
+            throw new Error(err); // readApiError 保證有值（最差是 `HTTP {status}`）
         }
         if (typeof window.clearAppCache === 'function') window.clearAppCache(true);
         return { success: true };

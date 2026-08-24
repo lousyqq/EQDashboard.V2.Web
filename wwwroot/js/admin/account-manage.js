@@ -11,6 +11,36 @@ import { appState } from '../store.js';
 
 
 // === Accounts 帳號管理 ===
+
+/// 依「目前登入者」收斂帳號 Modal 內的可編輯欄位（2026-08-24 第七輪 J1/J2）。
+///   委派管理者（RoleLevel=user + CanEditOthers=true）可以維護別人的「可視與管轄範圍」，
+///   但不得變更「管理層級」與「允許變更他人內容」—— 那兩欄就是提權本身。
+///   ⚠️ 這裡只是把 UI 收乾淨，真正的把關在後端 AccountService.UpdateAccountAsync
+///      （會強制把這兩欄寫回 DB 現值）。前端隱藏永遠不是安全邊界。
+///   ⚠️ 必須在 openAddAccountModal / editAccount 各自設定過 accRoleLevelGroup 的 display 之後才呼叫，
+///      否則會被它們覆寫回去。
+export function applyAccModalScope() {
+    const cu = appState.currentUser;
+    const isAdmin = !!(cu && String(cu.roleLevel || '').toLowerCase() === 'admin');
+
+    const lvlGroup = document.getElementById('accRoleLevelGroup');
+    const lvlSelect = document.getElementById('accRoleLevel');
+    const canEditCb = document.getElementById('accCanEditOthers');
+
+    if (!isAdmin) {
+        if (lvlGroup) lvlGroup.style.display = 'none';
+        if (lvlSelect) lvlSelect.disabled = true;
+        if (canEditCb) {
+            canEditCb.disabled = true;
+            canEditCb.title = t('acc_field_admin_only', '此欄位僅系統管理員可調整');
+        }
+    } else {
+        if (lvlSelect) lvlSelect.disabled = false;
+        if (canEditCb) { canEditCb.disabled = false; canEditCb.removeAttribute('title'); }
+    }
+}
+window.applyAccModalScope = applyAccModalScope;
+
 export function openAddAccountModal() {
     try {
         document.getElementById('accForm').reset();
@@ -46,6 +76,7 @@ export function openAddAccountModal() {
         appState.overrideFab = '';
         if (typeof window.renderAccOverridePanel === 'function') window.renderAccOverridePanel();
 
+        applyAccModalScope();
         showModalSafely('accModal');
     } catch (e) { console.error("[openAddAccountModal] 錯誤:", e); }
 }
@@ -106,6 +137,7 @@ export async function editAccount(empId) {
         if (typeof window.renderAccOverridePanel === 'function') window.renderAccOverridePanel();
         toggleAccDelegationUI(); toggleDelegationDetails();
 
+        applyAccModalScope();
         showModalSafely('accModal');
     } catch (e) { console.error("[editAccount] 錯誤:", e); }
 }

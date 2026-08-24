@@ -1,11 +1,11 @@
-﻿// === admin/misc-manage.js - AppGrid + 需求申請 + 審核 + Excel 匯出 + 圖示工具 ===
+// === admin/misc-manage.js - AppGrid + 需求申請 + 審核 + Excel 匯出 + 圖示工具 ===
 
 import { getAppItems, getCustomMenus, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings, t } from '../config.js';
 import { escHtml } from '../store.js';
 
 
 import { hideModalSafely, showModalSafely } from './modal-utils.js';
-import { batchSaveMenusAPI, deleteAppAPI, fetchInitialDataFromDB, saveAppAPI, syncDataToDB } from '../api.js';
+import { batchSaveMenusAPI, deleteAppAPI, fetchInitialDataFromDB, readApiError, saveAppAPI, syncDataToDB } from '../api.js';
 import { initDashboardUI } from '../main.js';
 import { renderSidebarMenus } from '../render/sidebar.js';
 import { renderAppGrid, renderApplyTable, renderAuditTable, renderMenuConfigTable, renderPersonalMenuManage, renderWebpageTable } from '../render/tables.js';
@@ -28,6 +28,25 @@ export function handleDrop(e, targetId, targetParentId, mode) {
     e.stopPropagation(); const tr = e.target.closest('tr'); if (tr) tr.classList.remove('drag-over');
     if (appState.dragSrcEl) appState.dragSrcEl.classList.remove('dragging');
     if (appState.dragSrcId === targetId) return false;
+
+    // ⭐️ 2026-08-24（第七輪 J6）：權限前置判斷。
+    //   `tables.js` 的 dragAttrsFor() 已經不會對無權限的列輸出 draggable，這裡是第二道防線 ——
+    //   **來源與目標兩列都必須可編輯**才准換位（只擋來源不夠：把可編輯的列拖到不可編輯的位置，
+    //   一樣會重排到別人的看板順序、一樣會吃 403）。
+    //   ⚠️ 失敗走 toast 不走 customAlert：這是「這個操作不適用」的即時回饋，不該用阻斷式視窗
+    //      （§4-前端-6）。個人版面（personal）是使用者自己的設定，不受此限。
+    if (mode === 'system' || mode === 'webpage') {
+        const canMove = (id) => {
+            if (typeof window.getMenuPermissions !== 'function') return true;
+            const menu = (getCustomMenus() || []).find(x => window.cleanId(x.id || x.MenuId) === window.cleanId(id));
+            const p = window.getMenuPermissions(id, menu && (menu.createdBy || menu.CreatedBy));
+            return !!(p && p.canEdit);
+        };
+        if (!canMove(appState.dragSrcId) || !canMove(targetId)) {
+            showToast(t('err_no_reorder_permission', '您沒有調整此看板順序的權限'), 'warning', 4000);
+            return false;
+        }
+    }
 
     if (mode === 'system') reorderSystemMenu(appState.dragSrcId, targetId, targetParentId);
     else if (mode === 'webpage') reorderWebpageMenu(appState.dragSrcId, targetId);
@@ -294,7 +313,7 @@ window.canManageCurrentAppGrid = canManageCurrentAppGrid;
 
 export function openAppGridPage(menuId, title, element) {
     appState.currentAppGridMenuId = menuId;
-    document.getElementById('app-grid-title').innerText = title || '應用集合';
+    document.getElementById('app-grid-title').innerText = title || t('wp_grid', '應用集合');
     if (typeof navTo === 'function') navTo('page-app-grid', element, title);
     const apps = getAppItems().filter(a => window.cleanId(a.menuId) === window.cleanId(menuId));
     if (typeof renderAppGrid === 'function') renderAppGrid('app-grid-container', apps);
@@ -320,6 +339,41 @@ function hasValidAppImage(icon) {
 }
 window.hasValidAppImage = hasValidAppImage;
 
+/**
+ * 依 `#appIconPreviewBox` 上記的 `data-icon-state` 重新套用圖示預覽的兩行說明文字（L5）。
+ * 這兩個元素是 JS 動態填值的，所以**不能**掛 `data-i18n`（會被 changeLanguage 步驟 1 洗回預設字串），
+ * 語系切換時必須由 changeLanguage 主動呼叫本函式。
+ */
+export function refreshIconPreviewTexts() {
+    const box = document.getElementById('appIconPreviewBox');
+    if (!box || box.classList.contains('d-none')) return;
+    const isNew = box.dataset.iconState === 'new';
+    const titleEl = document.getElementById('appIconPreviewTitle');
+    const subEl = document.getElementById('appIconPreviewSub');
+    if (titleEl) titleEl.textContent = isNew
+        ? t('icon_preview_new', '目前已選擇新圖示')
+        : t('icon_preview_current', '目前已配置專屬圖示');
+    if (subEl) subEl.textContent = isNew
+        ? t('icon_preview_new_sub', '儲存後即會替換目前圖示')
+        : t('icon_preview_current_sub', '若需更換請重新選擇檔案；若要移除圖示請點擊右方垃圾桶');
+}
+window.refreshIconPreviewTexts = refreshIconPreviewTexts;
+
+/**
+ * 同步「設定檔管理」的檔名顯示（L5）。
+ * `#configFileName` 同樣不可掛 `data-i18n`：使用者選完檔案後那格是檔名，切語言會被洗回
+ * 「沒有選擇檔案」，但 input 其實還握著檔案 —— 顯示與實際狀態不一致。
+ */
+export function syncConfigFileName() {
+    const nameEl = document.getElementById('configFileName');
+    const input = document.getElementById('configFile');
+    if (!nameEl || !input) return;
+    nameEl.innerText = (input.files && input.files.length)
+        ? input.files[0].name
+        : t('file_none', '沒有選擇檔案');
+}
+window.syncConfigFileName = syncConfigFileName;
+
 function setIconPreviewBoxVisible(visible, isNewUpload = false) {
     const previewBox = document.getElementById('appIconPreviewBox');
     if (previewBox) {
@@ -327,13 +381,9 @@ function setIconPreviewBoxVisible(visible, isNewUpload = false) {
             previewBox.classList.remove('d-none');
             previewBox.classList.add('d-flex');
             previewBox.style.setProperty('display', 'flex', 'important');
-            if (isNewUpload) {
-                if (document.getElementById('appIconPreviewTitle')) document.getElementById('appIconPreviewTitle').textContent = '目前已選擇新圖示';
-                if (document.getElementById('appIconPreviewSub')) document.getElementById('appIconPreviewSub').textContent = '儲存後即會替換目前圖示';
-            } else {
-                if (document.getElementById('appIconPreviewTitle')) document.getElementById('appIconPreviewTitle').textContent = '目前已配置專屬圖示';
-                if (document.getElementById('appIconPreviewSub')) document.getElementById('appIconPreviewSub').textContent = '若需更換請重新選擇檔案；若要移除圖示請點擊右方垃圾桶';
-            }
+            // L5：把狀態記在 DOM 上，切語言時 refreshIconPreviewTexts() 才知道該套哪一組字。
+            previewBox.dataset.iconState = isNewUpload ? 'new' : 'current';
+            refreshIconPreviewTexts();
         } else {
             previewBox.classList.remove('d-flex');
             previewBox.classList.add('d-none');
@@ -426,8 +476,9 @@ export async function saveAppItem(e) {
         if (appData) {
             let result = await saveAppAPI(isNew, appData);
             if (!result.success) {
-                if (typeof customAlert === 'function') customAlert(t('err_save_failed', '儲存失敗：') + result.message);
-                else alert("儲存失敗: " + result.message);
+                // customAlert 是本檔靜態 import 進來的，必為 function —— 不再留原生 alert() 後備
+                //（阻斷式、不套主題、且原本那句還是硬編中文，違反 CLAUDE.md §4-前端-6）。
+                customAlert(t('err_save_failed', '儲存失敗：') + result.message);
                 return false;
             }
         }
@@ -453,8 +504,7 @@ export function deleteAppItem(id) {
             // App 刪除一律走 RESTful deleteAppAPI（靜態 import，必為 function）；不再有 syncDataToDB 後備。
             let result = await deleteAppAPI(id);
             if (!result.success) {
-                if (typeof customAlert === 'function') customAlert(t('err_delete_failed', '刪除失敗：') + result.message);
-                else alert("刪除失敗: " + result.message);
+                customAlert(t('err_delete_failed', '刪除失敗：') + result.message);
                 return false;
             }
 
@@ -515,8 +565,10 @@ export async function submitApplyItem(e) {
     // ⭐️ 核心防重整
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     else if (window.event && typeof window.event.preventDefault === 'function') window.event.preventDefault();
+    const btn = e ? e.currentTarget : null;
 
     try {
+        if (btn) window.setButtonLoading(btn, true);
         const id = document.getElementById('applyReqId').value;
         const reason = document.getElementById('applyReason').value.trim();
         const reqType = document.getElementById('applyType') ? document.getElementById('applyType').value : '系統需求';
@@ -539,6 +591,8 @@ export async function submitApplyItem(e) {
 
         if (!response.ok) {
             console.error("API 回傳失敗:", response.status);
+            // K6：重新送出被擋（例：已完成的申請不可再送）時後端會回 errorCode，翻成人看得懂的話
+            customAlert(t('err_save_failed', '儲存失敗：') + await readApiError(response));
             return false;
         }
 
@@ -548,19 +602,35 @@ export async function submitApplyItem(e) {
         hideModalSafely('applyModal');
         if (typeof renderApplyTable === 'function') renderApplyTable();
         showToast(id ? t('apply_resubmitted', '需求申請已重新送出！') : t('apply_submitted', '您的需求申請已成功送出！系統管理員將盡快為您處理。'), 'success', 5000);
-    } catch (error) { console.error("[submitApplyItem] 錯誤:", error); }
+    } catch (error) {
+        console.error("[submitApplyItem] 錯誤:", error);
+        if (typeof customAlert === 'function') customAlert(t('err_save_failed', '儲存失敗：') + (error.message || error));
+    }
+    finally { if (btn) window.setButtonLoading(btn, false); }
     return false;
 }
+
+// ⭐️ 2026-08-24 第八輪 K6：後端現在會用 409 + errorCode 擋掉不合法的狀態流轉
+//   （例：想刪除非「已撤回」的申請）。舊版**完全不看回應**，失敗時只會靜默重新整理、
+//   使用者以為刪掉了其實沒有。這裡統一把 errorCode 交給 t() 呈現。
+//   L3：實作已收斂到 api.js 的 readApiError（同時支援 errorCode 與 ModelState 的 errors），
+//   本檔改為 import，不再各自留一份（同 escHtml「轉義只有一份實作」的理由）。
 
 window.deleteApplyItem = function (id) {
     if (typeof customConfirm !== 'function') return;
     customConfirm(t('confirm_delete_request', '確定要刪除此申請紀錄嗎？'), async () => {
         try {
-            await fetch('/api/Requests/' + id, { method: 'DELETE' });
+            const res = await fetch('/api/Requests/' + encodeURIComponent(id), { method: 'DELETE' });
+            if (!res.ok) {
+                customAlert(t('err_delete_failed', '刪除失敗：') + await readApiError(res));
+                return;
+            }
             await window.fetchInitialDataFromDB();
             if (typeof renderApplyTable === 'function') renderApplyTable();
+            showToast(t('request_deleted', '申請紀錄已刪除。'), 'success');
         } catch (e) {
             console.error("刪除失敗", e);
+            customAlert(t('err_delete_failed', '刪除失敗：') + (e.message || e));
         }
     });
 };
@@ -577,22 +647,31 @@ export async function submitWithdrawItem(e) {
     // ⭐️ 核心防重整
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     else if (window.event && typeof window.event.preventDefault === 'function') window.event.preventDefault();
+    const btn = e ? e.currentTarget : null;
 
     try {
+        if (btn) window.setButtonLoading(btn, true);
         const id = document.getElementById('withdrawReqId').value;
         const reason = document.getElementById('withdrawReason').value.trim();
 
-        await fetch('/api/Requests/' + id + '/Withdraw', {
+        const response = await fetch('/api/Requests/' + encodeURIComponent(id) + '/Withdraw', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ reason: reason })
         });
+        // K6：409 帶 errorCode（例：只有「待審核」可以撤回）→ 顯示可讀原因，不要只丟 HTTP 409
+        if (!response.ok) throw new Error(await readApiError(response));
 
         await window.fetchInitialDataFromDB();
-        
+
         hideModalSafely('withdrawModal');
         if (typeof renderApplyTable === 'function') renderApplyTable();
-    } catch (error) { console.error("[submitWithdrawItem] 錯誤:", error); }
+        showToast(t('apply_withdrawn', '申請已撤回。'), 'success');
+    } catch (error) {
+        console.error("[submitWithdrawItem] 錯誤:", error);
+        if (typeof customAlert === 'function') customAlert(t('err_save_failed', '儲存失敗：') + (error.message || error));
+    }
+    finally { if (btn) window.setButtonLoading(btn, false); }
     return false;
 }
 
@@ -628,17 +707,20 @@ export async function saveAuditItem(e) {
     // ⭐️ 核心防重整
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     else if (window.event && typeof window.event.preventDefault === 'function') window.event.preventDefault();
+    const btn = e ? e.currentTarget : null;
 
     try {
+        if (btn) window.setButtonLoading(btn, true);
         const id = document.getElementById('auditReqId').value;
         const status = document.getElementById('auditStatus').value;
         const reply = document.getElementById('auditReply').value.trim();
 
-        await fetch('/api/Requests/' + id + '/Audit', {
+        const response = await fetch('/api/Requests/' + encodeURIComponent(id) + '/Audit', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status: status, reply: reply })
         });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         await window.fetchInitialDataFromDB();
         hideModalSafely('auditModal');
@@ -646,7 +728,11 @@ export async function saveAuditItem(e) {
         if (typeof renderAuditTable === 'function') renderAuditTable();
         showToast(t('audit_reply_saved', '已成功儲存並同步回覆狀態給使用者！'));
 
-    } catch (error) { console.error("[saveAuditItem] 錯誤:", error); }
+    } catch (error) {
+        console.error("[saveAuditItem] 錯誤:", error);
+        if (typeof customAlert === 'function') customAlert(t('err_save_failed', '儲存失敗：') + (error.message || error));
+    }
+    finally { if (btn) window.setButtonLoading(btn, false); }
     return false;
 }
 
@@ -752,15 +838,16 @@ export async function refreshServerCache() {
         const resp = await fetch('/Settings/RefreshCache', { method: 'POST' });
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const data = await resp.json();
-        if (!data.success) throw new Error(data.message || '後端拒絕');
+        // 後端只回代碼（L3），沒有可直接顯示的中文；找不到對應譯文才退回通用句
+        if (!data.success) throw new Error(data.errorCode ? t(data.errorCode, t('err_backend_rejected', '後端拒絕')) : t('err_backend_rejected', '後端拒絕'));
 
         // 立刻重抓最新資料 + 重渲染（不需要使用者手動 F5）
         if (typeof window.fetchInitialDataFromDB === 'function') {
             await window.fetchInitialDataFromDB();
         }
         if (typeof initDashboardUI === 'function') initDashboardUI();
-        if (typeof customAlert === 'function') {
-            customAlert(escHtml(t('cache_cleared', '已清空快取並重新載入。')) + '<br><span class="small text-muted">' + escHtml(t('cache_cleared_hint', '⚠️ 若改了 RoleLevel，使用者需登出再登入才會生效。')) + '</span>', true);
+        if (typeof showToast === 'function') {
+            showToast(escHtml(t('cache_cleared', '已清空快取並重新載入。')) + '<br><span class="small text-white-50">' + escHtml(t('cache_cleared_hint', '⚠️ 若改了 RoleLevel，使用者需登出再登入才會生效。')) + '</span>', 'success', 8000, true);
         }
     } catch (e) {
         if (typeof customAlert === 'function') customAlert(t('err_clear_cache_failed', '清快取失敗：') + (e.message || e));
@@ -847,7 +934,7 @@ function runImportConfig(fileInput, file) {
         loadingOverlay = document.createElement('div');
         loadingOverlay.id = 'importLoadingOverlay';
         loadingOverlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; display:flex; flex-direction:column; justify-content:center; align-items:center; color:white; font-family:sans-serif;';
-        loadingOverlay.innerHTML = '<div class="spinner-border text-info mb-3" style="width: 3rem; height: 3rem;"></div><h2>正在讀取 Excel...</h2><p class="text-secondary">檔案較大時可能需要幾秒鐘，請稍候</p>';
+        loadingOverlay.innerHTML = `<div class="spinner-border text-info mb-3" style="width: 3rem; height: 3rem;"></div><h2>${escHtml(t('excel_reading', '正在讀取 Excel...'))}</h2><p class="text-secondary">${escHtml(t('excel_reading_sub', '檔案較大時可能需要幾秒鐘，請稍候'))}</p>`;
         document.body.appendChild(loadingOverlay);
     }
 
@@ -860,7 +947,7 @@ function runImportConfig(fileInput, file) {
                 const workbook = XLSX.read(data, { type: 'array' });
 
                 // 讀取完畢後，切換文字為「準備同步...」，接著 processAndSaveWorkbook 內部會呼叫 syncDataToDB 並自帶它的 loading 畫面
-                if(loadingOverlay) loadingOverlay.querySelector('h2').innerText = '準備同步...';
+                if(loadingOverlay) loadingOverlay.querySelector('h2').innerText = t('excel_preparing_sync', '準備同步...');
                 
                 await processAndSaveWorkbook(workbook, true);
 

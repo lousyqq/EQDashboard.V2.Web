@@ -651,6 +651,24 @@ div.dataTables_wrapper {
     --bs-btn-active-border-color: #9a2530;
 }
 
+/* ⭐️ 2026-08-24 第八輪 K5：E13 當年漏掉 .btn-outline-secondary（深淺兩個主題都漏）。
+   淺色實測「個人頁面管理 → 全部展開」在 --card-bg 上只有 4.48（差 0.02 到 AA），
+   深色更糟只有 3.81（深色的修正在本檔案下方 :root[data-theme="dark"] 區塊）。
+   淺色改用 Bootstrap 自家的 $gray-700 (#495057) → 實測 7.0+。 */
+:root:not([data-theme="dark"]) .btn-outline-secondary {
+    --bs-btn-color: #495057;
+    --bs-btn-border-color: #6c757d;
+    --bs-btn-hover-bg: #495057;
+    --bs-btn-hover-border-color: #495057;
+    --bs-btn-active-bg: #3d4348;
+    --bs-btn-active-border-color: #3d4348;
+}
+
+/* ⭐️ K5 同一輪順帶：.badge.bg-success.bg-opacity-10 + .text-success（帳號管理的「全廠區/全系統所有選單」）
+   淺色實測 3.99 —— E13 的清單裡沒有 .text-success（當時這顆徽章還不存在，同 J7「舊的通過紀錄不能當現況」）。
+   換成 Bootstrap 加深一階的 $green-700。⚠️ 一樣限定內容區/Modal，避免影響深底導覽列。 */
+:root:not([data-theme="dark"]) :is(#main-content, .modal, .offcanvas) .text-success { color: #146c43 !important; }
+
 /* DataTables 目前頁碼：Bootstrap 給白字，所以底色亮度必須夠低才達得到 4.5:1。
    淺色主題的 --primary-light (#0d6efd) 剛好 4.55:1 過關；
    深色主題的 --primary-light (#3b82f6) 只有 3.68:1 → 這裡用專屬的 token 壓深一階（#2563eb = 4.87:1）。
@@ -776,6 +794,19 @@ div.dataTables_wrapper div.dataTables_filter input {
     color: #0b1220 !important;
 }
 
+/* ⚠️ 同一個坑的另一半（J7，2026-08-24 修）：`.badge.bg-light` / `.badge.bg-white` 的底色
+   Bootstrap 在深色主題下**沒有**改（仍是 #f8f9fa / #fff），但上面的
+   `:root[data-theme="dark"] .text-dark { color: var(--text-main) }` 會把字染成近白 →
+   實測 **1.01:1，徽章等同隱形**（「看板網頁管理」類型欄的「網頁連結」、操作紀錄來源欄…）。
+   JS 樣板應改用語意類別（`bg-body-tertiary` / `text-body`），這裡是**尚未改完者的安全網**：
+   只覆寫背景、不動前景，讓 .text-primary / .text-success 等語意色仍保有辨識度
+   （#f8fafc on #334155 ≈ 9.9:1、#60a5fa ≈ 4.8:1，皆達 AA）。 */
+:root[data-theme="dark"] .badge.bg-light,
+:root[data-theme="dark"] .badge.bg-white {
+    background-color: #334155 !important;
+    border-color: var(--border-color) !important;
+}
+
 .text-purple {
     color: #6f42c1;
 }
@@ -836,6 +867,20 @@ div.dataTables_wrapper div.dataTables_filter input {
 }
 :root[data-theme="dark"] .btn-outline-danger:hover {
     background-color: #f87171;
+    color: #0f172a;
+}
+
+/* ⭐️ 2026-08-24 第八輪 K5：E13 當年只加深了 .btn-outline-primary / .btn-outline-danger，
+   **漏掉 .btn-outline-secondary** —— 它沿用 Bootstrap 原生的 #6c757d，實測「個人頁面管理 → 全部展開」
+   在 --card-bg (#1e293b) 上只有 3.81:1（未達 AA 的 4.5）。改用 slate-400 (#94a3b8) → 實測 7.0+。
+   ⚠️ 不要改成 var(--text-muted)：那條在深色是更暗的灰，會讓對比更糟。
+   （全站 11 顆，多數是純圖示的分頁鈕；純圖示不受 4.5:1 文字門檻約束，但一起加深也讓圖示更清楚。） */
+:root[data-theme="dark"] .btn-outline-secondary {
+    color: #94a3b8;
+    border-color: #94a3b8;
+}
+:root[data-theme="dark"] .btn-outline-secondary:hover {
+    background-color: #94a3b8;
     color: #0f172a;
 }
 
@@ -1260,3 +1305,7 @@ table.dataTable.table-hover tbody tr:hover {
         box-shadow: 0 4px 16px rgba(0, 0, 0, .13) !important;
         transform: translateY(-2px);
     }
+
+/* Fix modal z-index to be above top-navbar(2000) and sidebar(3000) */
+.modal { z-index: 4050 !important; }
+.modal-backdrop { z-index: 4040 !important; }

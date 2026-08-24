@@ -182,7 +182,15 @@ public class AuthController : ControllerBase
         }
         else if (!isDefaultAdmin && _authSettings.OpenAccessMode && string.Equals(account.RoleLevel, "user", StringComparison.OrdinalIgnoreCase))
         {
-            // 當開放瀏覽模式開啟且該使用者為 user，若未綁定任何角色（或曾由舊版自動建立），自動補齊所有角色並清除預設首頁設定，還原為「所有廠區可視 / 首頁未設定」
+            // 當開放瀏覽模式開啟且該使用者為 user，若未綁定任何角色（或曾由舊版自動建立），自動補齊所有角色，
+            // 還原為「所有廠區可視」。
+            //
+            // 🛡️ 這裡**絕對不可以再去刪 Map_Account_DefaultPage**（2026-08-24 第七輪 J3 修正）：
+            //    「登入預設首頁」是 admin 在帳號管理明確設定的**覆寫值**，而「角色數 = 0」正是
+            //    OpenAccessMode 下新帳號的常態 —— 舊版等於「admin 先設好首頁、使用者第一次登入就被吃掉」，
+            //    而且刪除完全沒有稽核紀錄，事後查不出是誰弄不見的（實測 normal_user 的 3 筆一次全滅）。
+            //    正確語意：沒設定 → goDefaultHome() 自動落到第一個可開啟的看板；有設定 → 覆寫；
+            //    要回到自動 → 由使用者/admin 在帳號管理把該廠區的指定清掉。登入流程不該替他們做決定。
             var existingRolesCount = await _context.MapAccountRoles.CountAsync(m => m.EmpId == account.EmpId);
             if (existingRolesCount == 0)
             {
@@ -191,11 +199,9 @@ public class AuthController : ControllerBase
                 {
                     _context.MapAccountRoles.Add(new MapAccountRole { EmpId = account.EmpId, RoleId = rId });
                 }
-                var oldDefaultPages = await _context.MapAccountDefaultPages.Where(m => m.EmpId == account.EmpId).ToListAsync();
-                if (oldDefaultPages.Count > 0) _context.MapAccountDefaultPages.RemoveRange(oldDefaultPages);
 
                 await _context.SaveChangesAsync();
-                _logger.LogInformation("✅ WhoAmI (OpenAccessMode=true) 自動為既有 user 補齊角色權限並重設預設首頁：{EmpId}", account.EmpId);
+                _logger.LogInformation("✅ WhoAmI (OpenAccessMode=true) 自動為既有 user 補齊角色權限（預設首頁設定保持不動）：{EmpId}", account.EmpId);
             }
         }
 
@@ -476,6 +482,14 @@ public class AuthController : ControllerBase
             new(ClaimTypes.Role, (account.RoleLevel ?? "user").ToLower()),
             new("LoginSource", loginSource)
         };
+        // ⚠️ 這段必須與 WhoAmI 分支「一字不差」地一致（2026-08-24 第七輪修正）：
+        //    原本只有 WhoAmI 會發 CanEditOthers claim，走手動 / LDAP 登入的委派管理者拿不到 →
+        //    CanManageAccounts policy 直接不成立 → 帳號管理整頁 403。
+        //    兩條登入路徑各自組 claims 是既有設計，新增任何 claim 時**兩處都要加**。
+        if (account.CanEditOthers == true)
+        {
+            claims.Add(new Claim("CanEditOthers", "true"));
+        }
 
         var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
 

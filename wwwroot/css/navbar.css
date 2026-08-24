@@ -2,7 +2,7 @@
 /* ================= V27 雙列導覽列 - 極致壓縮空間 ================= */
 .top-navbar-group {
     background-color: var(--navbar-bg);
-    z-index: 2000;
+    z-index: 1030;
     display: flex;
     flex-direction: column;
     border-bottom: 1px solid rgba(255,255,255,0.05);

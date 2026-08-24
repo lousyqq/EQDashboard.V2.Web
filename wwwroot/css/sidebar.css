@@ -39,7 +39,7 @@
     border-right: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
-    z-index: 1500;
+    z-index: 1020;
     flex-shrink: 0;
     box-shadow: 2px 0 5px rgba(0,0,0,0.02);
     transition: margin-left 0.4s cubic-bezier(0.4, 0, 0.2, 1);
@@ -183,7 +183,7 @@ body.sidebar-hidden #sidebar {
 /* 隱形喚醒邊緣 */
 .edge-trigger {
     position: fixed;
-    z-index: 9999;
+    z-index: 1025;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.3s;

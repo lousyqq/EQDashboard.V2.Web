@@ -97,7 +97,7 @@ public class PersonalSettingsController : ControllerBase
 
         // ⚠️ 呼叫 InvalidateVolatileDataCache 僅清除個人相關快取，不影響全域設定快取，降低 DB 負載
         _settingsService.InvalidateVolatileDataCache();
-        return Ok(new { success = true, message = "個人設定已儲存" });
+        return Ok(new { success = true, messageCode = "personal_settings_saved" });
     }
 
     /// <summary>

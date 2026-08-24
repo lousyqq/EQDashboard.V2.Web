@@ -158,11 +158,11 @@ public class RolesController : ControllerBase
 
 public class RoleDto
 {
-    [Required(ErrorMessage = "ID 必填")]
+    [Required(ErrorMessage = "val_id_required")]
     [StringLength(50)]
     public string Id { get; set; } = string.Empty;
     
-    [Required(ErrorMessage = "群組名稱必填")]
+    [Required(ErrorMessage = "val_groupname_required")]
     [StringLength(100)]
     public string GroupName { get; set; } = string.Empty;
     

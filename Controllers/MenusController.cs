@@ -71,11 +71,11 @@ public class MenusController : ControllerBase
 
 public class MenuDto : IValidatableObject
 {
-    [Required(ErrorMessage = "ID 必填")]
+    [Required(ErrorMessage = "val_id_required")]
     [StringLength(50)]
     public string Id { get; set; } = string.Empty;
     
-    [Required(ErrorMessage = "名稱必填")]
+    [Required(ErrorMessage = "val_name_required")]
     [StringLength(100)]
     public string? Name { get; set; }
     
@@ -98,7 +98,7 @@ public class MenuDto : IValidatableObject
     
     // ⚠️ Icon 可能是 FA class (e.g. "fas fa-folder") 或 base64 data URI ("data:image/jpeg;base64,...")，
     //    前端 compressImageFile 會壓到 80×80 約 5-8 KB，舊版鎖 100 char 會直接 400。放寬到 200KB。
-    [StringLength(200_000, ErrorMessage = "Icon 不可超過 200KB")]
+    [StringLength(200_000, ErrorMessage = "val_icon_too_large")]
     public string? Icon { get; set; }
 
     [StringLength(50)]
@@ -119,17 +119,17 @@ public class MenuDto : IValidatableObject
     public string? ParentId { get; set; }
 
     // 一支 menu 不會掛在 100+ 個父節點下；卡個合理上限避免被塞爆。
-    [MaxLength(100, ErrorMessage = "ParentIds 最多 100 個")]
+    [MaxLength(100, ErrorMessage = "val_parentids_max")]
     public List<string>? ParentIds { get; set; }
 
     public Dictionary<string, int>? ParentOrders { get; set; }
 
     // Menu-level ACL (空 list = 不卡控)。卡 1000 筆上限：實務上不會有單一 menu 對 1000+ 工號做白/黑名單，
     // 真到那規模應該改設計用 role / group。
-    [MaxLength(1000, ErrorMessage = "AllowedEmpIds 最多 1000 個")]
+    [MaxLength(1000, ErrorMessage = "val_allowedemp_max")]
     public List<string>? AllowedEmpIds { get; set; }
 
-    [MaxLength(1000, ErrorMessage = "DeniedEmpIds 最多 1000 個")]
+    [MaxLength(1000, ErrorMessage = "val_deniedemp_max")]
     public List<string>? DeniedEmpIds { get; set; }
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)

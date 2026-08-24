@@ -128,7 +128,7 @@ public class SettingsController : Controller
             //   前端 fetchInitialDataFromDB 已用 `if (!response.ok)` 處理非 2xx，故安全；
             //   保留 body 的 {error,message} 供除錯，但狀態碼語意正確 → 監控/代理也看得懂。
             Response.StatusCode = StatusCodes.Status500InternalServerError;
-            return Json(new { error = true, message = "讀取初始資料時發生錯誤，請聯繫系統管理員。" });
+            return Json(new { error = true, errorCode = "err_initial_data_failed" });
         }
     }
 
@@ -139,7 +139,7 @@ public class SettingsController : Controller
     public JsonResult RefreshCache()
     {
         _settingsService.InvalidateInitialDataCache();
-        return Json(new { success = true, message = "已清空快取，下次讀取資料會直接打 DB。請重新整理網頁。" });
+        return Json(new { success = true, messageCode = "cache_cleared" });
     }
 
     [HttpPost]
@@ -153,15 +153,24 @@ public class SettingsController : Controller
             var payload = JsonSerializer.Deserialize<Dictionary<string, List<Dictionary<string, JsonElement>>>>(json);
 
             if (payload == null)
-                return Json(new { success = false, message = "無效的 JSON 資料" });
+                return Json(new { success = false, errorCode = "err_invalid_json" });
 
-            var (success, message) = await _settingsService.SaveDataAsync(payload);
-            return Json(new { success, message });
+            var result = await _settingsService.SaveDataAsync(payload);
+            // messageCode/errorCode 都是 i18n key；detail 是刻意不翻譯的診斷字串（SQL 例外、表名）。
+            return Json(new
+            {
+                success = result.Success,
+                messageCode = result.Success ? result.MessageCode : null,
+                errorCode = result.Success ? null : result.MessageCode,
+                detail = result.Detail,
+                count = result.Count,
+                skipped = result.Skipped
+            });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "SaveData 錯誤");
-            return Json(new { success = false, message = "伺服器寫入發生錯誤，請聯繫系統管理員。" });
+            return Json(new { success = false, errorCode = "err_server_write_failed" });
         }
     }
 
@@ -175,24 +184,24 @@ public class SettingsController : Controller
             // EmpId 從 Cookie 的 NameIdentifier claim 取，不信前端 body — 否則登入後仍可冒名灌別人的計數
             var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
             if (string.IsNullOrWhiteSpace(empId))
-                return Json(new { success = false, message = "未登入" });
+                return Json(new { success = false, errorCode = "err_not_logged_in" });
 
             // Drain body 即可 (不再使用其內容)
             using var reader = new StreamReader(Request.Body);
             _ = await reader.ReadToEndAsync();
 
-            var (success, loginCount, lastLoginTime, errorMessage) =
+            var (success, loginCount, lastLoginTime, errorCode) =
                 await _settingsService.UpdateLoginStatsAsync(empId);
 
             if (success)
                 return Json(new { success, loginCount, lastLoginTime });
             else
-                return Json(new { success, message = errorMessage });
+                return Json(new { success, errorCode });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "UpdateLoginStats 錯誤");
-            return Json(new { success = false, message = "更新登入紀錄失敗，請聯繫系統管理員。" });
+            return Json(new { success = false, errorCode = "err_login_stats_failed" });
         }
     }
 

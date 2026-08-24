@@ -37,7 +37,7 @@ export function generateSidebarMenuItem(menu, allMenus, level, forceExpand = tru
         actionAttr = `data-action="activate-menu" data-id="${window.escapeHTML(menu.id)}"`;
     }
 
-    let dName = menu.displayName || menu.name || '未命名選單';
+    let dName = menu.displayName || menu.name || t('menu_unnamed', '未命名選單');
     if (typeof i18n !== 'undefined' && i18n[appState.currentLang] && i18n[appState.currentLang]['dyn_' + menu.id] && !menu.isEdited) {
         dName = i18n[appState.currentLang]['dyn_' + menu.id];
     }
@@ -104,7 +104,7 @@ window.renderUserDropdown = function () {
     let srcBadge = '';
     if (src === 'windows') srcBadge = ' <span class="badge bg-info text-white ms-1" style="font-size:0.6rem; vertical-align:middle;"><i class="fab fa-windows me-1"></i>' + t('login_src_windows', 'Windows') + '</span>';
     else if (src === 'manual') srcBadge = ' <span class="badge bg-secondary text-white ms-1" style="font-size:0.6rem; vertical-align:middle;"><i class="fas fa-key me-1"></i>' + t('login_src_manual', '手動') + '</span>';
-    else if (src === 'test' || src === 'simulated') srcBadge = ' <span class="badge bg-warning text-dark ms-1" style="font-size:0.6rem; vertical-align:middle;"><i class="fas fa-vial me-1"></i>' + t('login_src_test', '模擬') + '</span>';
+    else if (src === 'test' || src === 'simulated') srcBadge = ' <span class="badge bg-warning-subtle text-warning-emphasis ms-1" style="font-size:0.6rem; vertical-align:middle;"><i class="fas fa-vial me-1"></i>' + t('login_src_test', '模擬') + '</span>';
     else if (src === 'emergency') srcBadge = ' <span class="badge bg-danger text-white ms-1" style="font-size:0.6rem; vertical-align:middle;"><i class="fas fa-shield-alt me-1"></i>' + t('login_src_emergency', '緊急') + '</span>';
 
     setText('user-name', appState.currentUser.id || '');
@@ -161,9 +161,9 @@ window.renderFabSwitcher = function () {
     fabMenu.innerHTML = '';
 
     if (fabs.length === 0) {
-        fabMenu.innerHTML = '<li><span class="dropdown-item text-muted px-3 py-2"><i class="fas fa-exclamation-circle me-1"></i>無可用廠區資料</span></li>';
-        if (fabNameDisplay) fabNameDisplay.innerText = '無';
-        if (homeFabDisplay) homeFabDisplay.innerText = '無';
+        fabMenu.innerHTML = `<li><span class="dropdown-item text-muted px-3 py-2"><i class="fas fa-exclamation-circle me-1"></i>${t('fab_none_available', '無可用廠區資料')}</span></li>`;
+        if (fabNameDisplay) fabNameDisplay.innerText = t('none', '無');
+        if (homeFabDisplay) homeFabDisplay.innerText = t('none', '無');
         return;
     }
 

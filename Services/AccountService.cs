@@ -10,14 +10,21 @@ public class AccountService : IAccountService
 {
     private readonly AppDbContext _context;
     private readonly ISettingsService _settingsService;
+    private readonly IMenuAuthService _menuAuthService;
+    private readonly ILogger<AccountService> _logger;
 
-    public AccountService(AppDbContext context, ISettingsService settingsService)
+    public AccountService(AppDbContext context, ISettingsService settingsService, IMenuAuthService menuAuthService, ILogger<AccountService> logger)
     {
         _context = context;
         _settingsService = settingsService;
+        _menuAuthService = menuAuthService;
+        _logger = logger;
     }
 
-    public async Task<(List<object> items, int total)> GetAccountsPagedAsync(int page, int pageSize, string? q)
+    private static bool IsAdminLevel(string? roleLevel)
+        => string.Equals(roleLevel, "admin", StringComparison.OrdinalIgnoreCase);
+
+    public async Task<(List<object> items, int total)> GetAccountsPagedAsync(int page, int pageSize, string? q, bool isAdmin)
     {
         // 分頁/搜尋一律下推 DB（WHERE + Skip/Take），不再把全表撈進記憶體再過濾。
         if (page < 1) page = 1;
@@ -25,6 +32,11 @@ public class AccountService : IAccountService
         if (pageSize > 100) pageSize = 100; // 上限保護：避免惡意 pageSize 把全表一次撈出
 
         var query = _context.Accounts.AsNoTracking();
+
+        // 🛡️ 委派管理者不得檢視 admin 帳號（2026-08-24 第七輪 J1/J2）。
+        //   必須在 CountAsync 之前就套用，否則 total 會含被隱藏的列 → 前端分頁出現空白頁。
+        if (!isAdmin)
+            query = query.Where(a => a.RoleLevel == null || a.RoleLevel.ToLower() != "admin");
         if (!string.IsNullOrWhiteSpace(q))
         {
             var term = q.Trim();
@@ -104,7 +116,7 @@ public class AccountService : IAccountService
         }).Cast<object>().ToList();
     }
 
-    public async Task<object?> GetAccountDetailsAsync(string empId)
+    public async Task<object?> GetAccountDetailsAsync(string empId, bool isAdmin)
     {
         var a = await _context.Accounts
             .AsNoTracking()
@@ -117,6 +129,9 @@ public class AccountService : IAccountService
             .FirstOrDefaultAsync(x => x.EmpId == empId);
 
         if (a == null) return null;
+
+        // 🛡️ 委派管理者查 admin 帳號 → 一律當作不存在（回 404 而非 403，不洩漏「這個 admin 存在」）。
+        if (!isAdmin && IsAdminLevel(a.RoleLevel)) return null;
 
         return new
         {
@@ -148,15 +163,18 @@ public class AccountService : IAccountService
         return dict;
     }
 
-    public async Task<(bool success, string errorMessage)> CreateAccountAsync(AccountFullDto dto)
+    public async Task<AccountOperationResult> CreateAccountAsync(AccountFullDto dto, bool isAdmin)
     {
+        // 🛡️ 新增帳號一律 admin only：建帳等於決定「誰能進系統」，不在委派管理者的職權內。
+        if (!isAdmin) return AccountOperationResult.Denied("僅系統管理員可新增帳號");
+
         if (await _context.Accounts.AnyAsync(a => a.EmpId == dto.EmpId))
-            return (false, "帳號工號已存在");
+            return AccountOperationResult.Bad("帳號工號已存在");
 
         // ⚠️ 資料完整性：先驗證所有要寫入的 RoleId / MenuId 都存在（對齊 Roles/Fabs controller 的 1.3 預檢），
         //   stale id 直接回 400 + 明確訊息，避免撞 FK 拋 500。
         var (refsOk, refsErr) = await ValidateMappingRefsAsync(dto);
-        if (!refsOk) return (false, refsErr);
+        if (!refsOk) return AccountOperationResult.Bad(refsErr);
 
         var account = new Account
         {
@@ -173,7 +191,7 @@ public class AccountService : IAccountService
         // Create 為單一 SaveChanges（本身即原子）；mappings 與 account 同一交易寫入。
         await _context.SaveChangesAsync();
         _settingsService.InvalidateInitialDataCache();
-        return (true, string.Empty);
+        return AccountOperationResult.Ok();
     }
 
     /// <summary>
@@ -216,7 +234,111 @@ public class AccountService : IAccountService
         return (true, string.Empty);
     }
 
-    public async Task<(bool success, string errorMessage, bool notFound)> UpdateAccountAsync(string empId, AccountFullDto dto)
+    /// <summary>
+    /// 🛡️ 主從關係收斂（2026-08-24 第七輪 J1）：把委派管理者提交的 DTO 就地改寫成
+    ///   「呼叫者範圍內的新值 ∪ 呼叫者範圍外的原值」。
+    ///
+    /// 兩個方向都要擋，缺一不可：
+    ///   ① 往上：不可授出自己沒有的權限（子集規則）—— 委派 A 廠區的人最多只能把 A 廠區授權給別人。
+    ///   ② 往下：不可拔掉自己範圍外的既有授權 —— Update 是「先刪後寫」全量覆寫，若只做 ①，
+    ///      委派者送出一份「看不到 role_3」的表單就會把 admin 給的 role_3 靜默刪掉（降權攻擊）。
+    /// 因此範圍外的既有列一律原封抄回 DTO，範圍內的才依提交值重建。
+    /// </summary>
+    private async Task ApplyDelegationScopeAsync(AccountFullDto dto, Account account, string callerEmpId)
+    {
+        var callerRoles = (await _context.MapAccountRoles.AsNoTracking()
+                .Where(m => m.EmpId == callerEmpId).Select(m => m.RoleId).ToListAsync())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // menuId → 呼叫者是否可授出。CanManageStructureAsync 已是「自己建立 ∪ 委派節點 ∪ 委派子樹」的
+        //   唯一事實來源（與前端 getMenuPermissions 對齊），此處直接複用、不要另寫一套判斷。
+        //   結果快取：同一次更新會對同一 menuId 問很多次（roles/manage/default/extra/deny）。
+        var grantCache = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        async Task<bool> CanGrant(string? menuId)
+        {
+            if (string.IsNullOrWhiteSpace(menuId)) return false;
+            if (grantCache.TryGetValue(menuId, out var cached)) return cached;
+            var ok = await _menuAuthService.CanManageStructureAsync(callerEmpId, menuId, false);
+            grantCache[menuId] = ok;
+            return ok;
+        }
+
+        // --- 角色（可視群組版面）---
+        var existingRoles = account.MapAccountRoles?.Select(m => m.RoleId).ToList() ?? new List<string>();
+        var mergedRoles = existingRoles.Where(r => !callerRoles.Contains(r))                       // 範圍外 → 保留
+            .Concat((dto.AssignedRoles ?? new List<string>()).Where(r => callerRoles.Contains(r))) // 範圍內 → 依提交
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var droppedRoles = (dto.AssignedRoles ?? new List<string>()).Where(r => !callerRoles.Contains(r)).ToList();
+        dto.AssignedRoles = mergedRoles;
+
+        // --- 委派目錄（ManageableMenus）---
+        var mergedManage = new List<string>();
+        foreach (var m in account.MapAccountManageMenus?.Select(x => x.MenuId) ?? Enumerable.Empty<string>())
+            if (!await CanGrant(m)) mergedManage.Add(m);
+        var droppedManage = new List<string>();
+        foreach (var m in dto.ManageableMenus ?? new List<string>())
+        {
+            if (await CanGrant(m)) mergedManage.Add(m);
+            else droppedManage.Add(m);
+        }
+        dto.ManageableMenus = mergedManage.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+        // --- 各廠區預設首頁（fabId → menuId）---
+        //   槽位鎖定：既有值落在呼叫者範圍外時，整個廠區槽位不接受覆寫（那是 admin 指定的首頁）。
+        var finalDefaults = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in account.MapAccountDefaultPages ?? Enumerable.Empty<MapAccountDefaultPage>())
+        {
+            if (string.IsNullOrWhiteSpace(kv.MenuId)) continue;   // 空值不是有效設定，不該把槽位鎖死
+            if (!await CanGrant(kv.MenuId)) finalDefaults[kv.FabId] = kv.MenuId;
+        }
+        foreach (var kv in dto.DefaultPages ?? new Dictionary<string, string>())
+        {
+            if (finalDefaults.ContainsKey(kv.Key)) continue;      // 鎖住的槽位
+            if (!string.IsNullOrWhiteSpace(kv.Value) && await CanGrant(kv.Value)) finalDefaults[kv.Key] = kv.Value;
+        }
+        dto.DefaultPages = finalDefaults;
+
+        // --- per-fab 個別覆寫 ---
+        dto.ExtraMenus = await MergeOverridesAsync(
+            account.MapAccountExtraMenus?.Select(m => (m.FabId, m.MenuId)), dto.ExtraMenus, CanGrant);
+        dto.DenyMenus = await MergeOverridesAsync(
+            account.MapAccountDenyMenus?.Select(m => (m.FabId, m.MenuId)), dto.DenyMenus, CanGrant);
+
+        if (droppedRoles.Count > 0 || droppedManage.Count > 0)
+        {
+            // 靜默忽略（不回 400）是刻意的：前端挑選器已只呈現範圍內的項目，會走到這裡的多半是
+            //   停留過久的舊分頁或直打 API。但必須留紀錄，否則越權嘗試完全沒有痕跡。
+            _logger.LogWarning("⚠️ 委派管理者 {Caller} 更新 {Target} 時，超出授權範圍的指派已被忽略：roles=[{Roles}] manageMenus=[{Menus}]",
+                callerEmpId, dto.EmpId, string.Join(",", droppedRoles), string.Join(",", droppedManage));
+        }
+    }
+
+    /// <summary>per-fab 覆寫（extra/deny）的主從合併：範圍外的既有 (fab, menu) 保留、範圍內的依提交值重建。</summary>
+    private static async Task<Dictionary<string, List<string>>> MergeOverridesAsync(
+        IEnumerable<(string FabId, string MenuId)>? existing,
+        Dictionary<string, List<string>>? submitted,
+        Func<string?, Task<bool>> canGrant)
+    {
+        var result = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+
+        void Add(string fabId, string menuId)
+        {
+            if (string.IsNullOrWhiteSpace(fabId) || string.IsNullOrWhiteSpace(menuId)) return;
+            if (!result.TryGetValue(fabId, out var list)) { list = new List<string>(); result[fabId] = list; }
+            if (!list.Contains(menuId, StringComparer.OrdinalIgnoreCase)) list.Add(menuId);
+        }
+
+        foreach (var (fabId, menuId) in existing ?? Enumerable.Empty<(string, string)>())
+            if (!await canGrant(menuId)) Add(fabId, menuId);
+
+        foreach (var kv in submitted ?? new Dictionary<string, List<string>>())
+            foreach (var menuId in kv.Value ?? new List<string>())
+                if (await canGrant(menuId)) Add(kv.Key, menuId);
+
+        return result;
+    }
+
+    public async Task<AccountOperationResult> UpdateAccountAsync(string empId, AccountFullDto dto, string callerEmpId, bool isAdmin)
     {
         // ⚠️ 強制 dto.EmpId = path 的 empId。
         //   原本 bug：UpdateAccountMappings 用 dto.EmpId 寫到 Map_Account_*，但找 account 用 path 的 empId。
@@ -236,19 +358,38 @@ public class AccountService : IAccountService
             .AsSplitQuery() // 5 個 collection-Include 避免 cartesian 相乘
             .FirstOrDefaultAsync(a => a.EmpId == empId);
 
-        if (account == null) return (false, "找不到指定的帳號", true); // 真的不存在 → 404
+        if (account == null) return AccountOperationResult.Missing("找不到指定的帳號"); // 真的不存在 → 404
+
+        // 🛡️ 委派管理者（RoleLevel=user + CanEditOthers=true）的三道護欄（2026-08-24 第七輪 J1）。
+        //   在此之前 Service 完全不知道呼叫者是誰，只要通過 CanManageAccounts policy 就能把任何人
+        //   （含自己）的 RoleLevel 改成 admin —— 實測可自我提權。
+        //   ⚠️ 必須排在下方「admin 帳號防降級」之前：否則委派者對 admin 帳號送出降級請求會先拿到 400，
+        //      等於用錯誤碼確認了「這個帳號是內建管理員」。越權一律 403，語意才乾淨。
+        if (!isAdmin)
+        {
+            if (IsAdminLevel(account.RoleLevel))
+                return AccountOperationResult.Denied("委派管理者不可編輯系統管理員帳號");
+
+            // 權限欄位一律忽略提交值、強制維持 DB 現值（不回 400：表單本來就不該送這兩欄，
+            //   舊分頁或直打 API 送了也只是被無視，不需要讓合法編輯整筆失敗）。
+            dto.RoleLevel = account.RoleLevel;
+            dto.CanEditOthers = account.CanEditOthers == true;
+
+            await ApplyDelegationScopeAsync(dto, account, callerEmpId);
+        }
 
         if (string.Equals(empId, "admin", StringComparison.OrdinalIgnoreCase))
         {
-            if (!string.Equals(dto.RoleLevel, "admin", StringComparison.OrdinalIgnoreCase))
-                return (false, "系統預設管理員 (admin) 不可被降級", false); // 策略拒絕、帳號存在 → 400
+            if (!IsAdminLevel(dto.RoleLevel))
+                return AccountOperationResult.Bad("系統預設管理員 (admin) 不可被降級"); // 策略拒絕、帳號存在 → 400
         }
 
         // ⚠️ 資料完整性：先驗證所有 RoleId / MenuId 都存在（對齊 Roles/Fabs controller 的 1.3 預檢）。
         //   下方「刪舊 mappings → 寫新 mappings」必須整批原子，否則 stale id 撞 FK 會在刪除已 commit 後失敗 →
         //   帳號 mappings 被清空、權限全失且無法回復。先預檢可把常見 stale id 擋成清楚的 400。
+        //   ⚠️ 必須在 ApplyDelegationScopeAsync **之後**跑：收斂後的 DTO 才是真正要寫進 DB 的內容。
         var (refsOk, refsErr) = await ValidateMappingRefsAsync(dto);
-        if (!refsOk) return (false, refsErr, false); // 驗證失敗（stale id）、帳號存在 → 400
+        if (!refsOk) return AccountOperationResult.Bad(refsErr); // 驗證失敗（stale id）、帳號存在 → 400
 
         account.Name = dto.Name;
         account.Department = dto.Department;
@@ -286,11 +427,15 @@ public class AccountService : IAccountService
         });
 
         _settingsService.InvalidateInitialDataCache();
-        return (true, string.Empty, false);
+        return AccountOperationResult.Ok();
     }
 
-    public async Task<(bool success, string errorMessage, string? backupJson)> DeleteAccountAsync(string empId, string? currentEmpId = null)
+    public async Task<AccountOperationResult> DeleteAccountAsync(string empId, string? currentEmpId, bool isAdmin)
     {
+        // 🛡️ 刪除帳號一律 admin only：刪帳號會連帶清掉 Map_Account_* 與 PersonalSettings，
+        //   是本系統破壞性最高的單一操作，不在委派管理者的職權內。
+        if (!isAdmin) return AccountOperationResult.Denied("僅系統管理員可刪除帳號");
+
         var account = await _context.Accounts
             .Include(a => a.MapAccountRoles)
             .Include(a => a.MapAccountManageMenus)
@@ -300,14 +445,14 @@ public class AccountService : IAccountService
             .AsSplitQuery() // 5 個 collection-Include 避免 cartesian 相乘
             .FirstOrDefaultAsync(a => a.EmpId == empId);
 
-        if (account == null) return (false, "找不到該帳號", null);
+        if (account == null) return AccountOperationResult.Missing("找不到該帳號");
 
         if (string.Equals(empId, "admin", StringComparison.OrdinalIgnoreCase))
-            return (false, "系統預設管理員 (admin) 不可被刪除", null);
+            return AccountOperationResult.Bad("系統預設管理員 (admin) 不可被刪除");
 
         // 🛡️ 擋自刪：避免 admin 把自己刪了之後 cookie 還在但 DB 已查無，後續所有 [Authorize] 查 DB 都會踩 NotFound
         if (!string.IsNullOrEmpty(currentEmpId) && string.Equals(empId, currentEmpId, StringComparison.OrdinalIgnoreCase))
-            return (false, "不可刪除目前登入中的帳號", null);
+            return AccountOperationResult.Bad("不可刪除目前登入中的帳號");
 
         // 🛡️ 擋最後一個 admin：刪掉後若整個系統剩 0 個 RoleLevel='admin' 帳號 → 永久失去管理員、需改 DB 救援
         if (string.Equals(account.RoleLevel, "admin", StringComparison.OrdinalIgnoreCase))
@@ -316,7 +461,7 @@ public class AccountService : IAccountService
                 .Where(a => a.EmpId != empId && a.RoleLevel != null && a.RoleLevel.ToLower() == "admin")
                 .CountAsync();
             if (remainingAdmins == 0)
-                return (false, "不可刪除系統中唯一的管理員帳號", null);
+                return AccountOperationResult.Bad("不可刪除系統中唯一的管理員帳號");
         }
 
         if (account.MapAccountRoles != null && account.MapAccountRoles.Count > 0)
@@ -338,7 +483,7 @@ public class AccountService : IAccountService
         _context.Accounts.Remove(account);
         await _context.SaveChangesAsync();
         _settingsService.InvalidateInitialDataCache();
-        return (true, string.Empty, backupJson);
+        return AccountOperationResult.Ok(backupJson);
     }
 
     private void UpdateAccountMappings(AccountFullDto dto)

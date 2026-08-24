@@ -311,12 +311,12 @@ window.tbAddLink = function (container, menuId = null, opts) {
     const draggable = opts.draggable !== undefined ? opts.draggable : window.tbCanReorder();
     const removable = opts.removable !== undefined ? opts.removable : true;
     let div = document.createElement('div');
-    div.className = 'd-flex align-items-center mb-2 bg-white border rounded p-2 shadow-sm tb-item tb-link';
+    div.className = 'd-flex align-items-center mb-2 bg-body border rounded p-2 shadow-sm tb-item tb-link';
     div.setAttribute('data-type', 'link');
     if (draggable) div.setAttribute('draggable', 'true');
     const handleHtml = draggable
         ? '<i class="fas fa-grip-vertical text-muted me-3 cursor-move tb-drag-handle" style="cursor: grab;"></i>'
-        : '<i class="fas fa-lock text-muted me-3" style="opacity:0.3;" title="${t('err_no_edit_others', '您沒有變更他人內容的權限')}"></i>';
+        : `<i class="fas fa-lock text-muted me-3" style="opacity:0.3;" title="${t('err_no_edit_others', '您沒有變更他人內容的權限')}"></i>`;
     const removeBtnHtml = removable
         ? '<button type="button" class="btn btn-sm text-danger border-0 ms-2" onclick="this.closest(\'.tb-item\').remove()"><i class="fas fa-times"></i></button>'
         : '';
@@ -339,13 +339,13 @@ window.tbAddFolder = function (container, folderName = '', folderId = '', opts) 
     const nameEditable = opts.nameEditable !== undefined ? opts.nameEditable : true;
     const canAddChild = opts.canAddChild !== undefined ? opts.canAddChild : true;
     let div = document.createElement('div');
-    div.className = 'mb-2 bg-white border border-warning rounded p-2 shadow-sm tb-item tb-folder';
+    div.className = 'mb-2 bg-body border border-warning rounded p-2 shadow-sm tb-item tb-folder';
     div.setAttribute('data-type', 'folder');
     div.setAttribute('data-id', folderId);
     if (draggable) div.setAttribute('draggable', 'true');
     const handleHtml = draggable
         ? '<i class="fas fa-grip-vertical text-muted me-3 cursor-move tb-drag-handle" style="cursor: grab;"></i>'
-        : '<i class="fas fa-lock text-muted me-3" style="opacity:0.3;" title="您沒有變更他人內容的權限"></i>';
+        : `<i class="fas fa-lock text-muted me-3" style="opacity:0.3;" title="${t('err_no_edit_others', '您沒有變更他人內容的權限')}"></i>`;
     const removeBtnHtml = removable
         ? '<button type="button" class="btn btn-sm btn-outline-danger border-0 ms-2" onclick="this.closest(\'.tb-item\').remove()"><i class="fas fa-trash-alt me-1"></i>' + t('btn_remove_group', '移除群組') + '</button>'
         : '';
@@ -356,7 +356,7 @@ window.tbAddFolder = function (container, folderName = '', folderId = '', opts) 
         <div class="d-flex align-items-center mb-2">
             ${handleHtml}
             <i class="fas fa-folder text-warning me-2 fs-5"></i>
-            <input type="text" class="form-control form-control-sm flex-grow-1 border-warning fw-bold text-dark tb-folder-name" value="${window.escapeHTML(folderName)}" placeholder="${t('ph_group_name', '群組名稱')}" ${nameEditable ? '' : 'readonly'}>
+            <input type="text" class="form-control form-control-sm flex-grow-1 border-warning fw-bold text-body-emphasis tb-folder-name" value="${window.escapeHTML(folderName)}" placeholder="${t('ph_group_name', '群組名稱')}" ${nameEditable ? '' : 'readonly'}>
             ${removeBtnHtml}
         </div>
         <div class="tb-children ps-4 ms-2 border-start border-warning border-2 pb-1 pt-1" style="min-height: 30px;"></div>
@@ -464,6 +464,31 @@ export function parseTreeDOM(container, parentId) {
     return results;
 }
 
+// ⭐️ 2026-08-24（第七輪 J5）：依「呼叫者對這個節點本身的權限」決定 Modal 上半部（節點自身欄位）是否可編輯。
+//   `isNodeSelfEditable` 為 false ＝ 使用者只是「祖先被路過」，他的委派範圍在更底下的子樹。
+//   ⚠️ 這是 UX 閘門不是安全邊界（後端 BatchUpdateMenusAsync 會逐筆檢查），但**一定要做** ——
+//      後端是「任一筆不合格就整批拒絕」，讓人改了不能改的欄位，等於連他合法的子樹變更也一起賠掉。
+//   ⚠️ `window.__nodeModalSelfEditable` 要給 saveMenuNodeItem 讀：唯讀時不可把表單值寫回 mObj、
+//      也不可把它標成 _wasTouched，否則它還是會被塞進 batch payload。
+function applyNodeModalScope(menuObj) {
+    const perms = menuObj ? window.getMenuPermissions(menuObj.id, menuObj.createdBy) : null;
+    const selfEditable = !menuObj || !!(perms && (perms.canEdit || perms.canManageStructure));
+    window.__nodeModalSelfEditable = selfEditable;
+
+    const selfFieldIds = ['nodeName', 'nodeDisplayName', 'nodeUrl', 'nodeTarget', 'nodeDescription', 'nodeKeywords', 'nodeAllowedEmpIds', 'nodeDeniedEmpIds'];
+    selfFieldIds.forEach(fid => {
+        const el = document.getElementById(fid);
+        if (el) el.disabled = !selfEditable;
+    });
+    document.querySelectorAll('#nodeForm input[name="nodeMode"]').forEach(el => { el.disabled = !selfEditable; });
+
+    const hint = document.getElementById('nodeScopeHint');
+    if (hint) {
+        hint.style.display = selfEditable ? 'none' : '';
+        if (!selfEditable) hint.textContent = t('menu_scope_children_only', '您只被委派此目錄底下的子項目：上方欄位為唯讀，請在下方樹狀結構調整您管轄的部分。');
+    }
+}
+
 export function openAddMenuNodeModal(id = null) {
     try {
         document.getElementById('nodeForm').reset();
@@ -511,10 +536,15 @@ export function openAddMenuNodeModal(id = null) {
                     if (rootBtns) rootBtns.style.display = perms.canAddChild ? 'flex' : 'none';
                     buildTreeUI(container, m.id);
                 }
+                // ⭐️ 2026-08-24（第七輪 J5）：只有「子孫委派」而管不動這一列本身的人（isAncestor），
+                //   進來是為了走到自己的子樹 —— 這一列自己的欄位必須鎖住，否則他改了會整批 403、
+                //   連同子樹的合法變更一起失敗（後端 BatchUpdateMenusAsync 是**任一筆不合格就整批拒絕**）。
+                applyNodeModalScope(m);
             }
         } else {
             const rootBtns = document.getElementById('tbRootBtnsContainer');
             if (rootBtns) rootBtns.style.display = 'flex';
+            applyNodeModalScope(null);
         }
 
         setTimeout(() => initTreeDragAndDrop(), 100);
@@ -532,26 +562,34 @@ export async function saveMenuNodeItem(e) {
         let menus = getCustomMenus();
 
         let mObj = id ? menus.find(x => window.cleanId(x.id) === window.cleanId(id)) : { id: 'm_' + Date.now(), isPoolItem: false, createdBy: appState.currentUser.id, parentId: null, parentIds: [] };
-        mObj._wasTouched = true;
 
-        const nodeName = document.getElementById('nodeName').value.trim();
-        const nodeDisplayName = document.getElementById('nodeDisplayName').value.trim();
-        if (!nodeName) return window.shakeInput('nodeName');
-        if (!nodeDisplayName) return window.shakeInput('nodeDisplayName');
-        
-        mObj.name = nodeName;
-        mObj.displayName = nodeDisplayName;
-        mObj.menuMode = isFolder ? 'folder' : 'link';
-        mObj.icon = getSelectedIconVal('node');
-        const descEl = document.getElementById('nodeDescription');
-        const kwEl = document.getElementById('nodeKeywords');
-        mObj.description = descEl ? descEl.value.trim() : '';
-        mObj.keywords = kwEl ? kwEl.value.trim() : '';
-        mObj.isEdited = true;
+        // ⭐️ 2026-08-24（第七輪 J5）：只被委派子資料夾的人開這個 Modal 時，上半部欄位是唯讀的（applyNodeModalScope）。
+        //   此時**不可**把表單值寫回 mObj，也**不可**把它標成 _wasTouched ——
+        //   否則這一列還是會被塞進 batch payload，而後端是「任一筆不合格就整批 403」，
+        //   連他在下方樹狀結構做的合法變更都會一起失敗。
+        const selfEditable = window.__nodeModalSelfEditable !== false;
+        mObj._wasTouched = selfEditable;
 
-        // 收 ACL
-        mObj.allowedEmpIds = window.__parseAclTextarea(document.getElementById('nodeAllowedEmpIds')?.value || '');
-        mObj.deniedEmpIds = window.__parseAclTextarea(document.getElementById('nodeDeniedEmpIds')?.value || '');
+        if (selfEditable) {
+            const nodeName = document.getElementById('nodeName').value.trim();
+            const nodeDisplayName = document.getElementById('nodeDisplayName').value.trim();
+            if (!nodeName) return window.shakeInput('nodeName');
+            if (!nodeDisplayName) return window.shakeInput('nodeDisplayName');
+
+            mObj.name = nodeName;
+            mObj.displayName = nodeDisplayName;
+            mObj.menuMode = isFolder ? 'folder' : 'link';
+            mObj.icon = getSelectedIconVal('node');
+            const descEl = document.getElementById('nodeDescription');
+            const kwEl = document.getElementById('nodeKeywords');
+            mObj.description = descEl ? descEl.value.trim() : '';
+            mObj.keywords = kwEl ? kwEl.value.trim() : '';
+            mObj.isEdited = true;
+
+            // 收 ACL
+            mObj.allowedEmpIds = window.__parseAclTextarea(document.getElementById('nodeAllowedEmpIds')?.value || '');
+            mObj.deniedEmpIds = window.__parseAclTextarea(document.getElementById('nodeDeniedEmpIds')?.value || '');
+        }
 
         if (!id) {
             mObj.enabled = true; // 新節點預設啟用
@@ -655,8 +693,29 @@ export async function saveMenuNodeItem(e) {
             });
         }
 
-        const menusToSend = menus.filter(m => m._wasTouched === true);
+        let menusToSend = menus.filter(m => m._wasTouched === true);
         menus.forEach(m => delete m._wasTouched);
+
+        // ⭐️ 2026-08-24（第七輪 J5）：最後一道自我防護 —— 把「這個使用者根本沒有編輯權」的節點從 payload 移掉。
+        //   後端 `BatchUpdateMenusAsync` 是**任一筆不合格就整批 Forbidden**，所以只要混進一筆越權的列，
+        //   使用者所有合法變更都會一起失敗、而且只會看到一句「儲存失敗」。
+        //   ⚠️ 這是為了讓錯誤**可預期**，不是為了繞過權限：真正的把關仍在後端，被濾掉的列本來就存不進去。
+        //   ⚠️ 新建的節點（DB 尚無此列）不套用，否則第一次新增永遠會被自己濾掉。
+        if (appState.currentUser && appState.currentUser.roleLevel !== 'admin' && typeof window.getMenuPermissions === 'function') {
+            const existingIds = new Set((getCustomMenus() || []).map(x => window.cleanId(x.id)));
+            const dropped = [];
+            menusToSend = menusToSend.filter(m => {
+                if (!existingIds.has(window.cleanId(m.id))) return true;   // 新節點交給後端判斷
+                const p = window.getMenuPermissions(m.id, m.createdBy);
+                if (p && (p.canEdit || p.canManageStructure)) return true;
+                dropped.push(m.displayName || m.name || m.id);
+                return false;
+            });
+            if (dropped.length > 0) {
+                console.warn('[saveMenuNodeItem] 已略過超出權限範圍的節點:', dropped);
+                showToast(t('menu_scope_skipped_fmt', '有 {0} 個項目超出您的管轄範圍，已略過未儲存').replace('{0}', dropped.length), 'warning', 5000);
+            }
+        }
 
         const result = await batchSaveMenusAPI(menusToSend);
         if (foldersToDelete.length > 0) {

@@ -77,6 +77,20 @@
     --scrollbar-track-border: #1e293b;
     --scrollbar-thumb: #475569;
     --scrollbar-thumb-hover: #64748b;
+
+    /* === Bootstrap 5.3 語意化「表面」變數對齊專案色盤（J7，2026-08-24）===
+       CLAUDE.md §4-12 要求樣板改用 bg-body / bg-body-secondary / bg-body-tertiary / text-body，
+       但 Bootstrap 深色主題的預設值是「暖灰」(#212529 / #2b3035)，而本專案卡片是「藍調 slate」
+       (--card-bg: #1e293b) → 直接用會在卡片裡浮出一塊色差方塊（實測過，很明顯）。
+       這裡把那組變數指回專案色盤，語意類別才會長得像本站原生元件。
+       ⚠️ 選擇器 `:root[data-theme="dark"]` 具體性 (0,2,0) 勝過 Bootstrap 的 `[data-bs-theme=dark]` (0,1,0)，
+          與 CSS 載入順序無關。淺色模式沿用 Bootstrap 預設（#fff / #f8f9fa），不需覆寫。
+       ⚠️ .card / .modal-content / .dropdown-menu / .list-group-item / .page-link / .form-control
+          在 components.css 都已各自吃 --card-bg / --input-bg，不受這幾行影響。 */
+    --bs-body-bg: #0f172a;        /* = --body-bg */
+    --bs-body-color: #f8fafc;     /* = --text-main */
+    --bs-secondary-bg: #1e293b;   /* = --card-bg，供 .bg-body-secondary */
+    --bs-tertiary-bg: #334155;    /* slate 700，供 .bg-body-tertiary（徽章/次級面） */
 }
 
 body {

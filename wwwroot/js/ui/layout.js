@@ -237,8 +237,10 @@ export function switchLayoutMode(mode, navigate = true) {
                 if (finalMode === 'system' && personalPage && personalPage.classList.contains('active')) {
                     if (typeof navTo === 'function') {
                         // 麵包屑名稱走 t()：舊版硬編中文，英/日文使用者切到這裡會看到中文標題。
-                        if (typeof appState.currentUser !== 'undefined' && appState.currentUser?.roleLevel === 'admin') navTo('page-account-manage', null, t('menu_account_manage', '帳號管理'));
-                        else navTo('page-apply', null, t('menu_apply', '需求申請'));
+                        // 第 4 參數 subTitleKey：這兩處傳的是 t() 翻出來的字串而非 DB 名稱，
+                        // 且沒有對應的側欄節點可供 refreshBreadcrumb 取名 → 必須帶 key 才譯得回來（L1）。
+                        if (typeof appState.currentUser !== 'undefined' && appState.currentUser?.roleLevel === 'admin') navTo('page-account-manage', null, t('menu_account_manage', '帳號管理'), 'menu_account_manage');
+                        else navTo('page-apply', null, t('menu_apply', '需求申請'), 'menu_apply');
                     }
                 }
             } else {

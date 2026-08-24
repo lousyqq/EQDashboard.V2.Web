@@ -1,120 +1,120 @@
-ï»¿# EQ Performance Dashboard - å°ˆæ¡ˆèªªæ˜æ–‡ä»¶ (CLAUDE.md / AGENTS.md)
+# EQ Performance Dashboard - ±M®×»¡©ú¤å¥ó (CLAUDE.md / AGENTS.md)
 
-> AI åŠ©æ‰‹åœ¨æ­¤å°ˆæ¡ˆé–‹ç™¼ã€ä¿®æ”¹ã€é™¤éŒ¯çš„æœ€å°å¿…è¦çŸ¥è­˜èˆ‡è¦ç¯„ï¼ˆæœ€æ–°ç‹€æ…‹å¿«ç…§ï¼Œ2026-07-19 æ•´ç†ï¼‰ã€‚
-> **ç¾å½¹ä¸»ç·š**ï¼š`EQDashboard.V2.Web`ï¼ˆASP.NET Core .NET 9.0 + ES Modules å‰ç«¯ + æœ€å°æ•´åˆæ¸¬è©¦ `EQDashboard.V2.Web.Tests`ï¼‰ã€‚
-> **æ–‡ä»¶åˆ†å·¥**ï¼šæœ¬æª”ï¼è¦ç¯„èˆ‡å¾…è¾¦ï½œ`ç³»çµ±æ¶æ§‹.md`ï¼ç›®éŒ„çµæ§‹èˆ‡æ¨¡çµ„è·è²¬ï½œ`DB_Table.md`ï¼DB çµæ§‹å¿«ç…§èˆ‡å¢é‡ SQL æ­·å²ï¼ˆChangelog åªå¢ä¸åˆªï¼‰ï½œ`memory.md`ï¼ç¾æ³å¿«ç…§èˆ‡å¾…è¾¦ã€‚
-
----
-
-## 1. å°ˆæ¡ˆæ¦‚æ³èˆ‡é‹è¡Œæ¨¡å¼
-
-- **æ¶æ§‹**ï¼šKestrel/IISï¼›å¾Œç«¯ Service å±¤ + DI è§£è€¦ï¼›å‰ç«¯ ES Modules + Bootstrap 5/Vanilla JSï¼ˆå…¨ CDNï¼Œç„¡ npm/bundlerï¼‰ã€‚
-- **è³‡æ–™**ï¼šMSSQLï¼ˆ`ConnectionStrings:EQDashboard`ï¼ŒDB `EQDashboardV2`ï¼ŒServer `Sariel`ï¼‰ã€‚CRUD ç•°å‹•è‡ªå‹•éœé»˜å¯«å› DBï¼›å€‹äººç‰ˆé¢å­˜ `PersonalSettings` + LocalStorage å¿«å–ï¼›ç™»å…¥æ›´æ–° `Accounts.LoginCount/LastLoginTime` ä¸¦å†ªç­‰ upsert `DailyUserVisits`ã€‚
-- **é©—è­‰ (`AuthSettings`)**ï¼šKestrel + Negotiate è‡ªå‹•åµæ¸¬ Windows æ¡Œæ©Ÿå¸³è™Ÿï¼ˆå¦‚ `00058897` æˆ– `UMC\00059987`ï¼‰ï¼Œå‰ç«¯ç„¡æ‰‹å‹•å¸³å¯† Tab èˆ‡ç™»å‡ºæŒ‰éˆ•ã€‚ä¸‰æ ¸å¿ƒé…ç½®ï¼š
-  1. **`SimulatedAccount`**ï¼šæŒ‡å®šå¸³è™Ÿæœ¬åœ°æ¨¡æ“¬é©—è­‰ï¼›ç•™ç©º (`""`) è‡ªå‹•æŠ“æ¡Œæ©Ÿèº«åˆ†ã€‚å¾Œç«¯ Controller/Service çµ±ä¸€æ³¨å…¥ `IOptionsSnapshot<AuthSettings>`ï¼Œä¸¦åœ¨ Cookie é©—è­‰ä¸­é…ç½® `OnValidatePrincipal`ï¼šç•¶ `appsettings.json` çš„ `SimulatedAccount` è®Šæ›´æˆ–åˆ‡æ›å› Windows åµæ¸¬æ™‚ï¼Œå³æ™‚ä½œå»¢èˆŠ Cookie (`SignOutAsync`) ä¸¦è§¸ç™¼å‰ç«¯ `tryAutoLogin` / `completeLoginAfterAuth` é‡æ–°æ‹‰å–æ–°ç™»å…¥è€…çš„å®Œæ•´æ¬Šé™çµæ§‹ (`fetchInitialDataFromDB`)ã€‚
-  2. **`DefaultAdmins`**ï¼ˆ`["yu-ting", "00058897", "00059987"]`ï¼‰ï¼šé€™äº›èº«åˆ†ç™»å…¥æ™‚è‹¥ DB ä¸å­˜åœ¨æˆ–æ¬Šé™ä¸è¶³ï¼Œè‡ªå‹•å»ºç«‹/å‡ç´šç‚º `admin`ï¼Œé˜²æ­¢ç³»çµ±é–æ­»ã€‚
-  3. **`OpenAccessMode=true`**ï¼šåå–®å¤–æ–°ç™»å…¥è€…è‡ªå‹•å»ºå¸³ï¼ˆ`roleLevel="user"`ã€éƒ¨é–€ã€Œä¸€èˆ¬ä½¿ç”¨è€…ã€ï¼‰ã€è‡ªå‹•ç¶å®šæ‰€æœ‰è§’è‰²ç¾¤çµ„ï¼ˆå¯è¦–å…¨å» å€ï¼‰ï¼›é è¨­é¦–é ä¸è¨­å®šï¼ˆè‡ªå‹•æŠ“ç¬¬ä¸€å€‹ï¼Œç™»å…¥ç¶²é é è¨­åœç•™ 12Aï¼‰ï¼›å…¨ç«™é–‹æ”¾ç€è¦½ï¼ˆå¾Œç«¯ `GetVisibleMenuIdsAsync` å› null ä¸éæ¿¾ã€å‰ç«¯å…¨æ”¾è¡Œï¼‰ã€‚`false` å‰‡åš´æ ¼é™ DB å¸³è™Ÿåå–®ç™»å…¥èˆ‡æˆæ¬Šã€‚
-- **App Grid æ¬Šé™éš”é›¢**ï¼šç„¡ `canManageCurrentAppGrid` è€…ä¸€å¾‹éš±è—ç·¨è¼¯/åˆªé™¤åœ–ç¤ºèˆ‡æ“ä½œç«¯é»ï¼Œä¸åˆ†æ¨¡å¼ï¼›é–‹å•Ÿæ–¹å¼å…¨ç«™ä¸€è‡´ï¼ˆæ–°è¦–çª—å…¨è¢å¹•æˆ–å½ˆçª—/IE æ¨¡å¼ï¼‰ã€‚
+> AI §U¤â¦b¦¹±M®×¶}µo¡B­×§ï¡B°£¿ùªº³Ì¤p¥²­nª¾ÃÑ»P³W½d¡]³Ì·sª¬ºA§Ö·Ó¡A2026-07-19 ¾ã²z¡^¡C
+> **²{§Ğ¥D½u**¡G`EQDashboard.V2.Web`¡]ASP.NET Core .NET 9.0 + ES Modules «eºİ + ³Ì¤p¾ã¦X´ú¸Õ `EQDashboard.V2.Web.Tests`¡^¡C
+> **¤å¥ó¤À¤u**¡G¥»ÀÉ¡×³W½d»P«İ¿ì¡U`¨t²Î¬[ºc.md`¡×¥Ø¿ıµ²ºc»P¼Ò²ÕÂ¾³d¡U`DB_Table.md`¡×DB µ²ºc§Ö·Ó»P¼W¶q SQL ¾ú¥v¡]Changelog ¥u¼W¤£§R¡^¡U`memory.md`¡×²{ªp§Ö·Ó»P«İ¿ì¡C
 
 ---
 
-## 2. ç›®éŒ„çµæ§‹ï¼ˆè©³ç´°è·è²¬è¦‹ `ç³»çµ±æ¶æ§‹.md`ï¼‰
+## 1. ±M®×·§ªp»P¹B¦æ¼Ò¦¡
+
+- **¬[ºc**¡GKestrel/IIS¡F«áºİ Service ¼h + DI ¸Ñ½¢¡F«eºİ ES Modules + Bootstrap 5/Vanilla JS¡]¥ş CDN¡AµL npm/bundler¡^¡C
+- **¸ê®Æ**¡GMSSQL¡]`ConnectionStrings:EQDashboard`¡ADB `EQDashboardV2`¡AServer `Sariel`¡^¡CCRUD ²§°Ê¦Û°ÊÀRÀq¼g¦^ DB¡F­Ó¤Hª©­±¦s `PersonalSettings` + LocalStorage §Ö¨ú¡Fµn¤J§ó·s `Accounts.LoginCount/LastLoginTime` ¨Ã¾­µ¥ upsert `DailyUserVisits`¡C
+- **ÅçÃÒ (`AuthSettings`)**¡GKestrel + Negotiate ¦Û°Ê°»´ú Windows ®à¾÷±b¸¹¡]¦p `00058897` ©Î `UMC\00059987`¡^¡A«eºİµL¤â°Ê±b±K Tab »Pµn¥X«ö¶s¡C¤T®Ö¤ß°t¸m¡G
+  1. **`SimulatedAccount`**¡G«ü©w±b¸¹¥»¦a¼ÒÀÀÅçÃÒ¡F¯dªÅ (`""`) ¦Û°Ê§ì®à¾÷¨­¤À¡C«áºİ Controller/Service ²Î¤@ª`¤J `IOptionsSnapshot<AuthSettings>`¡A¨Ã¦b Cookie ÅçÃÒ¤¤°t¸m `OnValidatePrincipal`¡G·í `appsettings.json` ªº `SimulatedAccount` ÅÜ§ó©Î¤Á´«¦^ Windows °»´ú®É¡A§Y®É§@¼oÂÂ Cookie (`SignOutAsync`) ¨ÃÄ²µo«eºİ `tryAutoLogin` / `completeLoginAfterAuth` ­«·s©Ô¨ú·sµn¤JªÌªº§¹¾ãÅv­­µ²ºc (`fetchInitialDataFromDB`)¡C
+  2. **`DefaultAdmins`**¡]`["yu-ting", "00058897", "00059987"]`¡^¡G³o¨Ç¨­¤Àµn¤J®É­Y DB ¤£¦s¦b©ÎÅv­­¤£¨¬¡A¦Û°Ê«Ø¥ß/¤É¯Å¬° `admin`¡A¨¾¤î¨t²ÎÂê¦º¡C
+  3. **`OpenAccessMode=true`**¡G¦W³æ¥~·sµn¤JªÌ¦Û°Ê«Ø±b¡]`roleLevel="user"`¡B³¡ªù¡u¤@¯ë¨Ï¥ÎªÌ¡v¡^¡B¦Û°Ê¸j©w©Ò¦³¨¤¦â¸s²Õ¡]¥iµø¥ş¼t°Ï¡^¡F¹w³]­º­¶¤£³]©w¡]¦Û°Ê§ì²Ä¤@­Ó¡Aµn¤Jºô­¶¹w³]°±¯d 12A¡^¡F¥ş¯¸¶}©ñÂsÄı¡]«áºİ `GetVisibleMenuIdsAsync` ¦^ null ¤£¹LÂo¡B«eºİ¥ş©ñ¦æ¡^¡C`false` «hÄY®æ­­ DB ±b¸¹¦W³æµn¤J»P±ÂÅv¡C
+- **App Grid Åv­­¹jÂ÷**¡GµL `canManageCurrentAppGrid` ªÌ¤@«ßÁôÂÃ½s¿è/§R°£¹Ï¥Ü»P¾Ş§@ºİÂI¡A¤£¤À¼Ò¦¡¡F¶}±Ò¤è¦¡¥ş¯¸¤@­P¡]·sµøµ¡¥ş¿Ã¹õ©Î¼uµ¡/IE ¼Ò¦¡¡^¡C
+
+---
+
+## 2. ¥Ø¿ıµ²ºc¡]¸Ô²ÓÂ¾³d¨£ `¨t²Î¬[ºc.md`¡^
 
 ```
 EQDashboard.V2.Web\
-â”œâ”€â”€ Program.cs            # DIã€Middleware Pipelineã€CSPã€å¥åº·æª¢æŸ¥ (/health, /health/ready)
-â”œâ”€â”€ appsettings.json      # ConnectionStrings:EQDashboard + AuthSettings
-â”œâ”€â”€ Models\  Data\  Controllers\  Middleware\  Helpers\
-â”œâ”€â”€ Services\
-â”‚   â”œâ”€â”€ SchemaBootstrap.cs              # å•Ÿå‹•æ™‚ idempotent DDL è‡ªæˆ‘ä¿®å¾©ï¼ˆè£œè¡¨/è£œæ¬„ä½/è£œç´¢å¼•ï¼‰
-â”‚   â”œâ”€â”€ InitialDataCacheInvalidator.cs  # Singleton å¿«å–ä½œå»¢ + ETag bump ä¸­å¿ƒ
-â”‚   â””â”€â”€ CacheInvalidationInterceptor.cs # EF SaveChangesInterceptor å¿«å–ä½œå»¢å®‰å…¨ç¶²
-â””â”€â”€ wwwroot\
-    â”œâ”€â”€ index.html        # å”¯ä¸€ UI é€²å…¥é» (<script type="module" src="js/main.js">)
-    â”œâ”€â”€ partials\modals.html
-    â”œâ”€â”€ css\              # variables / navbar / sidebar / components / responsive (RWD)
-    â””â”€â”€ js\               # main / store(ç‹€æ…‹ä¸­å¿ƒ) / api / auth / config
-        â”œâ”€â”€ ui\           # layout / navigation / dialogs
-        â”œâ”€â”€ render\       # sidebar / sidebar-item / tables / account-ui
-        â””â”€â”€ admin\        # fab / role / account / menu / misc / activity-log / traffic-stats / modal-utils
+¢u¢w¢w Program.cs            # DI¡BMiddleware Pipeline¡BCSP¡B°·±dÀË¬d (/health, /health/ready)
+¢u¢w¢w appsettings.json      # ConnectionStrings:EQDashboard + AuthSettings
+¢u¢w¢w Models\  Data\  Controllers\  Middleware\  Helpers\
+¢u¢w¢w Services\
+¢x   ¢u¢w¢w SchemaBootstrap.cs              # ±Ò°Ê®É idempotent DDL ¦Û§Ú­×´_¡]¸Éªí/¸ÉÄæ¦ì/¸É¯Á¤Ş¡^
+¢x   ¢u¢w¢w InitialDataCacheInvalidator.cs  # Singleton §Ö¨ú§@¼o + ETag bump ¤¤¤ß
+¢x   ¢|¢w¢w CacheInvalidationInterceptor.cs # EF SaveChangesInterceptor §Ö¨ú§@¼o¦w¥şºô
+¢|¢w¢w wwwroot\
+    ¢u¢w¢w index.html        # °ß¤@ UI ¶i¤JÂI (<script type="module" src="js/main.js">)
+    ¢u¢w¢w partials\modals.html
+    ¢u¢w¢w css\              # variables / navbar / sidebar / components / responsive (RWD)
+    ¢|¢w¢w js\               # main / store(ª¬ºA¤¤¤ß) / api / auth / config
+        ¢u¢w¢w ui\           # layout / navigation / dialogs
+        ¢u¢w¢w render\       # sidebar / sidebar-item / tables / account-ui
+        ¢|¢w¢w admin\        # fab / role / account / menu / misc / activity-log / traffic-stats / modal-utils
 ```
 
-å¢é‡ DB ç•°å‹• SQL è…³æœ¬æ”¾åœ¨æ–¹æ¡ˆæ ¹ç›®éŒ„ `sql\`ï¼ˆå¦‚ `sql\2026-07-18_Add_DailyUserVisits.sql`ï¼‰ã€‚
+¼W¶q DB ²§°Ê SQL ¸}¥»©ñ¦b¤è®×®Ú¥Ø¿ı `sql\`¡]¦p `sql\2026-07-18_Add_DailyUserVisits.sql`¡^¡C
 
 ---
 
-## 3. è³‡æ–™åº«é‡é»ï¼ˆå®Œæ•´çµæ§‹å¿«ç…§èˆ‡ SQL æ­·å²ä¸€å¾‹è¦‹ `DB_Table.md`ï¼‰
+## 3. ¸ê®Æ®w­«ÂI¡]§¹¾ãµ²ºc§Ö·Ó»P SQL ¾ú¥v¤@«ß¨£ `DB_Table.md`¡^
 
-- ä¸ä½¿ç”¨ EF Migrationsï¼›`SchemaBootstrap.cs` å•Ÿå‹•æ™‚ä»¥å†ªç­‰ SQLï¼ˆ`IF NOT EXISTS` / `COL_LENGTH IS NULL`ï¼‰è‡ªæˆ‘ä¿®å¾©è¡¨ã€æ¬„ä½èˆ‡ç´¢å¼•ã€‚
-- **19 å¼µè¡¨**ï¼šå¯¦é«” 7ï¼ˆ`Menus`/`Fabs`/`Roles`/`Accounts`/`Apps`/`Requests`/`PersonalSettings`ï¼‰ï¼‹é—œè¯ 10ï¼ˆ`Map_*`ï¼‰ï¼‹ç¨½æ ¸çµ±è¨ˆ 2ï¼ˆ`UserActivityLogs`ã€`DailyUserVisits` è¤‡åˆ PK `(VisitDate, EmpId)`ï¼‰ã€‚
-- **Per-Fab è¦†å¯«**ï¼š`Map_Account_ExtraMenu`/`Map_Account_DenyMenu` PK ç‚º `(EmpId, FabId, MenuId)`ï¼Œ`FabId` å­˜å» å€åç¨±ï¼ˆå¦‚ `12A`ï¼‰ï¼Œåˆ»æ„ä¸å»º FK ä»¥å…å¤šé‡ Cascade è·¯å¾‘è¡çªã€‚
-- **å‘½åæ˜ å°„**ï¼šå‰ç«¯ JS ä¸€å¾‹ CamelCaseï¼ˆ`m.displayName`ï¼‰ï¼Œå¾Œç«¯ C#/DB ä¸€å¾‹ PascalCaseï¼ˆ`DisplayName`ï¼‰ã€‚`Accounts` è¦†å¯«å­˜æª”å¿…å¸¶ `LoginCount`/`LastLoginTime`ï¼Œä»¥å…è¢«æ´—æˆ NULLã€‚
-- **åœ–ç¤º**ï¼šbase64 ä¸€å¾‹è½‰å¯¦é«”æª”å­˜ `wwwroot/images/icons/{guid}.{ext}`ï¼ŒDB åªå­˜ç›¸å°è·¯å¾‘ `images/icons/{guid}.{ext}`ï¼ˆä¸å¸¶é–‹é ­æ–œç·šä»¥ç›¸å®¹ IIS è™›æ“¬ç›®éŒ„èˆ‡å­æ‡‰ç”¨ç¨‹å¼éƒ¨ç½²ï¼‰ï¼›çµ±ä¸€èµ° `IIconStorageService.SaveAsync`ï¼ˆMIME ç™½åå–®ã€è·¯å¾‘æ­£è¦åŒ–ï¼‰èˆ‡ `DeleteIfLocalUnreferencedAsync`ï¼ˆå­¤å…’æ¸…ç†ï¼‰ï¼Œç¦æ­¢ Controller è‡ªè¡Œå­˜æª”ã€‚å‰ç«¯çµ±ä¸€ç¶“ç”± `window.resolveIconUrl` è½‰æ›ä¸¦åŠ  `onerror` é™ç´šï¼›APP åœ–ç¤ºç·¨è¼¯å€ç”± `setIconPreviewBoxVisible` é€é Bootstrap `d-none !important` / `d-flex !important` åš´å¯†æ§åˆ¶ï¼ˆå…¨æ–°å»ºç«‹ APP å°šæœªä¸Šå‚³åœ–æª”æ™‚ä¸é¡¯ç¤ºé è¦½å¡ç‰‡å€å¡Šï¼‰ã€‚
-
----
-
-## 4. API è¦ç¯„
-
-- **`GET /Settings/GetInitialData`**ï¼šé Admin ç”± `IMenuAuthService.GetVisibleMenuIdsAsync` å¾Œç«¯åˆ—ç´šéæ¿¾ï¼›å¸³è™Ÿç›¸é—œè¡¨ï¼ˆ`Accounts`/`PersonalSettings`/`Map_Account_*`ï¼‰ä¸åˆ†èº«åˆ†ä¸€å¾‹ **scope-to-own**ï¼ˆ`.Where(x => x.EmpId == empId)` åªå›ç™»å…¥è€…è‡ªèº«åˆ—ï¼Œ**åš´ç¦ç§»é™¤è‡ªèº«è³‡æ–™åˆ—**ï¼‰ï¼›ETag å¿…æ‘»å…¥èº«åˆ†ï¼ˆ`"{ETag}:{empId}:{isAdmin}"`ï¼‰é˜²å…±ç”¨æ©Ÿå°è·¨å¸³è™Ÿå¿«å–å›æ”¾ã€‚
-- **`/api/Accounts`ï¼ˆAdmin-Onlyï¼‰**ï¼š`GET ?page=&pageSize=&q=` ä¼ºæœå™¨ç«¯åˆ†é ï¼Œ`q` é€² DB å‰å¿…æˆªæ–·è‡³ 100 å­—ï¼ˆé˜² SqlException 8152 å­—ä¸²æˆªæ–·ï¼‰ï¼›`GET /{id}` å‘¼å«ç«¯å¿…å¥— `encodeURIComponent(id)`ï¼ˆé˜²ç¶²åŸŸå·¥è™Ÿ `\` é€ æˆ 404ï¼‰ï¼›`GET /export` å…¨é‡åŒ¯å‡ºä¾› Excel å‚™ä»½ã€‚
-- **`GET /api/Auth/MyProfile`**ï¼šå›å‚³ç™»å…¥è€…å®Œæ•´è¨­å®šèˆ‡æˆæ¬Šï¼ˆempId/name/department/ç™»å…¥çµ±è¨ˆ/roleLevel/canEditOthers/assignedRoles/manageableMenus/per-fab extraMenusÂ·denyMenus/defaultPagesï¼‰ï¼Œèˆ‡ `GetInitialData` ä¸¦è¡Œç™¼é€çœ RTTï¼›`MyProfile`/`WhoAmI`/`Config` çš†å¸¶ `Cache-Control: no-cache, no-store, must-revalidate` ä¸”å‰ç«¯ `{cache:'no-store'}`ã€‚**å…¨åŸŸ 401 æ””æˆªæ’é™¤æ¸…å–®å¿…å« `/api/Auth/MyProfile`ã€`/api/Auth/Login`ã€`/Settings/GetInitialData`ã€`/api/Auth/WhoAmI`**ï¼ˆé˜²å†·é–‹é èª¤åˆ¤ç™»å‡ºï¼‰ã€‚
-- **`/api/Analytics`ï¼ˆAdmin-Onlyï¼‰**ï¼š`GET UsageStats?days=N`ï¼ˆDAU/MAU/è¨»å†Šæ•¸/æ´»èºç‡ KPIã€æ¯æ—¥èˆ‡ 12 å€‹æœˆè¶¨å‹¢ã€éƒ¨é–€/å» å€æ´»èºæ¯”ç‡ï¼‰ï¼›`GET details?page=&pageSize=&date=&dept=&q=`ï¼ˆæ¯æ—¥å€‹äººé€ è¨ªæ˜ç´°åˆ†é ï¼‰ã€‚
+- ¤£¨Ï¥Î EF Migrations¡F`SchemaBootstrap.cs` ±Ò°Ê®É¥H¾­µ¥ SQL¡]`IF NOT EXISTS` / `COL_LENGTH IS NULL`¡^¦Û§Ú­×´_ªí¡BÄæ¦ì»P¯Á¤Ş¡C
+- **19 ±iªí**¡G¹êÅé 7¡]`Menus`/`Fabs`/`Roles`/`Accounts`/`Apps`/`Requests`/`PersonalSettings`¡^¡ÏÃöÁp 10¡]`Map_*`¡^¡Ï½]®Ö²Î­p 2¡]`UserActivityLogs`¡B`DailyUserVisits` ½Æ¦X PK `(VisitDate, EmpId)`¡^¡C
+- **Per-Fab ÂĞ¼g**¡G`Map_Account_ExtraMenu`/`Map_Account_DenyMenu` PK ¬° `(EmpId, FabId, MenuId)`¡A`FabId` ¦s¼t°Ï¦WºÙ¡]¦p `12A`¡^¡A¨è·N¤£«Ø FK ¥H§K¦h­« Cascade ¸ô®|½Ä¬ğ¡C
+- **©R¦W¬M®g**¡G«eºİ JS ¤@«ß CamelCase¡]`m.displayName`¡^¡A«áºİ C#/DB ¤@«ß PascalCase¡]`DisplayName`¡^¡C`Accounts` ÂĞ¼g¦sÀÉ¥²±a `LoginCount`/`LastLoginTime`¡A¥H§K³Q¬~¦¨ NULL¡C
+- **¹Ï¥Ü**¡Gbase64 ¤@«ßÂà¹êÅéÀÉ¦s `wwwroot/images/icons/{guid}.{ext}`¡ADB ¥u¦s¬Û¹ï¸ô®| `images/icons/{guid}.{ext}`¡]¤£±a¶}ÀY±×½u¥H¬Û®e IIS µêÀÀ¥Ø¿ı»P¤lÀ³¥Îµ{¦¡³¡¸p¡^¡F²Î¤@¨« `IIconStorageService.SaveAsync`¡]MIME ¥Õ¦W³æ¡B¸ô®|¥¿³W¤Æ¡^»P `DeleteIfLocalUnreferencedAsync`¡]©t¨à²M²z¡^¡A¸T¤î Controller ¦Û¦æ¦sÀÉ¡C«eºİ²Î¤@¸g¥Ñ `window.resolveIconUrl` Âà´«¨Ã¥[ `onerror` ­°¯Å¡FAPP ¹Ï¥Ü½s¿è°Ï¥Ñ `setIconPreviewBoxVisible` ³z¹L Bootstrap `d-none !important` / `d-flex !important` ÄY±K±±¨î¡]¥ş·s«Ø¥ß APP ©|¥¼¤W¶Ç¹ÏÀÉ®É¤£Åã¥Ü¹wÄı¥d¤ù°Ï¶ô¡^¡C
 
 ---
 
-## 5. C# èˆ‡ MSSQL é–‹ç™¼è¦ç¯„ï¼ˆå¿… 100% åš´æ ¼éµå¾ªï¼‰
+## 4. API ³W½d
 
-1. **è–„ Controller**ï¼šçµ±ä¸€ `XxxController : Controller`ï¼Œæ¥­å‹™é‚è¼¯å°è£è‡³ `Services/`ã€‚
-2. **SQL åƒæ•¸åŒ–**ï¼šåŸç”Ÿ ADO.NET/DDL å°å¤–éƒ¨è¼¸å…¥ä¸€å¾‹ `SqlParameter`ï¼Œåš´ç¦å­—ä¸²æ‹¼æ¥ï¼ˆ`SchemaBootstrap` DDL ç¡¬ç·¨ç¢¼ç™½åå–®é™¤å¤–ï¼‰ã€‚
-3. **äº¤æ˜“èˆ‡åŸ·è¡Œç­–ç•¥**ï¼šå¤šæ­¥é©Ÿã€Œå…ˆåˆªèˆŠ mappingã€å†å¯«æ–° mappingã€ä¸€å¾‹åŒ…åŸå­äº¤æ˜“ï¼›å›  `EnableRetryOnFailure`ï¼Œæ‰‹å‹•äº¤æ˜“å¿…ç¶“ `_context.Database.CreateExecutionStrategy().ExecuteAsync(...)` å…§åŒ… `BeginTransactionAsync()`ã€‚
-4. **è¤‡åˆ PK å…ˆåˆªå¾Œå¯«å…©å›åˆ**ï¼šæ›¿æ› `Map_Role_Menu`/`Map_Fab_Role`/`PersonalSettings` ç­‰é—œè¯æ™‚ï¼Œå…ˆ `RemoveRange(old)` + `SaveChangesAsync()`ï¼Œå† `Add(new)` + `SaveChangesAsync()`ï¼ˆåŒå›åˆ Remove+Add ç›¸åŒ PK æœƒè§¸ç™¼ EF Identity Map è¿½è¹¤è¡çªï¼‰ï¼›å¯«å…¥å‰ä»¥ `HashSet`/`.Distinct()` å»é‡ã€‚
-5. **åƒç…§é æª¢**ï¼šå¯« `Map_*` å‰å…ˆ `ValidateMappingRefsAsync` é©— `RoleId`/`MenuId` å­˜åœ¨ï¼Œå› 400 è€Œé 500 FK éŒ¯èª¤ã€‚
-6. **ç´¢å¼•å”¯ä¸€äº‹å¯¦ä¾†æº**ï¼`SchemaBootstrap.EnsureIndexesAsync`ï¼ˆå†ªç­‰ T-SQLï¼‰ï¼›**åš´ç¦ EF `HasIndex`**ï¼ˆç„¡ Migrations æ™‚ç‚ºç„¡æ•ˆ metadataï¼‰ã€‚å¸³è™Ÿæœå°‹é è¦†è“‹ç´¢å¼• `IX_Accounts_Search (Name, Department)`ã€‚
-7. **UPDATE + OUTPUT å–®æ¬¡å¾€è¿”**ï¼šã€Œæ›´æ–°ä¸¦å–æ–°å€¼ã€ä¸€å¾‹å–®ä¸€ SQL é… `OUTPUT INSERTED.*`ï¼Œç¦ UPDATE å¾Œå† SELECTï¼›reader ç„¡åˆ—ï¼WHERE æœªå‘½ä¸­ï¼ˆå¸³è™Ÿä¸å­˜åœ¨ï¼‰ã€‚
-8. **å¿«å–ä½œå»¢èˆ‡ ETag**ï¼šç•°å‹• `Menus`/`Fabs`/`Roles`/`Map_*` çš„å¯«å…¥ç«¯é»å®Œæˆå¾Œå¿…å‘¼å« `IInitialDataCacheInvalidator.InvalidateInitialDataCache()`ï¼ˆé›™é‡é—œéµï¼šæ¸…å¿«å–ï¼‹bump ETagï¼Œé€£å‹•ä½œå»¢ `visibleMenus:{ETag}:{empId}`ï¼‰ï¼›EF å¯«å…¥æœ‰ `CacheInvalidationInterceptor` å®‰å…¨ç¶²ï¼Œ**raw ADO.NET/raw SQL å¯«å…¥å¿…é ˆæ‰‹å‹•å‘¼å«**ã€‚
-9. **ç´„æŸå•Ÿç”¨**ï¼šä¸€å¾‹ `WITH CHECK CHECK CONSTRAINT ALL`ï¼›åš´ç¦ `WITH NOCHECK CHECK`ï¼ˆUntrusted ç‹€æ…‹ï¼‰ã€‚
-10. **ç¦ç”¨ `SqlBulkCopy`**ï¼šä¸»æ©Ÿ `Sariel` åƒ… 6GB RAMï¼ŒBulk Copy çš„ Memory Grant æ˜“å¡æ­» `RESOURCE_SEMAPHORE`ï¼›ç¶­æŒåƒæ•¸åŒ–æ‰¹æ¬¡ INSERTã€‚
-11. **DbContext æ± åŒ– (`AddDbContextPool`)**ï¼šå»ºæ§‹å­åªæ”¶ `DbContextOptions<AppDbContext>`ï¼›åš´ç¦æ³¨å…¥ Scoped æœå‹™ã€åš´ç¦å¯è®Šå¯¦ä¾‹æ¬„ä½ã€åš´ç¦å¯¦ä¾‹å±¤ç´šè®Šæ›´ï¼ˆ`SetCommandTimeout`/`QueryTrackingBehavior`ï¼‰ã€‚
-12. **`AsSplitQuery`**ï¼šâ‰¥2 å€‹ Collection `Include` çš„ LINQ æŸ¥è©¢å¿…åŠ  `.AsSplitQuery()`ã€‚
-13. **`AsNoTracking`**ï¼šå”¯è®€ GET åºåˆ—åŒ–æŸ¥è©¢å¿…åŠ ï¼›å³å°‡ `SaveChanges` çš„æŸ¥è©¢åš´ç¦åŠ ï¼ˆæœƒéœé»˜ç„¡æ•ˆï¼‰ã€‚
-14. **èº«åˆ†èˆ‡ IP**ï¼š`EmpId` å”¯ä¸€å–è‡ª `User.FindFirst(ClaimTypes.NameIdentifier)?.Value`ï¼Œ**åš´ç¦ `User.Identity.Name`**ï¼ˆç‚ºå§“åï¼‰ï¼›IP èµ° `ClientIpHelper.GetClientIp(HttpContext)`ï¼Œåƒ…ä¾›ç¨½æ ¸ä¸å¯ä½œæˆæ¬Šã€‚
-15. **ç‹€æ…‹ç¢¼èˆ‡æ—¥èªŒ**ï¼šè³‡æºä¸å­˜åœ¨å› 404ï¼›æ¥­å‹™é©—è­‰/æ ¼å¼/æˆæ¬Šé˜»æ“‹å› 400ï¼›æ—¥èªŒä¸€å¾‹ DI æ³¨å…¥ `ILogger<T>`ï¼Œ**åš´ç¦ `Console.WriteLine`**ï¼ˆIIS ä¸‹ç„¡æ³•æ•ç²ï¼‰ã€‚
-16. **è·¨æ™‚å€ä¸€è‡´æ€§**ï¼šæ¯æ—¥çµ±è¨ˆ/è·¨æ—¥æ¯”å°ï¼ˆå¦‚ `DailyUserVisits`ï¼‰çš„ã€Œä»Šå¤©ã€ä¸€å¾‹ä»¥ DB ç«¯ `CONVERT(date, GETDATE())` ç‚ºæº–ã€‚
+- **`GET /Settings/GetInitialData`**¡G«D Admin ¥Ñ `IMenuAuthService.GetVisibleMenuIdsAsync` «áºİ¦C¯Å¹LÂo¡F±b¸¹¬ÛÃöªí¡]`Accounts`/`PersonalSettings`/`Map_Account_*`¡^¤£¤À¨­¤À¤@«ß **scope-to-own**¡]`.Where(x => x.EmpId == empId)` ¥u¦^µn¤JªÌ¦Û¨­¦C¡A**ÄY¸T²¾°£¦Û¨­¸ê®Æ¦C**¡^¡FETag ¥²ºU¤J¨­¤À¡]`"{ETag}:{empId}:{isAdmin}"`¡^¨¾¦@¥Î¾÷¥x¸ó±b¸¹§Ö¨ú¦^©ñ¡C
+- **`/api/Accounts`¡]Admin-Only¡^**¡G`GET ?page=&pageSize=&q=` ¦øªA¾¹ºİ¤À­¶¡A`q` ¶i DB «e¥²ºIÂ_¦Ü 100 ¦r¡]¨¾ SqlException 8152 ¦r¦êºIÂ_¡^¡F`GET /{id}` ©I¥sºİ¥²®M `encodeURIComponent(id)`¡]¨¾ºô°ì¤u¸¹ `\` ³y¦¨ 404¡^¡F`GET /export` ¥ş¶q¶×¥X¨Ñ Excel ³Æ¥÷¡C
+- **`GET /api/Auth/MyProfile`**¡G¦^¶Çµn¤JªÌ§¹¾ã³]©w»P±ÂÅv¡]empId/name/department/µn¤J²Î­p/roleLevel/canEditOthers/assignedRoles/manageableMenus/per-fab extraMenus¡PdenyMenus/defaultPages¡^¡A»P `GetInitialData` ¨Ã¦æµo°e¬Ù RTT¡F`MyProfile`/`WhoAmI`/`Config` ¬Ò±a `Cache-Control: no-cache, no-store, must-revalidate` ¥B«eºİ `{cache:'no-store'}`¡C**¥ş°ì 401 ÄdºI±Æ°£²M³æ¥²§t `/api/Auth/MyProfile`¡B`/api/Auth/Login`¡B`/Settings/GetInitialData`¡B`/api/Auth/WhoAmI`**¡]¨¾§N¶}­¶»~§Pµn¥X¡^¡C
+- **`/api/Analytics`¡]Admin-Only¡^**¡G`GET UsageStats?days=N`¡]DAU/MAU/µù¥U¼Æ/¬¡ÅD²v KPI¡B¨C¤é»P 12 ­Ó¤ëÁÍ¶Õ¡B³¡ªù/¼t°Ï¬¡ÅD¤ñ²v¡^¡F`GET details?page=&pageSize=&date=&dept=&q=`¡]¨C¤é­Ó¤H³y³X©ú²Ó¤À­¶¡^¡C
 
 ---
 
-## 6. å‰ç«¯é–‹ç™¼èˆ‡å®‰å…¨è¦ç¯„ï¼ˆå¿…å®ˆï¼‰
+## 5. C# »P MSSQL ¶}µo³W½d¡]¥² 100% ÄY®æ¿í´`¡^
 
-- **CSRF**ï¼šAntiforgery Middleware å¿…é…ç½®æ–¼ `UseAuthentication()`/`UseAuthorization()` **ä¹‹å¾Œ**ï¼ˆToken ç¶ Identity Claimsï¼‰ï¼›ç™»å…¥å¾Œ `refreshCsrfToken()`ï¼›`api.js` æ””æˆªå™¨å° 400 + `Invalid Token` è‡ªå‹•åˆ·æ–°é‡è©¦ 1 æ¬¡ã€‚
-- **CSP/SRI**ï¼šCSP å¿…å« `'unsafe-inline'`ï¼‹CDN ç™½åå–®ï¼ˆ`cdn.jsdelivr.net`/`cdnjs.cloudflare.com`/`cdn.datatables.net`/`code.jquery.com`ï¼‰ï¼‹`frame-src` å…è¨±å¤–éƒ¨çœ‹æ¿ iframeï¼›CDN æ¨™ç±¤å¿…å¸¶ `integrity="sha384-..."` + `crossorigin="anonymous"`ï¼Œæ›ç‰ˆæœ¬é‡ç®—æ ¡é©—ç¢¼ã€‚
-- **Authorization baseline**ï¼šController é è¨­ class-level `[Authorize]`ï¼Œç®¡ç†å“¡åŠŸèƒ½å†åŠ  `[Authorize(Roles="admin")]`ã€‚
-- **ES Modules**ï¼š`import` çµ•å°ç½®é ‚ï¼ˆä»»ä¸€ SyntaxError ä¸­æ–·æ•´å¼µæ¨¡çµ„åœ–ï¼‰ï¼›inline `onclick` ç”¨çš„å‡½å¼å¿… `window.X = X`ï¼›ç‹€æ…‹ä¸€å¾‹èµ° `store.js` çš„ `appState`ã€‚
-- **App Shell å¿«å–é˜²ç¦¦**ï¼š`syncDataToDB()`ã€RESTful å­˜æª”ï¼ˆ`save*API`/`delete*API`ï¼‰ã€åˆ‡å¸³è™Ÿ/ç™»å‡ºå¾Œå¿…å‘¼å« `window.clearAppCache(preserveCurrentUser)`ï¼ˆ`app_shell_*` å¿«ç…§ Ctrl+F5 ä¸æœƒæ¸…ï¼‰ï¼›`restoreLoginFromStorage` æ¯”å° `window._currentServerEmpId` é›™é‡é©—è­‰ï¼Œä¸¦ä»¥ `Object.assign` å°‡ DB æœ€æ–°èº«åˆ†åŒæ­¥å› localStorageã€‚
-- **ç‰ˆæœ¬ç¢¼ `?v=`**ï¼š`index.html` èˆ‡æ‰€æœ‰æ¨¡çµ„ `import ?v=` å…¨ç«™å®Œå…¨ä¸€è‡´ï¼ˆç›®å‰ `20260727b`ï¼‰ï¼Œæ”¹ç‰ˆä¸€å¾‹å…¨åŸŸå–ä»£ï¼Œå¦å‰‡åŒæ¨¡çµ„é›™è¼‰ã€ç‹€æ…‹åˆ†è£‚ã€‚
-- **è¨Šæ¯åˆ†æµ**ï¼šæˆåŠŸ/è³‡è¨Šèµ° `showToast(msg, type, delay, isHtml)`ï¼ˆéé˜»æ–· Toastï¼‰ï¼›éŒ¯èª¤èˆ‡éœ€æ±ºç­–æ‰èµ° `customAlert`/`customConfirm`ï¼Œåš´ç¦ç‚ºæˆåŠŸè¨Šæ¯æ–°å¢é˜»æ–· Modalï¼›æŸ¥è©¢è¡¨æ ¼è¼‰å…¥æ…‹ä¸€å¾‹ `skeletonRows(colCount, rowCount)` éª¨æ¶å±ã€‚
-- **i18n å…¨é‡è¦†è“‹**ï¼šæ–° UI æ–‡å­—å¿…æ› `data-i18n`ï¼ˆplaceholder ç”¨ `data-i18n-placeholder`ï¼‰ï¼Œ`config.js` å­—å…¸åŒæ­¥è£œ zh/en/jaï¼›JS å‹•æ…‹å­—ä¸²èµ° `t(key, fallback)`ï¼Œå«æ•¸å€¼ç”¨ `{0}`/`{1}` æ¨¡æ¿ï¼‹`.replace()`ï¼›å«åœ–ç¤ºå…ƒç´ æŠŠæ–‡å­—åŒ… `<span data-i18n>`ã€‚
-- **è½‰ç¾©ä¸‰ä»¶å¥—**ï¼šID é€² inline `onclick('ID')` å…ˆ `_jsArg()`ï¼ˆé˜²ç¶²åŸŸ ID çš„ `\` è¢«åƒï¼‰ï¼›DB è³‡æ–™é€² `innerHTML` å¿… `escHtml()`ï¼ˆé˜² XSSï¼‰ï¼›REST URL çš„ ID å¿… `encodeURIComponent()`ã€‚
-- **RWD**ï¼š`@media` æ–·é»å…¨é›†ä¸­ `css/responsive.css`ï¼ˆâ‰¤992 å´æ¬„æµ®å±¤ï¼‹é®ç½© / â‰¤768 æ‰‹æ©Ÿ / â‰¤480 çª„å¹…ï¼‰ï¼›JS è¡Œç‚ºé›†ä¸­ `ui/layout.js` RWD å€å¡Šï¼ˆ`RWD_SIDEBAR_BREAKPOINT = 992` èˆ‡ CSS ä¸€è‡´ï¼‰ã€‚
-- **è¡¨æ ¼/æŒ‘é¸å™¨**ï¼š`renderAccountTable` æ˜¯å”¯ä¸€ `serverSide:true` DataTableï¼ˆæ–¹æ¡ˆ A æ——è‰¦å„ªåŒ–ç‚º 6 æ¬„é…ç½®ï¼Œå°‡å±¤ç´šèˆ‡å§”æ´¾æ•´åˆç‚ºã€Œç®¡ç†å±¤ç´šèˆ‡ç‹€æ…‹ã€ï¼Œå°‡å¯è¦–ç¾¤çµ„èˆ‡å§”æ´¾é¸å–®æ•´åˆç‚ºã€Œå¯è¦–èˆ‡ç®¡è½„ç¯„åœã€ï¼Œå¤§å¹…é‡‹æ”¾å¯¬åº¦ä¾›é•·è·¯å¾‘æ–‡å­—å±•é–‹ï¼‰ï¼Œç¦æ”¹å›è¨˜æ†¶é«”åˆ†é ï¼›æŸ¥è©¢ç¯©é¸ç¶ Enter é€å‡ºä¸”æ–°æŸ¥è©¢é‡è¨­å›ç¬¬ 1 é ï¼›sticky è¡¨é ­åªå®£å‘Šæ–¼ `components.css`ï¼›`openMenuSelector` æ”¯æ´ folder ç•¶é è¨­é¦–é ï¼Œæ¬Šé™èˆ‡ Root åˆ¤å®šå¿…æª¢æŸ¥æ•´å€‹ `parentIds` é™£åˆ—ï¼š`(!cleanId(m.parentId)) && (m.parentIds||[]).filter(Boolean).length===0`ï¼›æ¨¹ç‹€æ¨¡æ¿å¼•ç”¨çš„ `${xxxHtml}` å¿…å…ˆä»¥ `const` å®£å‘Šã€‚
-- **æ’åº**ï¼šç³»çµ±é¸å–®æ‹–æ›³èµ° `batchSaveMenusAPI`ï¼ˆç¦ Excel å…¨é‡è¦†å¯«ï¼‰ï¼›å€‹äººæ’åºèµ° `/api/PersonalSettings`ï¼Œpersonal æ¨¡å¼æ ¹å±¤æ’åº fallback å°é½Š `dedupedInitIds` ç´¢å¼•ã€‚
-- **æ„è¦‹ç®±**ï¼š`openFeedbackPage` å°å‘ç³»çµ±ã€Œéœ€æ±‚ç”³è«‹ã€é ï¼ˆéå¤–éƒ¨ä¿¡ç®±ï¼‰ï¼Œç®¡ç†å“¡æ–¼ã€Œç”³è«‹å¯©æ ¸ç®¡ç†ã€å›è¦†ã€‚
-
----
-
-## 7. ç•¶å‰å¾…è¾¦äº‹é … (Active Tasks)
-
-- [~] **æœ¬åœ°ç‰ˆæ§æ”¶å°¾**ï¼šç¢ºä¿ `bin/`ã€`obj/`ã€`.vs/`ã€`App_Data/`ã€`appsettings.json` ä¸é€²ç‰ˆæ§ï¼Œä¸¦ commit ä¿å­˜æœ€æ–°ç‹€æ…‹ã€‚
-- [ ] **DataProtection é‡‘é‘°è¼ªæ›ï¼ˆå®‰å…¨å„ªå…ˆï¼‰**ï¼šæ¸…é™¤æ­·å²å¤–æ´©çš„ `App_Data/keys/*` ä¸¦é‡å•Ÿé‡ç”¢æ–°é‡‘é‘°ï¼ˆç¾æœ‰ Sessions å¤±æ•ˆï¼‰ã€‚
-- [ ] **å¤§å‹è¦æ¨¡æ“´å±•è©•ä¼°ï¼ˆé•·æœŸå¯é¸ï¼‰**ï¼šçœ‹æ¿/æ¬Šé™é”æ•¸åƒç­†æ™‚ï¼Œè©•ä¼° Menu åˆ†é¡æª¢ç´¢ã€å´æ¬„æ¨¹ç‹€ lazy-loading èˆ‡åˆ†å»  on-demand è¼‰å…¥ã€‚
+1. **Á¡ Controller**¡G²Î¤@ `XxxController : Controller`¡A·~°ÈÅŞ¿è«Ê¸Ë¦Ü `Services/`¡C
+2. **SQL °Ñ¼Æ¤Æ**¡G­ì¥Í ADO.NET/DDL ¹ï¥~³¡¿é¤J¤@«ß `SqlParameter`¡AÄY¸T¦r¦ê«÷±µ¡]`SchemaBootstrap` DDL µw½s½X¥Õ¦W³æ°£¥~¡^¡C
+3. **¥æ©ö»P°õ¦æµ¦²¤**¡G¦h¨BÆJ¡u¥ı§RÂÂ mapping¡B¦A¼g·s mapping¡v¤@«ß¥]­ì¤l¥æ©ö¡F¦] `EnableRetryOnFailure`¡A¤â°Ê¥æ©ö¥²¸g `_context.Database.CreateExecutionStrategy().ExecuteAsync(...)` ¤º¥] `BeginTransactionAsync()`¡C
+4. **½Æ¦X PK ¥ı§R«á¼g¨â¦^¦X**¡G´À´« `Map_Role_Menu`/`Map_Fab_Role`/`PersonalSettings` µ¥ÃöÁp®É¡A¥ı `RemoveRange(old)` + `SaveChangesAsync()`¡A¦A `Add(new)` + `SaveChangesAsync()`¡]¦P¦^¦X Remove+Add ¬Û¦P PK ·|Ä²µo EF Identity Map °lÂÜ½Ä¬ğ¡^¡F¼g¤J«e¥H `HashSet`/`.Distinct()` ¥h­«¡C
+5. **°Ñ·Ó¹wÀË**¡G¼g `Map_*` «e¥ı `ValidateMappingRefsAsync` Åç `RoleId`/`MenuId` ¦s¦b¡A¦^ 400 ¦Ó«D 500 FK ¿ù»~¡C
+6. **¯Á¤Ş°ß¤@¨Æ¹ê¨Ó·½**¡×`SchemaBootstrap.EnsureIndexesAsync`¡]¾­µ¥ T-SQL¡^¡F**ÄY¸T EF `HasIndex`**¡]µL Migrations ®É¬°µL®Ä metadata¡^¡C±b¸¹·j´M¾aÂĞ»\¯Á¤Ş `IX_Accounts_Search (Name, Department)`¡C
+7. **UPDATE + OUTPUT ³æ¦¸©¹ªğ**¡G¡u§ó·s¨Ã¨ú·s­È¡v¤@«ß³æ¤@ SQL °t `OUTPUT INSERTED.*`¡A¸T UPDATE «á¦A SELECT¡Freader µL¦C¡×WHERE ¥¼©R¤¤¡]±b¸¹¤£¦s¦b¡^¡C
+8. **§Ö¨ú§@¼o»P ETag**¡G²§°Ê `Menus`/`Fabs`/`Roles`/`Map_*` ªº¼g¤JºİÂI§¹¦¨«á¥²©I¥s `IInitialDataCacheInvalidator.InvalidateInitialDataCache()`¡]Âù­«ÃöÁä¡G²M§Ö¨ú¡Ïbump ETag¡A³s°Ê§@¼o `visibleMenus:{ETag}:{empId}`¡^¡FEF ¼g¤J¦³ `CacheInvalidationInterceptor` ¦w¥şºô¡A**raw ADO.NET/raw SQL ¼g¤J¥²¶·¤â°Ê©I¥s**¡C
+9. **¬ù§ô±Ò¥Î**¡G¤@«ß `WITH CHECK CHECK CONSTRAINT ALL`¡FÄY¸T `WITH NOCHECK CHECK`¡]Untrusted ª¬ºA¡^¡C
+10. **¸T¥Î `SqlBulkCopy`**¡G¥D¾÷ `Sariel` ¶È 6GB RAM¡ABulk Copy ªº Memory Grant ©ö¥d¦º `RESOURCE_SEMAPHORE`¡Fºû«ù°Ñ¼Æ¤Æ§å¦¸ INSERT¡C
+11. **DbContext ¦À¤Æ (`AddDbContextPool`)**¡G«Øºc¤l¥u¦¬ `DbContextOptions<AppDbContext>`¡FÄY¸Tª`¤J Scoped ªA°È¡BÄY¸T¥iÅÜ¹ê¨ÒÄæ¦ì¡BÄY¸T¹ê¨Ò¼h¯ÅÅÜ§ó¡]`SetCommandTimeout`/`QueryTrackingBehavior`¡^¡C
+12. **`AsSplitQuery`**¡G?2 ­Ó Collection `Include` ªº LINQ ¬d¸ß¥²¥[ `.AsSplitQuery()`¡C
+13. **`AsNoTracking`**¡G°ßÅª GET §Ç¦C¤Æ¬d¸ß¥²¥[¡F§Y±N `SaveChanges` ªº¬d¸ßÄY¸T¥[¡]·|ÀRÀqµL®Ä¡^¡C
+14. **¨­¤À»P IP**¡G`EmpId` °ß¤@¨ú¦Û `User.FindFirst(ClaimTypes.NameIdentifier)?.Value`¡A**ÄY¸T `User.Identity.Name`**¡]¬°©m¦W¡^¡FIP ¨« `ClientIpHelper.GetClientIp(HttpContext)`¡A¶È¨Ñ½]®Ö¤£¥i§@±ÂÅv¡C
+15. **ª¬ºA½X»P¤é»x**¡G¸ê·½¤£¦s¦b¦^ 404¡F·~°ÈÅçÃÒ/®æ¦¡/±ÂÅvªı¾×¦^ 400¡F¤é»x¤@«ß DI ª`¤J `ILogger<T>`¡A**ÄY¸T `Console.WriteLine`**¡]IIS ¤UµLªk®·Àò¡^¡C
+16. **¸ó®É°Ï¤@­P©Ê**¡G¨C¤é²Î­p/¸ó¤é¤ñ¹ï¡]¦p `DailyUserVisits`¡^ªº¡u¤µ¤Ñ¡v¤@«ß¥H DB ºİ `CONVERT(date, GETDATE())` ¬°·Ç¡C
 
 ---
 
-## ğŸ”„ æ¯è¼ªå°è©±æ–‡ä»¶åŒæ­¥è¦ç¯„ (Mandatory Protocol)
+## 6. «eºİ¶}µo»P¦w¥ş³W½d¡]¥²¦u¡^
 
-1. **åŒæ­¥ `CLAUDE.md`ï¼ˆï¼`AGENTS.md`ï¼‰èˆ‡ `memory.md`**ï¼šå¯«å…¥æ–°ç¢ºå®šçš„è¦ç¯„/å‘é»ï¼Œç§»é™¤éæ™‚ä»»å‹™ã€‚
-2. **åŒæ­¥ `ç³»çµ±æ¶æ§‹.md`**ï¼šæª”æ¡ˆå¢åˆªã€ç§»å‹•æˆ–æ ¸å¿ƒè·è²¬èª¿æ•´æ™‚æ›´æ–°æ¶æ§‹æ¨¹èˆ‡èªªæ˜ã€‚
-3. **DB æ¶æ§‹ç•°å‹•ï¼ˆåš´æ ¼éµå¾ï¼‰**ï¼šå‡¡æ¶‰åŠ `SchemaBootstrap.cs`ã€å¯¦é«”æ¬„ä½ã€è³‡æ–™è¡¨æˆ–ç´¢å¼•å¢åˆªä¿®ï¼š
-   1. åŒæ­¥ä¿®æ”¹ `DB_Table.md` ä¸Šæ–¹çµæ§‹å¿«ç…§ï¼›
-   2. æ–¼æ–¹æ¡ˆæ ¹ç›®éŒ„ `sql\` ç”¢å‡ºå¢é‡ç•°å‹• `.sql` è…³æœ¬ï¼ˆ`IF NOT EXISTS` å†ªç­‰ DDLã€ç›¸å®¹æ—¢æœ‰è³‡æ–™ï¼‰ï¼›
-   3. æ–¼ `DB_Table.md` æœ«ã€Œ5. Schema Changelogã€**åªå¢ä¸åˆª**è¿½åŠ ç•¶æ—¥æ—¥æœŸ (`YYYY-MM-DD`) èˆ‡ `.sql` æª”åã€‚
-4. **å›è¦†é€šçŸ¥**ï¼šå°è©±æœ«å°¾è¨»æ˜ `*å·²è‡ªå‹•æ›´æ–° CLAUDE.md èˆ‡ memory.md*`ï¼ˆæœ‰ SQL æª”äº¦ä¸€ä½µåˆ—å‡ºï¼‰ã€‚
+- **CSRF**¡GAntiforgery Middleware ¥²°t¸m©ó `UseAuthentication()`/`UseAuthorization()` **¤§«á**¡]Token ¸j Identity Claims¡^¡Fµn¤J«á `refreshCsrfToken()`¡F`api.js` ÄdºI¾¹¹ï 400 + `Invalid Token` ¦Û°Ê¨ê·s­«¸Õ 1 ¦¸¡C
+- **CSP/SRI**¡GCSP ¥²§t `'unsafe-inline'`¡ÏCDN ¥Õ¦W³æ¡]`cdn.jsdelivr.net`/`cdnjs.cloudflare.com`/`cdn.datatables.net`/`code.jquery.com`¡^¡Ï`frame-src` ¤¹³\¥~³¡¬İªO iframe¡FCDN ¼ĞÅÒ¥²±a `integrity="sha384-..."` + `crossorigin="anonymous"`¡A´«ª©¥»­«ºâ®ÕÅç½X¡C
+- **Authorization baseline**¡GController ¹w³] class-level `[Authorize]`¡AºŞ²z­û¥\¯à¦A¥[ `[Authorize(Roles="admin")]`¡C
+- **ES Modules**¡G`import` µ´¹ï¸m³»¡]¥ô¤@ SyntaxError ¤¤Â_¾ã±i¼Ò²Õ¹Ï¡^¡Finline `onclick` ¥Îªº¨ç¦¡¥² `window.X = X`¡Fª¬ºA¤@«ß¨« `store.js` ªº `appState`¡C
+- **App Shell §Ö¨ú¨¾¿m**¡G`syncDataToDB()`¡BRESTful ¦sÀÉ¡]`save*API`/`delete*API`¡^¡B¤Á±b¸¹/µn¥X«á¥²©I¥s `window.clearAppCache(preserveCurrentUser)`¡]`app_shell_*` §Ö·Ó Ctrl+F5 ¤£·|²M¡^¡F`restoreLoginFromStorage` ¤ñ¹ï `window._currentServerEmpId` Âù­«ÅçÃÒ¡A¨Ã¥H `Object.assign` ±N DB ³Ì·s¨­¤À¦P¨B¦^ localStorage¡C
+- **ª©¥»½X `?v=`**¡G`index.html` »P©Ò¦³¼Ò²Õ `import ?v=` ¥ş¯¸§¹¥ş¤@­P¡]¥Ø«e `20260727b`¡^¡A§ïª©¤@«ß¥ş°ì¨ú¥N¡A§_«h¦P¼Ò²ÕÂù¸ü¡Bª¬ºA¤Àµõ¡C
+- **°T®§¤À¬y**¡G¦¨¥\/¸ê°T¨« `showToast(msg, type, delay, isHtml)`¡]«DªıÂ_ Toast¡^¡F¿ù»~»P»İ¨Mµ¦¤~¨« `customAlert`/`customConfirm`¡AÄY¸T¬°¦¨¥\°T®§·s¼WªıÂ_ Modal¡F¬d¸ßªí®æ¸ü¤JºA¤@«ß `skeletonRows(colCount, rowCount)` °©¬[«Ì¡C
+- **i18n ¥ş¶qÂĞ»\**¡G·s UI ¤å¦r¥²±¾ `data-i18n`¡]placeholder ¥Î `data-i18n-placeholder`¡^¡A`config.js` ¦r¨å¦P¨B¸É zh/en/ja¡FJS °ÊºA¦r¦ê¨« `t(key, fallback)`¡A§t¼Æ­È¥Î `{0}`/`{1}` ¼ÒªO¡Ï`.replace()`¡F§t¹Ï¥Ü¤¸¯À§â¤å¦r¥] `<span data-i18n>`¡C
+- **Âà¸q¤T¥ó®M**¡GID ¶i inline `onclick('ID')` ¥ı `_jsArg()`¡]¨¾ºô°ì ID ªº `\` ³Q¦Y¡^¡FDB ¸ê®Æ¶i `innerHTML` ¥² `escHtml()`¡]¨¾ XSS¡^¡FREST URL ªº ID ¥² `encodeURIComponent()`¡C
+- **RWD**¡G`@media` Â_ÂI¥ş¶°¤¤ `css/responsive.css`¡]?992 °¼Äæ¯B¼h¡Ï¾B¸n / ?768 ¤â¾÷ / ?480 ¯¶´T¡^¡FJS ¦æ¬°¶°¤¤ `ui/layout.js` RWD °Ï¶ô¡]`RWD_SIDEBAR_BREAKPOINT = 992` »P CSS ¤@­P¡^¡C
+- **ªí®æ/¬D¿ï¾¹**¡G`renderAccountTable` ¬O°ß¤@ `serverSide:true` DataTable¡]¤è®× A ºXÄ¥Àu¤Æ¬° 6 Äæ°t¸m¡A±N¼h¯Å»P©e¬£¾ã¦X¬°¡uºŞ²z¼h¯Å»Pª¬ºA¡v¡A±N¥iµø¸s²Õ»P©e¬£¿ï³æ¾ã¦X¬°¡u¥iµø»PºŞÁÒ½d³ò¡v¡A¤j´TÄÀ©ñ¼e«×¨Ñªø¸ô®|¤å¦r®i¶}¡^¡A¸T§ï¦^°O¾ĞÅé¤À­¶¡F¬d¸ß¿z¿ï¸j Enter °e¥X¥B·s¬d¸ß­«³]¦^²Ä 1 ­¶¡Fsticky ªíÀY¥u«Å§i©ó `components.css`¡F`openMenuSelector` ¤ä´© folder ·í¹w³]­º­¶¡AÅv­­»P Root §P©w¥²ÀË¬d¾ã­Ó `parentIds` °}¦C¡G`(!cleanId(m.parentId)) && (m.parentIds||[]).filter(Boolean).length===0`¡F¾ğª¬¼ÒªO¤Ş¥Îªº `${xxxHtml}` ¥²¥ı¥H `const` «Å§i¡C
+- **±Æ§Ç**¡G¨t²Î¿ï³æ©ì¦²¨« `batchSaveMenusAPI`¡]¸T Excel ¥ş¶qÂĞ¼g¡^¡F­Ó¤H±Æ§Ç¨« `/api/PersonalSettings`¡Apersonal ¼Ò¦¡®Ú¼h±Æ§Ç fallback ¹ï»ô `dedupedInitIds` ¯Á¤Ş¡C
+- **·N¨£½c**¡G`openFeedbackPage` ¾É¦V¨t²Î¡u»İ¨D¥Ó½Ğ¡v­¶¡]«D¥~³¡«H½c¡^¡AºŞ²z­û©ó¡u¥Ó½Ğ¼f®ÖºŞ²z¡v¦^ÂĞ¡C
+
+---
+
+## 7. ·í«e«İ¿ì¨Æ¶µ (Active Tasks)
+
+- [~] **¥»¦aª©±±¦¬§À**¡G½T«O `bin/`¡B`obj/`¡B`.vs/`¡B`App_Data/`¡B`appsettings.json` ¤£¶iª©±±¡A¨Ã commit «O¦s³Ì·sª¬ºA¡C
+- [x] **DataProtection ª÷Æ_½ü´«¡]¦w¥şÀu¥ı¡^**¡G¤w©ó 2026-08-24 ²M°£¾ú¥v¥~¬ªªº App_Data/keys/*¡C
+- [ ] **¤j«¬³W¼ÒÂX®iµû¦ô¡]ªø´Á¥i¿ï¡^**¡G¬İªO/Åv­­¹F¼Æ¤dµ§®É¡Aµû¦ô Menu ¤ÀÃşÀË¯Á¡B°¼Äæ¾ğª¬ lazy-loading »P¤À¼t on-demand ¸ü¤J¡C
+
+---
+
+## ?? ¨C½ü¹ï¸Ü¤å¥ó¦P¨B³W½d (Mandatory Protocol)
+
+1. **¦P¨B `CLAUDE.md`¡]¡×`AGENTS.md`¡^»P `memory.md`**¡G¼g¤J·s½T©wªº³W½d/§|ÂI¡A²¾°£¹L®É¥ô°È¡C
+2. **¦P¨B `¨t²Î¬[ºc.md`**¡GÀÉ®×¼W§R¡B²¾°Ê©Î®Ö¤ßÂ¾³d½Õ¾ã®É§ó·s¬[ºc¾ğ»P»¡©ú¡C
+3. **DB ¬[ºc²§°Ê¡]ÄY®æ¿í±q¡^**¡G¤Z¯A¤Î `SchemaBootstrap.cs`¡B¹êÅéÄæ¦ì¡B¸ê®Æªí©Î¯Á¤Ş¼W§R­×¡G
+   1. ¦P¨B­×§ï `DB_Table.md` ¤W¤èµ²ºc§Ö·Ó¡F
+   2. ©ó¤è®×®Ú¥Ø¿ı `sql\` ²£¥X¼W¶q²§°Ê `.sql` ¸}¥»¡]`IF NOT EXISTS` ¾­µ¥ DDL¡B¬Û®e¬J¦³¸ê®Æ¡^¡F
+   3. ©ó `DB_Table.md` ¥½¡u5. Schema Changelog¡v**¥u¼W¤£§R**°l¥[·í¤é¤é´Á (`YYYY-MM-DD`) »P `.sql` ÀÉ¦W¡C
+4. **¦^ÂĞ³qª¾**¡G¹ï¸Ü¥½§Àµù©ú `*¤w¦Û°Ê§ó·s CLAUDE.md »P memory.md*`¡]¦³ SQL ÀÉ¥ç¤@¨Ö¦C¥X¡^¡C

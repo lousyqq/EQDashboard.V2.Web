@@ -133,11 +133,13 @@ export async function fetchWhoAmI(allowAutoLogin = false) {
     const statusEl = document.getElementById('whoami-status');
     const btn = document.getElementById('btn-windows-continue');
     const config = window._authConfig || { allowManualLogin: true };
-    const fallbackHint = '<div class="small text-muted mt-1">請聯繫網頁管理員</div>';
+    // ⚠️ #whoami-status 是 JS 動態填值的元素（CLAUDE.md §4-前端-9 的已知名單），
+    //    不可掛 data-i18n，一律在此用 t() 產生。
+    const fallbackHint = `<div class="small text-muted mt-1">${window.escapeHTML(t('auth_contact_admin', '請聯繫網頁管理員'))}</div>`;
 
     if (statusEl) {
         statusEl.className = 'alert alert-light border text-center py-3 mb-3';
-        statusEl.innerHTML = '<div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>正在偵測桌機登入者...';
+        statusEl.innerHTML = `<div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>${window.escapeHTML(t('auth_detecting', '正在偵測桌機登入者...'))}`;
     }
     if (btn) btn.disabled = true;
 
@@ -149,7 +151,7 @@ export async function fetchWhoAmI(allowAutoLogin = false) {
         });
 
         if (resp.status === 401) {
-            const data = { success: false, authenticated: false, message: '未偵測到 Windows 登入身份' };
+            const data = { success: false, authenticated: false, message: t('auth_no_windows_identity', '未偵測到 Windows 登入身份') };
             _whoamiResult = data;
             if (statusEl) {
                 statusEl.className = 'alert alert-light border text-center py-3 mb-3';
@@ -174,7 +176,7 @@ export async function fetchWhoAmI(allowAutoLogin = false) {
         if (statusEl) {
             if (data.success && data.authenticated && data.empId) {
                 statusEl.className = 'alert alert-success border text-center py-3 mb-3';
-                statusEl.innerHTML = `<i class="fas fa-user-check me-1"></i> 偵測到 Windows 帳號：<b>${window.escapeHTML(data.empId)}</b>`;
+                statusEl.innerHTML = `<i class="fas fa-user-check me-1"></i> ${window.escapeHTML(t('auth_detected_account', '偵測到 Windows 帳號：'))}<b>${window.escapeHTML(data.empId)}</b>`;
                 if (btn) btn.disabled = false;
 
                 // ✅ 偵測成功 → 自動登入（僅限「初次進入點」tryAutoLogin 帶 allowAutoLogin=true）
@@ -198,7 +200,7 @@ export async function fetchWhoAmI(allowAutoLogin = false) {
                 }
             } else {
                 statusEl.className = 'alert alert-light border text-center py-3 mb-3';
-                const msg = data.message || '未偵測到 Windows 登入帳號';
+                const msg = data.message || t('err_no_windows_account', '尚未偵測到可用的 Windows 帳號');
                 statusEl.innerHTML = '<i class="fas fa-info-circle me-1 text-muted"></i> ' + window.escapeHTML(msg) + fallbackHint;
                 if (btn) btn.disabled = true;
             }
@@ -209,8 +211,8 @@ export async function fetchWhoAmI(allowAutoLogin = false) {
         // ⚠️ 原本這裡有 `clearTimeout(timer)` 但 `timer` 從未宣告 → ReferenceError 會讓整段 catch 中斷、
         //   UI 永遠卡在 spinner、btn 也不會 enable。Round-5 移除。
         const msg = (e && e.name === 'AbortError')
-            ? '偵測逾時（請確認瀏覽器/站台 Windows Auth 設定）'
-            : '無法連線到伺服器';
+            ? t('auth_detect_timeout', '偵測逾時（請確認瀏覽器/站台 Windows Auth 設定）')
+            : t('err_cannot_reach_server', '無法連線到伺服器');
 
         if (statusEl) {
             statusEl.className = 'alert alert-light border text-center py-3 mb-3';
@@ -255,7 +257,7 @@ export async function doLogin() {
     const password = pwdInput?.value || '';
 
     if (!empId) {
-        showManualError('請輸入工號');
+        showManualError(t('auth_enter_empid', '請輸入工號'));
         return;
     }
 
@@ -277,17 +279,17 @@ export async function doLogin() {
             authResult = await loginResp.json();
         } else {
             const err = await safeJson(loginResp);
-            showManualError(err?.message || `登入失敗 (HTTP ${loginResp.status})`);
+            showManualError(err?.message || t('err_login_failed', '登入失敗') + ` (HTTP ${loginResp.status})`);
             return;
         }
     } catch (e) {
         console.error('登入 API 呼叫失敗:', e);
-        showManualError('無法連線到伺服器');
+        showManualError(t('err_cannot_reach_server', '無法連線到伺服器'));
         return;
     }
 
     if (!authResult || !authResult.success) {
-        showManualError(authResult?.message || '登入失敗');
+        showManualError(authResult?.message || t('err_login_failed', '登入失敗'));
         return;
     }
 
@@ -298,7 +300,7 @@ export async function doLogin() {
     // 直接用這個 fallback 才不會卡在「無法載入您的權限設定檔」。
     const apiFallback = authResult.account || null;
     const ok = await completeLoginAfterAuth(authResult.empId || empId, authResult.source || 'manual', apiFallback);
-    if (!ok) showManualError('權限資料載入失敗');
+    if (!ok) showManualError(t('err_perm_load_failed', '權限資料載入失敗'));
 }
 window.doLogin = doLogin;
 
@@ -419,10 +421,11 @@ export async function completeLoginAfterAuth(empId, source, fallbackAccount) {
                 }
 
                 backendSucceeded = true;
+                try { sessionStorage.setItem('session_login_recorded', '1'); } catch(e){}
             } else {
                 // 後端有回應但失敗 (e.g. admin TestAccount 不在 Accounts 表)
                 // 顯示最後一次已知的 DB 值，不假裝 +1
-                console.warn('UpdateLoginStats 後端拒絕：', result && result.message);
+                console.warn('UpdateLoginStats 後端拒絕：', result && result.errorCode);
                 if (lastKnownDbTime) displayLoginTime = formatLoginTimeFromDb(lastKnownDbTime);
             }
         } else {

@@ -85,6 +85,17 @@ export function changeLanguage(lang, persist = true) {
     // 6. 重繪側邊欄（含系統設定子選單翻譯）
     if (appState.currentUser && typeof renderSidebarMenus === 'function') renderSidebarMenus();
 
+    // 6b. 麵包屑（L1）：#bc-name / #bc-path 是 navTo 動態填的、刻意沒有 data-i18n，
+    //     所以步驟 1 的掃描不會（也不該）碰它們 —— 必須在這裡以新語系重畫。
+    //     ⚠️ 順序不可調動：① 要在步驟 6 之後（refreshBreadcrumb 讀的是重繪後側欄的文字）
+    //                     ② 要在步驟 7 之前（page-under-construction 分支會讀 #bc-name 的 innerText）。
+    refreshBreadcrumb();
+
+    // 6c. 其餘「JS 動態填值、因此不掛 data-i18n」的元素（L5）：圖示預覽的兩行說明、Excel 檔名格。
+    //     兩者都是「有狀態」的顯示，不能靠 data-i18n 掃描重置，只能依當前狀態重新套字。
+    if (typeof window.refreshIconPreviewTexts === 'function') window.refreshIconPreviewTexts();
+    if (typeof window.syncConfigFileName === 'function') window.syncConfigFileName();
+
     // 7. ✅ 核心修復：重新渲染當前正在顯示的頁面，讓動態產生的按鈕與表格文字也一併翻譯
     const activePage = document.querySelector('.page-section.active');
     if (activePage) {
@@ -454,6 +465,21 @@ export function goDefaultHome() {
 
         const _isFolder = (m) => !!m && String(m.menuMode || m.MenuMode || '').toLowerCase() === 'folder';
         const _isOpenable = (m) => !!m && !!(m.url || m.Url || m.targetPage || m.TargetPage || (m.menuMode || m.MenuMode) === 'app_grid');
+
+        // ⭐️ 自動挑首頁時還要再多一層條件：**必須是會在畫面內呈現的看板**。
+        //   activateMenu 對 blank / ie / fullscreen / popup 只會 window.open 到外部，
+        //   完全不動 .page-section → 拿它當「開站落點」的話，App 一進來內容區是全白的
+        //   （使用者會以為系統壞了）。使用者「主動點擊」時另開視窗是正確行為，這裡只限制自動挑選。
+        //   ⚠️ 只作用在步驟 2/3 的自動挑選；步驟 1（admin 明確指定的預設首頁）是明示意圖，不覆寫。
+        const _EXTERNAL_TARGETS = ['blank', 'ie', 'fullscreen', 'popup'];
+        const _rendersInPage = (m) => {
+            if (!m) return false;
+            if (String(m.menuMode || m.MenuMode || '').toLowerCase() === 'app_grid') return true; // → page-app-grid
+            const url = m.url || m.Url;
+            if (url) return !_EXTERNAL_TARGETS.includes(String(m.target || m.Target || '').toLowerCase());
+            return !!(m.targetPage || m.TargetPage);                                              // → navTo(targetPage)
+        };
+        const _isAutoHomeCandidate = (m) => _isOpenable(m) && !_isFolder(m) && _rendersInPage(m);
         // ⭐ 預設頁若指向「資料夾」（管理者在挑選器把整個群組指定為預設）→ 遞迴展開到底下第一個可直接開啟的葉節點
         const _resolveFolderToFirstLeaf = (folderId) => {
             let curId = window.cleanId(folderId);
@@ -534,30 +560,52 @@ export function goDefaultHome() {
                     return (idxA === -1 ? 9999 : idxA) - (idxB === -1 ? 9999 : idxB);
                 });
 
-                if (validRoots.length > 0) {
-                    let firstRoot = validRoots[0];
-                    if (firstRoot.menuMode === 'folder') {
-                        defPage = _resolveFolderToFirstLeaf(firstRoot.id);
-                    } else {
-                        defPage = firstRoot.id;
+                // ⭐️ 依序找「第一個真的打得開的」root（2026-08-24 第七輪 J4 修正）。
+                //   舊版只取 validRoots[0] 且只判斷是不是 folder —— 但本站多數 root 是
+                //   menuMode='link' 且 url/targetPage 皆空的「群組佔位節點」，直接當預設首頁的結果是
+                //   activateMenu 走到 page-under-construction → 沒設過預設首頁的使用者（尤其新進人員）
+                //   第一眼就是「XXX 內容建置中」，即使底下還有一堆打得開的看板。
+                //   ⚠️ 不能靠下方步驟 3 的防呆補救：它的條件是「defPage 不在 validList」，
+                //      而佔位 root 就在清單裡 → 永遠不會觸發（這是當時漏掉的關鍵）。
+                for (const root of validRoots) {
+                    let candidate = null;
+                    if (_isFolder(root)) {
+                        const leafId = _resolveFolderToFirstLeaf(root.id);
+                        const leafObj = menus.find(m => window.cleanId(m.id || m.MenuId) === window.cleanId(leafId));
+                        if (_isAutoHomeCandidate(leafObj)) candidate = leafId;
+                    } else if (_isAutoHomeCandidate(root)) {
+                        candidate = root.id;
                     }
+                    if (candidate) { defPage = candidate; break; }
                 }
             }
         }
 
-        // 2.5 預設頁指向資料夾 → 展開到第一個可開啟子看板（管理者可把整個群組設為預設首頁）
+        // 2.5 預設頁本身開不出東西 → 展開到第一個可開啟子看板（管理者可把整個群組設為預設首頁）
+        //
+        // ⭐️ 2026-08-24 第八輪 K1：條件由「只看 `_isFolder`」放寬為「**folder 或任何 `!_isOpenable` 的節點**」。
+        //    成因：本站多數 root 是 menuMode='link' 但 url / targetPage **皆為空字串**的「群組佔位節點」，
+        //    它不是 folder，舊條件完全不攔 → admin 在帳號管理的挑選器選到它，使用者每次登入就停在
+        //    「XXX 內容建置中」（實測 admin 00058897 的 12A 預設首頁 m_1777125587023 正是這種節點）。
+        //    而且死頁落點照樣會 activateMenu → POST MenuClick，把該節點的點擊統計灌到 397 次。
+        // ⚠️ 這不牴觸「步驟 1 是 admin 的明示意圖、不覆寫」——被覆寫的只有「證明沒有任何內容可呈現」的節點
+        //    （非 app_grid、無 url、無 targetPage）。明確指定 blank / ie / popup 等外開目標仍完全尊重。
+        // ⚠️ `_resolveFolderToFirstLeaf` 找不到可開啟子節點時會**原樣回傳輸入的 id**，
+        //    所以複驗一定要連 `_isOpenable` 一起檢查——只檢查 `!_isFolder` 的話，佔位節點會原封不動被放行。
         if (defPage) {
             const _defObj = menus.find(m => window.cleanId(m.id || m.MenuId) === window.cleanId(defPage));
-            if (_isFolder(_defObj)) {
+            if (_isFolder(_defObj) || !_isOpenable(_defObj)) {
                 const _resolved = _resolveFolderToFirstLeaf(defPage);
                 const _resObj = menus.find(m => window.cleanId(m.id || m.MenuId) === window.cleanId(_resolved));
-                defPage = (_resObj && !_isFolder(_resObj)) ? _resolved : null;
+                defPage = (_resObj && _isOpenable(_resObj) && !_isFolder(_resObj)) ? _resolved : null;
             }
         }
 
         // 3. 終極防呆：仍找不到或合法權限已被拔除/在個人設定中被隱藏 → 從安全過濾後的清單尋找第一個可直接開啟的看板
         if (!defPage || !validList.find(m => window.cleanId(m.id) === window.cleanId(defPage))) {
-            let firstVisible = validList.find(m => _isOpenable(m) && !_isFolder(m));
+            // 優先找「會在畫面內呈現」的；真的一個都沒有，才退回任何可開啟的（至少有反應勝過空白）。
+            let firstVisible = validList.find(m => _isAutoHomeCandidate(m))
+                || validList.find(m => _isOpenable(m) && !_isFolder(m));
             if (firstVisible) defPage = firstVisible.id;
             else defPage = null; // ⭐️ 安全防護：無可用看板時寧可空白，避免越權顯示
         }
@@ -572,8 +620,76 @@ export function goDefaultHome() {
     }
 }
 
+// === 麵包屑（L1）===
+// #bc-name / #bc-path 是這裡動態填的，**刻意不掛 data-i18n**（掛了會被 changeLanguage 步驟 1 洗掉，
+//   見 index.html 該行註解與 CLAUDE.md §4-前端-9）。切語言時改由 refreshBreadcrumb() 用同一組輸入重畫。
+// _lastBc 記的是「上一次 navTo 的輸入」，不是渲染結果 —— 重畫時才能拿到新語系的名稱。
+let _lastBc = { pageId: 'page-home', hadElement: false, subTitle: '', subTitleKey: null };
+
+function updateBreadcrumb(pageId, element, subTitle) {
+    const bcPath = document.getElementById('bc-path');
+    const bcName = document.getElementById('bc-name');
+    if (!bcPath || !bcName) return;
+
+    if (pageId === 'page-home') {
+        bcPath.style.display = 'none';
+        bcName.innerText = t('nav_breadcrumb_home', '首頁總覽');
+        return;
+    }
+    if (pageId === 'page-recent') {
+        bcPath.style.display = 'none';
+        bcName.innerText = t('lbl_recent', '最近瀏覽');
+        return;
+    }
+
+    let topName = getTopMenuName();
+    let folderPath = element ? getMenuPath(element) : '';
+
+    let elName = element ? (element.querySelector('span')?.innerText || element.innerText.trim()) : '';
+    const leafName = subTitle || elName || '';
+
+    let finalPathArr = [];
+    // 根層看板直接開啟時上層名稱與頁面同名 → 不重複顯示（避免「ZE / ZE」）
+    if (topName && !(topName === leafName && !folderPath)) finalPathArr.push(topName);
+    if (folderPath) finalPathArr.push(folderPath);
+
+    if (finalPathArr.length > 0) {
+        bcPath.style.display = 'inline';
+        bcPath.innerText = finalPathArr.join(' / ') + ' / ';
+    } else {
+        bcPath.style.display = 'none';
+    }
+
+    bcName.innerText = leafName;
+}
+
+/**
+ * 以「上一次 navTo 的輸入」重畫麵包屑（切語言時呼叫）。
+ * ⚠️ 只有當初真的是從側欄項目進來的（`hadElement`）才可以讀 `.menu-item.active` —— renderSidebarMenus()
+ *    會依 `appState.currentActiveSidebarMenuId` 還原 active，而 layout.js 那兩處
+ *    `navTo('page-account-manage', null, …)` 根本沒有對應的側欄項目，貿然取用會拿到別頁的名稱。
+ */
+export function refreshBreadcrumb() {
+    const activePage = document.querySelector('.page-section.active');
+    if (!activePage) return;
+    const pageId = activePage.id;
+
+    const el = (_lastBc.hadElement && _lastBc.pageId === pageId)
+        ? document.querySelector('.menu-item.active')
+        : null;
+
+    // 有 subTitleKey → 重譯；否則有側欄節點就交給它（側欄已於步驟 6 以新語系重繪，含 dyn_ 覆寫）。
+    const subTitle = _lastBc.subTitleKey
+        ? t(_lastBc.subTitleKey, _lastBc.subTitle)
+        : (el ? '' : _lastBc.subTitle);
+
+    updateBreadcrumb(pageId, el, subTitle);
+}
+window.refreshBreadcrumb = refreshBreadcrumb;
+
 // 導航到指定區域塊
-export function navTo(pageId, element, subTitle = '') {
+// subTitleKey：呼叫端若傳的是 t() 翻出來的字串（而非 DB 名稱），請一併帶上 key，切語言時才重譯得回來。
+export function navTo(pageId, element, subTitle = '', subTitleKey = null) {
     // 離開最近瀏覽頁時，移除 viewing-recent class 讓側邊欄恢復
     if (pageId !== 'page-recent') {
         document.body.classList.remove('viewing-recent');
@@ -596,37 +712,8 @@ export function navTo(pageId, element, subTitle = '') {
         if (iframe) iframe.src = 'about:blank';
     }
 
-    const bcPath = document.getElementById('bc-path');
-    const bcName = document.getElementById('bc-name');
-    if (bcPath && bcName) {
-        if (pageId === 'page-home') {
-            bcPath.style.display = 'none';
-            bcName.innerText = t('nav_breadcrumb_home', '首頁總覽');
-        } else if (pageId === 'page-recent') {
-            bcPath.style.display = 'none';
-            bcName.innerText = t('lbl_recent', '最近瀏覽');
-        } else {
-            let topName = getTopMenuName();
-            let folderPath = element ? getMenuPath(element) : '';
-
-            let elName = element ? (element.querySelector('span')?.innerText || element.innerText.trim()) : '';
-            const leafName = subTitle || elName || '';
-
-            let finalPathArr = [];
-            // 根層看板直接開啟時上層名稱與頁面同名 → 不重複顯示（避免「ZE / ZE」）
-            if (topName && !(topName === leafName && !folderPath)) finalPathArr.push(topName);
-            if (folderPath) finalPathArr.push(folderPath);
-
-            if (finalPathArr.length > 0) {
-                bcPath.style.display = 'inline';
-                bcPath.innerText = finalPathArr.join(' / ') + ' / ';
-            } else {
-                bcPath.style.display = 'none';
-            }
-
-            bcName.innerText = leafName;
-        }
-    }
+    _lastBc = { pageId, hadElement: !!element, subTitle, subTitleKey };
+    updateBreadcrumb(pageId, element, subTitle);
 
     if (pageId === 'page-personal-manage' && typeof renderPersonalMenuManage === 'function') renderPersonalMenuManage();
     if (pageId === 'page-webpage-manage' && typeof renderWebpageTable === 'function') renderWebpageTable();
@@ -740,7 +827,7 @@ export function openFeedbackPage() {
     setTimeout(() => {
         const el = document.querySelector('#dynamic-sidebar-menus .menu-item[onclick*="page-apply"]');
         if (el) el.click();
-        else navTo('page-apply', null, t('menu_apply', '需求申請'));
+        else navTo('page-apply', null, t('menu_apply', '需求申請'), 'menu_apply');
     }, 120);
 }
 window.openFeedbackPage = openFeedbackPage;

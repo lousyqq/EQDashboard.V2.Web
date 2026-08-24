@@ -1,15 +1,15 @@
-﻿<!-- partials/modals.html - 所有 Bootstrap Modal 集中管理 -->
+<!-- partials/modals.html - 所有 Bootstrap Modal 集中管理 -->
     <!-- ================= 核心 Modals 區塊 (全數補齊恢復) ================= -->
     <!-- 1. 廠區管理 Modal -->
-    <div class="modal fade" id="fabModal" tabindex="-1" aria-labelledby="fabModalTitle">
+    <div class="modal fade" id="fabModal" data-bs-backdrop="static" tabindex="-1" aria-labelledby="fabModalTitle">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content border-0 shadow">
                 <div class="modal-header bg-body-tertiary border-bottom"><h5 class="modal-title fw-bold" data-i18n="fab_edit" id="fabModalTitle">廠區編輯</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉" data-i18n-aria-label="btn_close"></button></div>
                 <div class="modal-body py-4">
                     <form id="fabForm" onsubmit="saveFabItem(event)">
                         <input type="hidden" id="editFabId">
-                        <div class="mb-3"><label class="form-label fw-bold small" data-i18n="fab_id" for="fabNameInput">廠區 ID</label><input type="text" id="fabNameInput" class="form-control" required></div>
-                        <div class="mb-3"><label class="form-label fw-bold small" data-i18n="th_display_name" for="fabDisplayNameInput">顯示名稱</label><input type="text" id="fabDisplayNameInput" class="form-control" required></div>
+                        <div class="mb-3"><label class="form-label fw-bold small" data-i18n="fab_id" for="fabNameInput">廠區 ID</label><input type="text" id="fabNameInput" class="form-control" maxlength="50" required></div>
+                        <div class="mb-3"><label class="form-label fw-bold small" data-i18n="th_display_name" for="fabDisplayNameInput">顯示名稱</label><input type="text" id="fabDisplayNameInput" class="form-control" maxlength="100" required></div>
                         <div class="mb-3"><label class="form-label fw-bold small" data-i18n="th_default_lang" for="fabLangSelect">預設語言</label><select id="fabLangSelect" class="form-select"><option value="zh" data-i18n="lang_zh">繁體中文</option><option value="en">English</option><option value="ja" data-i18n="lang_ja">日本語</option></select></div>
                         <div class="mb-4"><label class="form-label fw-bold small" id="fabRoleCheckboxesLabel"><span data-i18n="lbl_apply_role">套用權限群組</span> <span class="text-muted fw-normal" data-i18n="hint_one_role_per_fab">(單選：一個廠區限一個群組)</span></label><div role="group" aria-labelledby="fabRoleCheckboxesLabel" id="fabRoleCheckboxes" class="d-flex flex-wrap gap-2"></div></div>
                         <div class="text-end">
@@ -23,14 +23,14 @@
     </div>
 
     <!-- 2. 群組權限 Modal -->
-    <div class="modal fade" id="roleModal" tabindex="-1" aria-labelledby="roleModalTitle">
+    <div class="modal fade" id="roleModal" data-bs-backdrop="static" tabindex="-1" aria-labelledby="roleModalTitle">
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content border-0 shadow">
                 <div class="modal-header bg-body-tertiary border-bottom"><h5 class="modal-title fw-bold" data-i18n="role_edit" id="roleModalTitle">群組編輯</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉" data-i18n-aria-label="btn_close"></button></div>
                 <div class="modal-body py-4">
                     <form id="roleForm" onsubmit="saveRoleItem(event)">
                         <input type="hidden" id="editRoleId">
-                        <div class="mb-4"><label class="form-label fw-bold small" data-i18n="th_role_name" for="roleName">群組名稱</label><input type="text" id="roleName" class="form-control" required></div>
+                        <div class="mb-4"><label class="form-label fw-bold small" data-i18n="th_role_name" for="roleName">群組名稱</label><input type="text" id="roleName" class="form-control" maxlength="100" required></div>
                         <div class="mb-4"><label class="form-label fw-bold small" id="roleMenuCheckboxesLabel" data-i18n="lbl_allowed_menus">允許存取的選單 (拖曳可排序)</label><div role="group" aria-labelledby="roleMenuCheckboxesLabel" id="roleMenuCheckboxes" class="d-flex flex-wrap gap-2"></div></div>
                         <div class="text-end">
                             <button type="button" class="btn btn-outline-secondary fw-bold px-4 me-2" data-bs-dismiss="modal" data-i18n="modal_btn_cancel">取消</button>
@@ -45,12 +45,12 @@
     <!-- ========================================================================= -->
     <!-- 3. 帳號管理 Modal (精美瘦身還原：3欄排版，移除強制全高，保證不被遮擋) -->
     <!-- ========================================================================= -->
-    <div class="modal fade" id="accModal" tabindex="-1" aria-hidden="true" aria-labelledby="accModalTitle">
+    <div class="modal fade" id="accModal" data-bs-backdrop="static" tabindex="-1" aria-hidden="true" aria-labelledby="accModalTitle">
         <!-- 改用 modal-dialog-scrollable：header/footer 固定、body 內部捲動，
              避免加了「進階個別權限調整」後內容超過 viewport 時 header 被裁掉看不到 -->
         <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
             <div class="modal-content border-0 shadow-lg">
-                <form id="accForm">
+                <form id="accForm" onsubmit="saveAccountItem(event)">
                     <div class="modal-header bg-body-tertiary border-bottom py-3">
                         <h5 class="modal-title fw-bold text-body fs-5" id="accModalTitle">
                             <i class="fas fa-user-cog text-primary me-2"></i><span data-i18n="acc_edit">帳號設定</span>
@@ -66,15 +66,15 @@
                         <div class="row g-2 mb-3">
                             <div class="col-md-4">
                                 <label class="form-label small fw-bold text-secondary mb-1" data-i18n="th_emp_id" for="accEmpId">工號 <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control form-control-sm bg-body-tertiary fw-bold text-body" id="accEmpId" required>
+                                <input type="text" class="form-control form-control-sm bg-body-tertiary fw-bold text-body" id="accEmpId" maxlength="50" required>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label small fw-bold text-secondary mb-1" data-i18n="name" for="accName">姓名</label>
-                                <input type="text" class="form-control form-control-sm" id="accName" required>
+                                <input type="text" class="form-control form-control-sm" id="accName" maxlength="100" required>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label small fw-bold text-secondary mb-1" data-i18n="dept" for="accDept">部門</label>
-                                <input type="text" class="form-control form-control-sm" id="accDept">
+                                <input type="text" class="form-control form-control-sm" id="accDept" maxlength="100">
                             </div>
                         </div>
 
@@ -169,14 +169,14 @@
 
                     <div class="modal-footer border-top-0 bg-body-tertiary py-2">
                         <button type="button" class="btn btn-outline-secondary btn-sm px-4 fw-bold" data-bs-dismiss="modal" data-i18n="modal_btn_cancel">取消</button>
-                        <button type="button" class="btn btn-primary btn-sm px-4 fw-bold shadow-sm" onclick="saveAccountItem(event)"><i class="fas fa-save me-1"></i><span data-i18n="modal_btn_save"> 儲存</span></button>
+                        <button type="submit" class="btn btn-primary btn-sm px-4 fw-bold shadow-sm"><i class="fas fa-save me-1"></i><span data-i18n="modal_btn_save"> 儲存</span></button>
                     </div>
                 </form>
             </div>
         </div>
     </div>
 
-    <div class="modal fade" id="webpageModal" tabindex="-1" aria-labelledby="webpageModalTitle">
+    <div class="modal fade" id="webpageModal" data-bs-backdrop="static" tabindex="-1" aria-labelledby="webpageModalTitle">
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content border-0 shadow">
                 <div class="modal-header bg-body-tertiary border-bottom">
@@ -201,11 +201,11 @@
 
                             <div class="col-md-6">
                                 <label class="form-label fw-bold text-muted small mb-1" data-i18n="sys_name" for="wpSysName">系統名稱 <span class="text-danger">*</span></label>
-                                <input type="text" id="wpSysName" class="form-control form-control-sm" required>
+                                <input type="text" id="wpSysName" class="form-control form-control-sm" maxlength="100" required>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label fw-bold text-muted small mb-1" data-i18n="th_display_name" for="wpDisplayName">顯示名稱 <span class="text-danger">*</span></label>
-                                <input type="text" id="wpDisplayName" class="form-control form-control-sm" required>
+                                <input type="text" id="wpDisplayName" class="form-control form-control-sm" maxlength="100" required>
                             </div>
 
                             <div class="col-md-12" style="display:none;">
@@ -281,7 +281,7 @@
     </div>
 
     <!-- 5. 選單結構配置 Modal -->
-    <div class="modal fade" id="menuNodeModal" tabindex="-1" aria-labelledby="menuNodeModalTitle">
+    <div class="modal fade" id="menuNodeModal" data-bs-backdrop="static" tabindex="-1" aria-labelledby="menuNodeModalTitle">
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content border-0 shadow">
                 <div class="modal-header bg-body-tertiary border-bottom">
@@ -292,6 +292,9 @@
                 <div class="modal-body py-4">
                     <form id="nodeForm" onsubmit="saveMenuNodeItem(event)">
                         <input type="hidden" id="editNodeId">
+                        <!-- J5：只被委派子資料夾的人進來時，上半部欄位會被 applyNodeModalScope() 鎖成唯讀，這行說明為什麼。
+                             文字由 JS 以 t() 填入（動態元素，依 §4-前端-9 不可掛 data-i18n）。 -->
+                        <div class="alert alert-warning py-2 px-3 small mb-3" id="nodeScopeHint" style="display:none;" role="status"></div>
                         <div class="mb-4">
                             <label class="form-label fw-bold small text-danger mb-1" data-i18n="menu_type" id="grp3Label">選單類型 *</label>
                             <div role="group" aria-labelledby="grp3Label" class="d-flex gap-4">
@@ -309,11 +312,11 @@
                         <div class="row g-3 mb-3">
                             <div class="col-md-6">
                                 <label class="form-label fw-bold small text-danger mb-1" data-i18n="lbl_sys_name_req" for="nodeName">系統名稱 *</label>
-                                <input type="text" id="nodeName" class="form-control" required placeholder="例如: ZE 強化防禦" data-i18n-placeholder="ph_node_name">
+                                <input type="text" id="nodeName" class="form-control" maxlength="100" required placeholder="例如: ZE 強化防禦" data-i18n-placeholder="ph_node_name">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label fw-bold small text-danger mb-1" for="nodeDisplayName" data-i18n="lbl_display_name_req">前台顯示名稱 *</label>
-                                <input type="text" id="nodeDisplayName" class="form-control" required placeholder="例如: ZE 強化防禦群組" data-i18n-placeholder="ph_node_display">
+                                <input type="text" id="nodeDisplayName" class="form-control" maxlength="100" required placeholder="例如: ZE 強化防禦群組" data-i18n-placeholder="ph_node_display">
                             </div>
                             <div class="col-md-2" style="display:none;">
                                 <label class="form-label fw-bold small text-muted mb-1" data-i18n="icon" for="nodeIcon">圖示 (Icon)</label>
@@ -383,14 +386,14 @@
     </div>
 
     <!-- 6. 應用集合 AppGrid Modal -->
-    <div class="modal fade" id="appGridModal" tabindex="-1" aria-labelledby="appGridModalTitle">
+    <div class="modal fade" id="appGridModal" data-bs-backdrop="static" tabindex="-1" aria-labelledby="appGridModalTitle">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content border-0 shadow">
                 <div class="modal-header bg-body-tertiary border-bottom"><h5 class="modal-title fw-bold" id="appGridModalTitle" data-i18n="app_edit">APP 編輯</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉" data-i18n-aria-label="btn_close"></button></div>
                 <div class="modal-body py-4">
                     <form id="appForm" onsubmit="saveAppItem(event)">
                         <input type="hidden" id="appIdInput">
-                        <div class="mb-3"><label class="form-label fw-bold small" for="appName" data-i18n="lbl_app_name">APP 名稱</label><input type="text" id="appName" class="form-control" required></div>
+                        <div class="mb-3"><label class="form-label fw-bold small" for="appName" data-i18n="lbl_app_name">APP 名稱</label><input type="text" id="appName" class="form-control" maxlength="100" required></div>
                         <div class="mb-3"><label class="form-label fw-bold small" for="appUrl" data-i18n="lbl_link_url">連結網址</label><input type="text" id="appUrl" class="form-control" required></div>
                         <div class="mb-3"><label class="form-label fw-bold small" data-i18n="open_target" for="appTarget">開啟方式</label><select id="appTarget" class="form-select"><option value="iframe" data-i18n="opt_target_iframe">內部嵌入 (Iframe)</option><option value="iframe_fullscreen" data-i18n="iframe_fullscreen">內部嵌入 (全螢幕/沉浸模式)</option><option value="blank" data-i18n="blank">新分頁 (Blank)</option><option value="fullscreen" class="text-success fw-bold" data-i18n="fullscreen">新視窗開啟 (全螢幕)</option><option value="popup" data-i18n="popup">新視窗開啟 (彈出小視窗)</option></select><div class="form-text text-muted small mt-1"><i class="fas fa-info-circle me-1 text-primary"></i><span data-i18n="hint_xframe">提示：若目標網站設有防嵌入規範（如 X-Frame-Options 導致畫面空白），請改選「新分頁」或「新視窗開啟」。</span></div></div>
                         <div class="mb-4">
@@ -400,8 +403,12 @@
                                     <img id="appIconPreview" src="" alt="Icon Preview" style="max-width:64px; max-height:64px; object-fit:contain; border-radius:4px;">
                                 </div>
                                 <div class="flex-grow-1">
-                                    <div id="appIconPreviewTitle" class="fw-bold fs-6 text-body mb-1" data-i18n="msg_icon_configured">目前已配置專屬圖示</div>
-                                    <div id="appIconPreviewSub" class="text-muted small mb-0" data-i18n="msg_icon_replace_hint">若需更換請重新選擇檔案；若不更換請留空</div>
+                                    <!-- ⚠️ L5：這兩行刻意「不」掛 data-i18n —— setIconPreviewBoxVisible() 會依
+                                         「剛選了新圖示 / 目前已有圖示」兩種狀態動態改寫它們，掛了的話切語言時
+                                         changeLanguage 步驟 1 會把狀態洗回「目前已配置專屬圖示」（顯示錯誤的狀態）。
+                                         語系切換改由 refreshIconPreviewTexts() 依 data-icon-state 重新套用。 -->
+                                    <div id="appIconPreviewTitle" class="fw-bold fs-6 text-body mb-1">目前已配置專屬圖示</div>
+                                    <div id="appIconPreviewSub" class="text-muted small mb-0">若需更換請重新選擇檔案；若不更換請留空</div>
                                 </div>
                                 <button type="button" id="appIconClearBtn" class="btn btn-sm btn-outline-danger ms-2" title="移除圖示" onclick="clearAppIconUpload()">
                                     <i class="fas fa-trash-alt"></i>
@@ -417,7 +424,7 @@
     </div>
 
     <!-- 7. 個人化選單 Modal (對齊 TEST_20260429.html:977) -->
-    <div class="modal fade" id="personalMenuModal" tabindex="-1" aria-labelledby="personalMenuModalTitle">
+    <div class="modal fade" id="personalMenuModal" data-bs-backdrop="static" tabindex="-1" aria-labelledby="personalMenuModalTitle">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content border-0 shadow">
                 <div class="modal-header bg-body-tertiary border-bottom">
@@ -476,7 +483,7 @@
     </div>
 
     <!-- 8. 需求申請 Modal -->
-    <div class="modal fade" id="applyModal" tabindex="-1" aria-labelledby="applyModalTitle">
+    <div class="modal fade" id="applyModal" data-bs-backdrop="static" tabindex="-1" aria-labelledby="applyModalTitle">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content border-0 shadow">
                 <div class="modal-header bg-body-tertiary border-bottom"><h5 class="modal-title fw-bold" id="applyModalTitle" data-i18n="apply_submit_title">需求申請送出</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉" data-i18n-aria-label="btn_close"></button></div>
@@ -496,7 +503,7 @@
     </div>
 
     <!-- 9. 撤回申請 Modal -->
-    <div class="modal fade" id="withdrawModal" tabindex="-1" aria-labelledby="withdrawModalTitle">
+    <div class="modal fade" id="withdrawModal" data-bs-backdrop="static" tabindex="-1" aria-labelledby="withdrawModalTitle">
         <div class="modal-dialog modal-dialog-centered modal-sm">
             <div class="modal-content border-0 shadow">
                 <div class="modal-header bg-body-tertiary border-bottom"><h6 class="modal-title fw-bold text-danger" id="withdrawModalTitle"><i class="fas fa-undo me-2"></i><span data-i18n="withdraw_title">撤回申請</span></h6><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉" data-i18n-aria-label="btn_close"></button></div>
@@ -512,7 +519,7 @@
     </div>
 
     <!-- 10. 審核管理 Modal (對齊 TEST_20260429.html:1158) -->
-    <div class="modal fade" id="auditModal" tabindex="-1" aria-labelledby="auditModalTitle">
+    <div class="modal fade" id="auditModal" data-bs-backdrop="static" tabindex="-1" aria-labelledby="auditModalTitle">
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content border-0 shadow">
                 <div class="modal-header bg-primary text-white border-bottom">

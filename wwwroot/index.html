@@ -43,23 +43,23 @@
          ⚠️ 移除 integrity/crossorigin 是刻意的：SRI 的用途是防「第三方主機被竄改」，
             同源檔案由自己的 IIS 供應，不適用（保留反而會在檔案有任何位元差異時整支資產被擋掉）。
          版本：Bootstrap 5.3.2 / FontAwesome 6.4.0 / jQuery 3.7.0 / DataTables 1.13.6 / SheetJS 0.18.5 -->
-    <link href="lib/bootstrap/bootstrap.min.css?v=20260816g" rel="stylesheet">
-    <link href="lib/fontawesome/css/all.min.css?v=20260816g" rel="stylesheet">
-    <script src="lib/xlsx/xlsx.full.min.js?v=20260816g"></script>
+    <link href="lib/bootstrap/bootstrap.min.css?v=20260824d" rel="stylesheet">
+    <link href="lib/fontawesome/css/all.min.css?v=20260824d" rel="stylesheet">
+    <script src="lib/xlsx/xlsx.full.min.js?v=20260824d"></script>
 
     <!-- DataTables CSS & JS + jQuery -->
-    <link href="lib/datatables/dataTables.bootstrap5.min.css?v=20260816g" rel="stylesheet">
-    <script src="lib/jquery/jquery-3.7.0.min.js?v=20260816g"></script>
-    <script src="lib/datatables/jquery.dataTables.min.js?v=20260816g"></script>
-    <script src="lib/datatables/dataTables.bootstrap5.min.js?v=20260816g"></script>
-    <script src="lib/bootstrap/bootstrap.bundle.min.js?v=20260816g"></script>
+    <link href="lib/datatables/dataTables.bootstrap5.min.css?v=20260824d" rel="stylesheet">
+    <script src="lib/jquery/jquery-3.7.0.min.js?v=20260824d"></script>
+    <script src="lib/datatables/jquery.dataTables.min.js?v=20260824d"></script>
+    <script src="lib/datatables/dataTables.bootstrap5.min.js?v=20260824d"></script>
+    <script src="lib/bootstrap/bootstrap.bundle.min.js?v=20260824d"></script>
 
     <!-- CSS 模組 (從 style.css 拆分) -->
-    <link href="css/variables.css?v=20260816g" rel="stylesheet">
-    <link href="css/navbar.css?v=20260816g" rel="stylesheet">
-    <link href="css/sidebar.css?v=20260816g" rel="stylesheet">
-    <link href="css/components.css?v=20260816g" rel="stylesheet">
-    <link href="css/responsive.css?v=20260816g" rel="stylesheet">
+    <link href="css/variables.css?v=20260824d" rel="stylesheet">
+    <link href="css/navbar.css?v=20260824d" rel="stylesheet">
+    <link href="css/sidebar.css?v=20260824d" rel="stylesheet">
+    <link href="css/components.css?v=20260824d" rel="stylesheet">
+    <link href="css/responsive.css?v=20260824d" rel="stylesheet">
 </head>
 <body>
 
@@ -104,7 +104,12 @@
                 <div class="nav-breadcrumb-inline align-items-center" id="top-breadcrumb">
                     <div class="monitoring-dot me-2" title="系統即時監控運作中" data-i18n-title="tip_monitoring"></div>
                     <i class="fas fa-satellite-dish me-2" style="color: var(--navbar-accent); font-size: 0.95rem;" title="系統即時監控運作中" data-i18n-title="tip_monitoring" aria-hidden="true"></i>
-                    <span id="bc-path" style="display:none;"></span><span class="current" id="bc-name" data-i18n="nav_breadcrumb_home">首頁總覽</span>
+                    <!-- ⚠️ L1：#bc-name 刻意「不」掛 data-i18n —— 它由 navTo() 依當前頁面動態填（看板名稱／
+                         系統設定分頁名／最近瀏覽）。掛了的話 changeLanguage() 步驟 1 會把每個 [data-i18n] 直接
+                         innerHTML 覆寫 → 不管在哪一頁，切語言後都被洗成「首頁總覽」，而沒掛 data-i18n 的
+                         #bc-path 不會被洗 → 出現「ZE / Audit / 首頁總覽」這種自相矛盾的麵包屑。
+                         語系切換改由 changeLanguage() 步驟 6b 呼叫 refreshBreadcrumb() 重畫。 -->
+                    <span id="bc-path" style="display:none;"></span><span class="current" id="bc-name">首頁總覽</span>
                 </div>
             </div>
 
@@ -174,8 +179,8 @@
                     <ul class="dropdown-menu dropdown-menu-end shadow border-0 mt-2 p-0" style="width: 310px; border-radius: 8px; overflow: hidden;">
                         <!-- Round-5 B4 修：<span data-i18n="..."> 全部閉合，避免 i18n 切換時把後面 badge 一起吃掉 -->
                         <!-- Round-5 B7 修：預設值「系統管理員 (admin)」「資訊處」改成「載入中…」骨架 -->
-                        <div class="p-3 bg-light border-bottom d-flex align-items-center"><div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center shadow-sm" style="width: 45px; height: 45px; font-size: 1.5rem; flex-shrink: 0;"><i class="fas fa-user"></i></div><div class="ms-3 overflow-hidden"><div class="fw-bold text-dark fs-6 text-truncate" id="dropdown-user-name">載入中…</div><div class="text-muted small text-truncate mt-1"><i class="fas fa-sitemap me-1"></i> <span id="dropdown-user-dept">—</span></div></div></div>
-                        <div class="p-3 bg-white"><div class="d-flex justify-content-between align-items-center mb-3"><div class="text-secondary fw-bold"><i class="fas fa-chart-line me-2 text-success"></i><span data-i18n="nav_login_count">累積登入次數</span></div><div class="badge bg-success bg-opacity-10 text-success px-2 py-1 border border-success border-opacity-25" id="dropdown-user-login-count">— 次</div></div><div class="d-flex justify-content-between align-items-center"><div class="text-secondary fw-bold"><i class="fas fa-clock me-2 text-primary"></i><span data-i18n="nav_login_time">本次登入時間</span></div><div class="fw-bold text-dark text-nowrap" style="font-size: 0.85rem;" id="dropdown-user-login-time">—</div></div></div>
+                        <div class="p-3 bg-body-tertiary border-bottom d-flex align-items-center"><div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center shadow-sm" style="width: 45px; height: 45px; font-size: 1.5rem; flex-shrink: 0;"><i class="fas fa-user"></i></div><div class="ms-3 overflow-hidden"><div class="fw-bold text-body-emphasis fs-6 text-truncate" id="dropdown-user-name">載入中…</div><div class="text-muted small text-truncate mt-1"><i class="fas fa-sitemap me-1"></i> <span id="dropdown-user-dept">—</span></div></div></div>
+                        <div class="p-3"><div class="d-flex justify-content-between align-items-center mb-3"><div class="text-secondary fw-bold"><i class="fas fa-chart-line me-2 text-success"></i><span data-i18n="nav_login_count">累積登入次數</span></div><div class="badge bg-success bg-opacity-10 text-success px-2 py-1 border border-success border-opacity-25" id="dropdown-user-login-count">— 次</div></div><div class="d-flex justify-content-between align-items-center"><div class="text-secondary fw-bold"><i class="fas fa-clock me-2 text-primary"></i><span data-i18n="nav_login_time">本次登入時間</span></div><div class="fw-bold text-body-emphasis text-nowrap" style="font-size: 0.85rem;" id="dropdown-user-login-time">—</div></div></div>
                     </ul>
                 </div>
             </div>
@@ -198,7 +203,12 @@
         <!-- RWD (≤992px)：側欄浮層背景遮罩，點擊收合（layout.js 綁定） -->
         <div id="sidebar-backdrop"></div>
         <div id="sidebar" class="sidebar">
-            <div class="sidebar-module-header"><i class="fas fa-layer-group"></i> <div class="module-title-text" id="sidebar-module-title" data-i18n="sidebar_module">模組目錄</div></div>
+            <!-- ⚠️ 2026-08-24 第八輪（第七輪 J11）：這裡**不可**掛 data-i18n —— #sidebar-module-title 的內容
+                 由 renderSidebarMenus() 動態填入當前模組名稱，掛了就會在切語言時被 changeLanguage()
+                 用字典值蓋掉（§4-前端-9「JS 會動態填值的元素不可掛 data-i18n」）。
+                 過去沒出事純粹是靠 changeLanguage() 步驟 6 又跑一次 renderSidebarMenus() 蓋回去，
+                 屬順序相依的僥倖。預設字串改由 render/sidebar.js 用 t('sidebar_module', …) 提供。 -->
+            <div class="sidebar-module-header"><i class="fas fa-layer-group"></i> <div class="module-title-text" id="sidebar-module-title">模組目錄</div></div>
             <div class="flex-grow-1 overflow-auto py-1" id="dynamic-sidebar-menus"></div>
             <script>
                 var cachedSide = localStorage.getItem("app_shell_sidebar_menus");
@@ -237,7 +247,7 @@
                                 <div class="home-card-content">
                                     <!-- Round-5 B4：<span data-i18n>...</span> 完整閉合，否則切語系時 badge 會被吃掉 -->
                                     <!-- Round-5 B7：home-fab-display 預設 12A → —，由 renderHomeDashboard 填值 -->
-                                    <div class="d-flex justify-content-between align-items-start"><p class="text-muted fw-bold mb-2 small"><i class="fas fa-map-marker-alt me-1"></i><span data-i18n="home_fab_title"> 目前選擇廠區</span></p><span class="badge border text-muted bg-light fw-normal py-1 px-2 shadow-sm" style="font-size: 0.75rem;" data-i18n="home_switch_hint">可於右上方切換</span></div>
+                                    <div class="d-flex justify-content-between align-items-start"><p class="text-muted fw-bold mb-2 small"><i class="fas fa-map-marker-alt me-1"></i><span data-i18n="home_fab_title"> 目前選擇廠區</span></p><span class="badge border text-body-secondary bg-body-tertiary fw-normal py-1 px-2 shadow-sm" style="font-size: 0.75rem;" data-i18n="home_switch_hint">可於右上方切換</span></div>
                                     <h2 class="mb-3 mt-3 fw-bold" style="color: #0284c7;" id="home-fab-display">—</h2>
                                     <p class="text-muted small mb-0" data-i18n="home_sys_desc">目前顯示該廠區之全域配置</p>
                                 </div>
@@ -250,7 +260,7 @@
                 <div id="page-recent" class="page-section">
                     <div class="d-flex align-items-center mb-4">
                         <i class="fas fa-history me-2 text-secondary fs-5"></i>
-                        <h5 class="mb-0 fw-bold text-dark" data-i18n="lbl_recent">最近瀏覽</h5>
+                        <h5 class="mb-0 fw-bold text-body-emphasis" data-i18n="lbl_recent">最近瀏覽</h5>
                         <span class="badge bg-secondary bg-opacity-10 text-secondary ms-2 fw-normal" id="recent-count-badge"></span>
                     </div>
                     <div id="page-recent-list" class="row g-3">
@@ -277,7 +287,7 @@
                             <!-- 待儲存指示 + 儲存按鈕：拖曳排序後才顯示，按下才真正寫 DB + 重畫上方導覽列 -->
                             <button class="btn btn-sm btn-warning fw-bold shadow-sm d-none" id="btn-per-save-pending" onclick="commitPersonalPendingOrder()">
                                 <i class="fas fa-save me-1"></i> <span data-i18n="btn_save_changes">儲存變更</span>
-                                <span class="badge bg-white text-warning ms-1" id="btn-per-pending-count" style="font-size:0.65rem;">0</span>
+                                <span class="badge bg-body text-warning ms-1" id="btn-per-pending-count" style="font-size:0.65rem;">0</span>
                             </button>
                             <button class="btn btn-sm btn-outline-secondary fw-bold shadow-sm d-none" id="btn-per-discard-pending" onclick="discardPersonalPendingOrder()" title="放棄這次的拖曳變更" data-i18n-title="tip_discard_drag">
                                 <i class="fas fa-undo me-1"></i> <span data-i18n="btn_discard">放棄</span>
@@ -290,7 +300,7 @@
                         <i class="fas fa-lightbulb text-warning me-2 fs-5"></i> <strong data-i18n="pm_zone_title">獨立個人化設定區：</strong><span data-i18n="pm_scope_hint">這裡的設定完全只對您的帳號生效。切換顯示開關會立即同步左側。</span><strong data-i18n="pm_zone_desc">按住清單列上下拖曳排序，調好之後按右上「儲存變更」才會寫入 DB 並更新上方導覽列。</strong>
                     </div>
                     <div class="card border-0 shadow-sm overflow-hidden">
-                        <div class="card-header bg-white border-bottom py-3">
+                        <div class="card-header bg-body-tertiary border-bottom py-3">
                             <h6 class="m-0 fw-bold text-primary"><i class="fas fa-list me-2"></i><span data-i18n="pm_tree_title">個人看板樹狀結構</span></h6>
                         </div>
                         <div class="card-body p-3 table-responsive">
@@ -501,7 +511,7 @@
                                 </table>
                             </div>
                         </div>
-                        <div class="card-footer bg-white d-flex justify-content-between align-items-center py-2">
+                        <div class="card-footer bg-body-tertiary d-flex justify-content-between align-items-center py-2">
                             <div class="small text-muted" id="activityLogStats">—</div>
                             <div class="d-flex align-items-center gap-2">
                                 <button class="btn btn-sm btn-outline-secondary" id="alPrev" onclick="changeActivityPage(-1)" aria-label="上一頁" data-i18n-aria-label="dt_previous"><i class="fas fa-chevron-left" aria-hidden="true"></i></button>
@@ -551,7 +561,7 @@
                             <div class="card border-0 shadow-sm h-100 p-3">
                                 <div class="text-secondary small fw-bold mb-1"><i class="fas fa-users text-warning me-1"></i><span data-i18n="ts_kpi_total">全站帳號總數</span></div>
                                 <div class="d-flex justify-content-between align-items-baseline">
-                                    <h2 class="fw-bold mb-0 text-dark" id="tsTotalAccounts">0</h2>
+                                    <h2 class="fw-bold mb-0 text-body-emphasis" id="tsTotalAccounts">0</h2>
                                     <small class="text-muted fw-bold" data-i18n="ts_kpi_total_sub">已開通帳號</small>
                                 </div>
                             </div>
@@ -582,10 +592,7 @@
                             <button class="nav-link fw-bold" id="ts-tab-details-btn" data-bs-toggle="tab" data-bs-target="#ts-tab-details" type="button" role="tab"><i class="fas fa-list me-1"></i><span data-i18n="ts_tab_details">每日造訪明細</span></button>
                         </li>
                         <li class="nav-item" role="presentation">
-                            <button class="nav-link fw-bold" id="ts-tab-popular-btn" data-bs-toggle="tab" data-bs-target="#ts-tab-popular" type="button" role="tab"><i class="fas fa-fire me-1"></i><span data-i18n="ts_tab_popular">常用看板</span></button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link fw-bold" id="ts-tab-zombie-btn" data-bs-toggle="tab" data-bs-target="#ts-tab-zombie" type="button" role="tab"><i class="fas fa-ghost me-1"></i><span data-i18n="ts_tab_zombie">殭屍看板</span></button>
+                            <button class="nav-link fw-bold" id="ts-tab-popular-btn" data-bs-toggle="tab" data-bs-target="#ts-tab-popular" type="button" role="tab"><i class="fas fa-chart-line me-1"></i><span data-i18n="ts_tab_menu_clicks">看板點擊率</span></button>
                         </li>
                     </ul>
 
@@ -700,7 +707,7 @@
                                         </table>
                                     </div>
                                 </div>
-                                <div class="card-footer bg-white d-flex justify-content-between align-items-center py-2">
+                                <div class="card-footer bg-body-tertiary d-flex justify-content-between align-items-center py-2">
                                     <div class="small text-muted" id="tsDetailsStats">—</div>
                                     <div class="d-flex align-items-center gap-2">
                                         <button class="btn btn-sm btn-outline-secondary" id="tsDetailPrev" onclick="changeTrafficDetailPage(-1)" aria-label="上一頁" data-i18n-aria-label="dt_previous"><i class="fas fa-chevron-left" aria-hidden="true"></i></button>
@@ -711,7 +718,7 @@
                             </div>
                         </div>
 
-                        <!-- Tab 5: Popular Menus -->
+                        <!-- Tab 5: Menu Clicks (Combined Popular & Zombie) -->
                         <div class="tab-pane fade" id="ts-tab-popular" role="tabpanel">
                             <div class="card border-0 shadow-sm p-3 mb-3">
                                 <div class="table-responsive table-scroll-container">
@@ -719,37 +726,16 @@
                                         <thead class="table-light sticky-top">
                                             <tr>
                                                 <th style="width: 250px;" data-i18n="ts_th_menu_name">看板名稱</th>
+                                                
                                                 <th style="width: 150px;" data-i18n="ts_th_clicks">累計點擊次數</th>
-                                                <th style="width: 150px;" data-i18n="ts_th_active_users">獨立活躍人數</th>
+                                                <th style="width: 150px;" data-i18n="ts_th_active_users">期間活躍人數</th>
+                                                <!-- ⭐️ 第八輪 K3：殭屍看板併進本表後，E9 的「建立日期三態」曾整個消失，這裡補回來 -->
+                                                
                                                 <th data-i18n="ts_th_last_click">最後點擊時間</th>
                                             </tr>
                                         </thead>
                                         <tbody id="tsPopularBody">
-                                            <tr><td colspan="4" class="text-center py-4 text-muted" data-i18n="loading">載入中...</td></tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Tab 6: Zombie Menus -->
-                        <div class="tab-pane fade" id="ts-tab-zombie" role="tabpanel">
-                            <div class="card border-0 shadow-sm p-3 mb-3">
-                                <div class="alert alert-warning py-2 mb-3">
-                                    <i class="fas fa-info-circle me-1"></i> <span id="tsZombieDesc">以下看板在過去 N 天內從未被點擊過。</span>
-                                </div>
-                                <div class="table-responsive" style="max-height: 50vh; overflow-y: auto;">
-                                    <table class="table table-sm table-hover align-middle text-nowrap mb-0">
-                                        <thead class="table-light sticky-top">
-                                            <tr>
-                                                <th style="width: 120px;" data-i18n="ts_th_menu_id">看板 ID</th>
-                                                <th style="width: 250px;" data-i18n="ts_th_menu_name">看板名稱</th>
-                                                <th style="width: 150px;" data-i18n="ts_th_creator">建立者</th>
-                                                <th data-i18n="ts_th_created">建立日期</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="tsZombieBody">
-                                            <tr><td colspan="4" class="text-center py-4 text-muted" data-i18n="loading">載入中...</td></tr>
+                                            <tr><td colspan="6" class="text-center py-4 text-muted" data-i18n="loading">載入中...</td></tr>
                                         </tbody>
                                     </table>
                                 </div>
@@ -767,8 +753,11 @@
                                 <h5 class="fw-bold" data-i18n="config_import_title">從 Excel 匯入</h5>
                                 <div class="custom-file-input-wrapper d-flex align-items-center mb-3 w-75 mx-auto border rounded" style="overflow: hidden; height: 34px;">
                                     <button type="button" class="btn btn-sm btn-outline-primary fw-bold px-3 border-0 border-end rounded-0 h-100" style="white-space: nowrap;" onclick="document.getElementById('configFile').click();" data-i18n="file_choose">選擇檔案</button>
-                                    <span id="configFileName" class="px-2 text-muted small text-truncate" style="flex:1;" data-i18n="file_none">沒有選擇檔案</span>
-                                    <input type="file" id="configFile" class="d-none" accept=".xlsx, .xls" onchange="document.getElementById('configFileName').innerText = this.files.length ? this.files[0].name : t('file_none','沒有選擇檔案');" aria-label="選擇 Excel 檔案" data-i18n-aria-label="lbl_choose_excel">
+                                    <!-- ⚠️ L5：不可掛 data-i18n —— 選完檔案後這格是檔名，切語言會被 changeLanguage
+                                         步驟 1 洗回「沒有選擇檔案」，但 input 其實還握著檔案。
+                                         填值與語系同步都交給 syncConfigFileName()。 -->
+                                    <span id="configFileName" class="px-2 text-muted small text-truncate" style="flex:1;">沒有選擇檔案</span>
+                                    <input type="file" id="configFile" class="d-none" accept=".xlsx, .xls" onchange="window.syncConfigFileName && window.syncConfigFileName();" aria-label="選擇 Excel 檔案" data-i18n-aria-label="lbl_choose_excel">
                                 </div>
                                 <button class="btn btn-success fw-bold mx-auto" style="width: fit-content;" onclick="importConfig()"><i class="fas fa-upload me-1"></i><span data-i18n="btn_import_excel"> 匯入並覆蓋</span></button>
                             </div>
@@ -826,12 +815,12 @@
     <!-- Modals 容器：由 partials/modals.html 動態載入 -->
     <div id="modals-container"></div>
 
-    <div class="modal fade" id="systemAlertModal" tabindex="-1" style="z-index: 1060;" aria-labelledby="systemAlertMsg"><div class="modal-dialog modal-dialog-centered modal-sm"><div class="modal-content border-0 shadow"><div class="modal-body text-center py-4"><i class="fas fa-info-circle text-info mb-3" style="font-size: 2.5rem;"></i><p class="fs-6 fw-bold mb-0 text-dark" id="systemAlertMsg"></p></div><div class="modal-footer justify-content-center border-0 bg-light py-2"><button type="button" class="btn btn-primary btn-sm px-4 fw-bold" data-bs-dismiss="modal" data-i18n="modal_btn_ok">確定</button></div></div></div></div>
-    <div class="modal fade" id="systemConfirmModal" tabindex="-1" style="z-index: 1060;" aria-labelledby="systemConfirmMsg"><div class="modal-dialog modal-dialog-centered modal-sm"><div class="modal-content border-0 shadow"><div class="modal-body text-center py-4"><i class="fas fa-exclamation-triangle text-warning mb-3" style="font-size: 2.5rem;"></i><p class="fs-6 fw-bold mb-0 text-dark" id="systemConfirmMsg"></p></div><div class="modal-footer justify-content-center border-0 bg-light py-2"><button type="button" class="btn btn-light btn-sm border px-3 fw-bold" data-bs-dismiss="modal" data-i18n="modal_btn_cancel">取消</button><button type="button" class="btn btn-danger btn-sm px-3 fw-bold" id="systemConfirmBtn" onclick="if(window.appState && window.appState.confirmActionCallback) window.appState.confirmActionCallback(); bootstrap.Modal.getInstance(document.getElementById('systemConfirmModal')).hide();" data-i18n="modal_btn_ok">確定</button></div></div></div></div>
+    <div class="modal fade" id="systemAlertModal" data-bs-backdrop="static" tabindex="-1" style="z-index: 1060;" aria-labelledby="systemAlertMsg"><div class="modal-dialog modal-dialog-centered modal-sm"><div class="modal-content border-0 shadow"><div class="modal-body text-center py-4"><i class="fas fa-info-circle text-info mb-3" style="font-size: 2.5rem;"></i><p class="fs-6 fw-bold mb-0 text-body-emphasis" id="systemAlertMsg"></p></div><div class="modal-footer justify-content-center border-0 bg-body-tertiary py-2"><button type="button" class="btn btn-primary btn-sm px-4 fw-bold" data-bs-dismiss="modal" data-i18n="modal_btn_ok">確定</button></div></div></div></div>
+    <div class="modal fade" id="systemConfirmModal" data-bs-backdrop="static" tabindex="-1" style="z-index: 1060;" aria-labelledby="systemConfirmMsg"><div class="modal-dialog modal-dialog-centered modal-sm"><div class="modal-content border-0 shadow"><div class="modal-body text-center py-4"><i class="fas fa-exclamation-triangle text-warning mb-3" style="font-size: 2.5rem;"></i><p class="fs-6 fw-bold mb-0 text-body-emphasis" id="systemConfirmMsg"></p></div><div class="modal-footer justify-content-center border-0 bg-body-tertiary py-2"><button type="button" class="btn btn-light btn-sm border px-3 fw-bold" data-bs-dismiss="modal" data-i18n="modal_btn_cancel">取消</button><button type="button" class="btn btn-danger btn-sm px-3 fw-bold" id="systemConfirmBtn" onclick="if(window.appState && window.appState.confirmActionCallback) window.appState.confirmActionCallback(); bootstrap.Modal.getInstance(document.getElementById('systemConfirmModal')).hide();" data-i18n="modal_btn_ok">確定</button></div></div></div></div>
 
     <!-- ⭐️ 快取破解碼：必須在 modals.html fetch 之前定義，否則 ?v= 會是空字串、
          部署後使用者拿到舊版 modals (Round-7 修)。其他 <script src> 共用此版本碼。 -->
-    <script>window.__APP_VER__ = '20260816g';</script>
+    <script>window.__APP_VER__ = '20260824d';</script>
 
     <!-- ⭐️ 動態載入 Modals partial (跟 JS 共用同一個 cache-bust 版本碼)
          Round-5 B14：失敗時不再只 console.warn — 顯示明確錯誤 banner，因為沒有 modals 後續所有「新增/編輯」按鈕都會死掉。 -->

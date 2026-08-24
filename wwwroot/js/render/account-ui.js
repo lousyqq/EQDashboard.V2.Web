@@ -1,6 +1,6 @@
-﻿// === render/account-ui.js - 帳號 Modal 內部 UI 渲染 ===
+// === render/account-ui.js - 帳號 Modal 內部 UI 渲染 ===
 
-import { getCustomMenus, getFabs, getRoles } from '../config.js';
+import { getCustomMenus, getFabs, getRoles, t } from '../config.js';
 
 
 import { clearDefaultMenu, pickDefaultMenu } from '../admin/account-manage.js';
@@ -8,6 +8,55 @@ import { generateIconHtml } from '../ui/dialogs.js';
 import { getFullMenuPathStr } from '../ui/navigation.js';
 import { appState, escHtml, _jsArg } from '../store.js';
 
+
+// =========================================================================
+// 🛡️ 主從關係（2026-08-24 第七輪 J1）：委派管理者「能授出的」不得超過「自己擁有的」。
+//    例：只被委派 A 廠區的人，把別人從 user 升成委派管理者時，最多也只能授到 A 廠區。
+//    下面兩個 helper 是所有帳號 Modal 挑選器的共同閘門，**必須與後端對齊**：
+//      - 角色 → 後端比對呼叫者自己的 Map_Account_Role
+//      - 看板 → 後端呼叫 MenuAuthService.CanManageStructureAsync（＝這裡的 getMenuPermissions）
+//    前端只負責「不要讓人選到會被後端丟掉的東西」；真正的把關在 AccountService。
+// =========================================================================
+export function isCurrentUserAccountAdmin() {
+    const cu = appState.currentUser;
+    return !!(cu && String(cu.roleLevel || '').toLowerCase() === 'admin');
+}
+
+// ⭐️ 2026-08-24 第八輪 K1：「這個節點自己開得出東西嗎？」
+//   必須與 ui/navigation.js `goDefaultHome()` 內的 `_isOpenable` 定義**逐字對齊**（兩邊要一起改）——
+//   否則挑選器放行的東西，登入時會被 goDefaultHome 判成死頁又踢掉，兩邊各說各話。
+//   本站多數 root 是 menuMode='link' 但 url / targetPage 皆為空字串的「群組佔位節點」，
+//   它們自己開不出任何內容，只能靠展開到子看板。
+export function isMenuDirectlyOpenable(m) {
+    return !!m && !!(m.url || m.Url || m.targetPage || m.TargetPage
+        || String(m.menuMode || m.MenuMode || '').toLowerCase() === 'app_grid');
+}
+
+/// 呼叫者是否可以把這個 roleId 授出去（admin 不限制；委派者只能授自己有的角色）。
+export function isRoleGrantableByCurrentUser(roleId) {
+    if (isCurrentUserAccountAdmin()) return true;
+    const mine = (appState.currentUser && appState.currentUser.assignedRoles) || [];
+    return mine.some(r => window.cleanId(r) === window.cleanId(roleId));
+}
+
+/// 呼叫者是否可以把這個 menuId 授出去（admin 不限制；委派者只能授自己委派子樹內／自己建立的看板）。
+export function isMenuGrantableByCurrentUser(menuId) {
+    if (isCurrentUserAccountAdmin()) return true;
+    if (!menuId || typeof window.getMenuPermissions !== 'function') return false;
+    // createdBy 要一起傳：後端 CanManageStructureAsync 把「自己建立的看板」也算在範圍內，
+    //   不傳的話前端會比後端更嚴格，出現「明明是我建的卻選不到」。
+    const m = getCustomMenus().find(x => window.cleanId(x.id || x.MenuId) === window.cleanId(menuId));
+    const perms = window.getMenuPermissions(menuId, m ? (m.createdBy || m.CreatedBy) : null);
+    return !!(perms && perms.canManageStructure);
+}
+window.isMenuGrantableByCurrentUser = isMenuGrantableByCurrentUser;
+
+/// 超出授權範圍、但目標帳號目前已擁有的項目 → 以「鎖定（唯讀）」呈現。
+///   不可直接隱藏：隱藏會讓委派者以為那些權限不存在；也不可做成可勾選，
+///   因為後端一律原封保留（送什麼都不會生效）。鎖定才是誠實的表達。
+function lockedHint() {
+    return t('acc_out_of_scope_locked', '超出您的授權範圍，僅能檢視（由系統管理員維護）');
+}
 
 export function renderAccRoleCheckboxes(selectedIds) {
     if (!selectedIds || !Array.isArray(selectedIds)) selectedIds = [];
@@ -41,10 +90,16 @@ export function renderAccRoleCheckboxes(selectedIds) {
         const displayName = (fabNames && fabNames.length) ? fabNames.join('、') : rName;
         const isChecked = selectedIds.includes(rId) ? 'checked' : '';
 
+        // 主從關係：委派者只能勾自己有的角色。超出範圍者 —— 已授予的鎖定顯示、未授予的直接不列。
+        const grantable = isRoleGrantableByCurrentUser(rId);
+        if (!grantable && !isChecked) return;
+        const lockAttr = grantable ? '' : ` disabled title="${window.escapeHTML(lockedHint())}"`;
+        const lockIcon = grantable ? '' : '<i class="fas fa-lock text-muted ms-1 small" aria-hidden="true"></i>';
+
         html.push(`
-            <div class="form-check form-check-inline border rounded px-3 py-1 bg-white mb-1 shadow-sm" style="border-color: #dee2e6 !important;">
-                <input class="form-check-input ms-0 me-2 acc-role-cb cursor-pointer" type="checkbox" id="acr_${window.escapeHTML(rId)}" value="${window.escapeHTML(rId)}" ${isChecked}>
-                <label class="form-check-label small fw-bold text-dark cursor-pointer" for="acr_${window.escapeHTML(rId)}">${window.escapeHTML(displayName)}</label>
+            <div class="form-check form-check-inline border rounded px-3 py-1 bg-body mb-1 shadow-sm" style="border-color: #dee2e6 !important;">
+                <input class="form-check-input ms-0 me-2 acc-role-cb cursor-pointer" type="checkbox" id="acr_${window.escapeHTML(rId)}" value="${window.escapeHTML(rId)}" ${isChecked}${lockAttr}>
+                <label class="form-check-label small fw-bold text-body cursor-pointer" for="acr_${window.escapeHTML(rId)}">${window.escapeHTML(displayName)}${lockIcon}</label>
             </div>
         `);
     });
@@ -83,7 +138,7 @@ export function renderAccManageMenuCheckboxes(selectedIds) {
     const allMenus = getCustomMenus();
 
     if (checkedRoleIds.length === 0) {
-        container.innerHTML = '<div class="text-warning small px-2 py-1"><i class="fas fa-exclamation-circle me-1"></i>請先在「可視群組版面」勾選至少一個角色，才能授權管理目錄</div>';
+        container.innerHTML = `<div class="text-warning small px-2 py-1"><i class="fas fa-exclamation-circle me-1"></i>${escHtml(t('acc_need_role_first', '請先在「可視群組版面」勾選至少一個角色，才能授權管理目錄'))}</div>`;
         return;
     }
 
@@ -108,7 +163,7 @@ export function renderAccManageMenuCheckboxes(selectedIds) {
     );
 
     if (folderMenus.length === 0) {
-        container.innerHTML = '<div class="text-muted small px-2 py-1"><i class="fas fa-info-circle me-1 opacity-50"></i>所選角色在可視廠區內沒有可委派的主選單目錄</div>';
+        container.innerHTML = `<div class="text-muted small px-2 py-1"><i class="fas fa-info-circle me-1 opacity-50"></i>${escHtml(t('acc_no_delegable_folder', '所選角色在可視廠區內沒有可委派的主選單目錄'))}</div>`;
         return;
     }
 
@@ -117,15 +172,27 @@ export function renderAccManageMenuCheckboxes(selectedIds) {
         const mId = m.id || m.MenuId || '';
         const mDName = m.displayName || m.DisplayName || '';
         const isChecked = selectedIds.some(s => window.cleanId(s) === window.cleanId(mId)) ? 'checked' : '';
+
+        // 主從關係：委派者只能把自己管得到的目錄再委派出去（例：只管 A 廠區 → 最多只能授 A 廠區）。
+        const grantable = isMenuGrantableByCurrentUser(mId);
+        if (!grantable && !isChecked) return;
+        const lockAttr = grantable ? '' : ` disabled title="${window.escapeHTML(lockedHint())}"`;
+        const lockIcon = grantable ? '' : '<i class="fas fa-lock text-muted ms-2 small" aria-hidden="true"></i>';
+
         html.push(`
             <div class="form-check mb-1 ms-1 d-flex align-items-center">
-                <input class="form-check-input acc-menu-cb cursor-pointer mt-0" type="checkbox" id="acm_${mId}" value="${mId}" ${isChecked}>
-                <label class="form-check-label fw-bold text-dark cursor-pointer d-flex align-items-center ms-2" for="acm_${mId}">
-                    <i class="fas fa-folder text-warning me-2 fs-5"></i> ${mDName}
+                <input class="form-check-input acc-menu-cb cursor-pointer mt-0" type="checkbox" id="acm_${mId}" value="${mId}" ${isChecked}${lockAttr}>
+                <label class="form-check-label fw-bold text-body cursor-pointer d-flex align-items-center ms-2" for="acm_${mId}">
+                    <i class="fas fa-folder text-warning me-2 fs-5" aria-hidden="true"></i> ${window.escapeHTML(mDName)}${lockIcon}
                 </label>
             </div>
         `);
     });
+
+    if (html.length === 0) {
+        container.innerHTML = `<div class="text-muted small px-2 py-1"><i class="fas fa-info-circle me-1 opacity-50" aria-hidden="true"></i>${escHtml(t('acc_no_grantable_folder', '您的授權範圍內沒有可再委派的主選單目錄'))}</div>`;
+        return;
+    }
     container.innerHTML = html.join('');
 }
 
@@ -137,12 +204,15 @@ export function renderAccManageMenuCheckboxes(selectedIds) {
 // =========================================================================
 
 // 共用：把所有「非 folder + 啟用」menu 抓出來
+//   ⚠️ 委派管理者只保留自己授權範圍內的（主從關係）—— 否則他勾了也只會被後端靜默丟掉，
+//      變成「按了存檔卻沒生效」這種最難回報的問題。
 export function getAllSelectableMenus() {
     const all = getCustomMenus();
     return all.filter(m => {
         const mode = (m.menuMode || m.MenuMode || '').toLowerCase();
         if (mode === 'folder') return false;
         if (m.enabled === false || m.IsEnabled === false) return false;
+        if (!isMenuGrantableByCurrentUser(m.id || m.MenuId)) return false;
         return true;
     });
 }
@@ -216,13 +286,13 @@ window.renderAccOverridePanel = function () {
 
     if (selWrap) {
         if (accessible.length === 0) {
-            selWrap.innerHTML = '<div class="text-warning small px-1"><i class="fas fa-exclamation-circle me-1"></i>請先在「可視群組版面」勾選至少一個廠區，才能設定該廠區的個別覆寫</div>';
+            selWrap.innerHTML = `<div class="text-warning small px-1"><i class="fas fa-exclamation-circle me-1"></i>${escHtml(t('acc_need_fab_first', '請先在「可視群組版面」勾選至少一個廠區，才能設定該廠區的個別覆寫'))}</div>`;
         } else {
             const btns = accessible.map(fName => {
                 const active = window.cleanId(fName) === window.cleanId(appState.overrideFab) ? 'btn-primary' : 'btn-outline-primary';
                 return `<button type="button" class="btn btn-sm ${active} js-override-fab" data-fab="${window.escapeHTML(fName)}">${window.escapeHTML(fName)}</button>`;
             }).join('');
-            selWrap.innerHTML = `<div class="d-flex align-items-center flex-wrap gap-1"><span class="small text-secondary fw-bold me-1"><i class="fas fa-industry me-1"></i>設定廠區：</span><div class="btn-group btn-group-sm flex-wrap" role="group">${btns}</div></div>`;
+            selWrap.innerHTML = `<div class="d-flex align-items-center flex-wrap gap-1"><span class="small text-secondary fw-bold me-1"><i class="fas fa-industry me-1"></i>${escHtml(t('acc_config_fab', '設定廠區：'))}</span><div class="btn-group btn-group-sm flex-wrap" role="group">${btns}</div></div>`;
             if (!selWrap.hasAttribute('data-ovfab-bound')) {
                 selWrap.setAttribute('data-ovfab-bound', '1');
                 selWrap.addEventListener('click', (e) => {
@@ -246,7 +316,7 @@ window.renderAccExtraMenuCheckboxes = function () {
     const container = document.getElementById('accExtraMenuCheckboxes');
     if (!container) return;
     const fab = appState.overrideFab;
-    if (!fab) { container.innerHTML = '<div class="text-muted small px-2 py-1"><i class="fas fa-info-circle me-1 opacity-50"></i>請先選擇要設定的廠區</div>'; return; }
+    if (!fab) { container.innerHTML = `<div class="text-muted small px-2 py-1"><i class="fas fa-info-circle me-1 opacity-50"></i>${escHtml(t('acc_pick_fab_first', '請先選擇要設定的廠區'))}</div>`; return; }
 
     const selectableMenus = getAllSelectableMenus();
     const roleAllowedSet = computeRoleAllowedSetForFab(fab);
@@ -260,7 +330,7 @@ window.renderAccExtraMenuCheckboxes = function () {
     });
 
     if (candidates.length === 0) {
-        container.innerHTML = '<div class="text-muted small px-2 py-1"><i class="fas fa-info-circle me-1 opacity-50"></i>此廠區的 Role 已涵蓋所有看板，不需要額外開放</div>';
+        container.innerHTML = `<div class="text-muted small px-2 py-1"><i class="fas fa-info-circle me-1 opacity-50"></i>${escHtml(t('acc_role_covers_all', '此廠區的 Role 已涵蓋所有看板，不需要額外開放'))}</div>`;
         return;
     }
 
@@ -270,11 +340,14 @@ window.renderAccExtraMenuCheckboxes = function () {
         const mName = m.displayName || m.DisplayName || m.name || m.SysName || mId;
         const checked = selected.includes(window.cleanId(mId)) ? 'checked' : '';
         const pathStr = typeof getFullMenuPathStr === 'function' ? getFullMenuPathStr(mId, getCustomMenus()) : mName;
+        // ⚠️ mId / mName / pathStr 全是未轉義的 DB 值（MenuId 與 Menus.DisplayName）→ 進 innerHTML 前必須 escHtml
+        //    （§4-前端-5）。本檔 renderAccManageMenuCheckboxes 與預設首頁摘要列都有轉義，這兩個挑選器原本漏掉。
+        const eId = escHtml(mId);
         html.push(`
             <div class="form-check d-flex align-items-center">
-                <input class="form-check-input acc-extra-cb cursor-pointer mt-0" type="checkbox" id="acex_${mId}" value="${mId}" ${checked} onchange="window.__accOverrideChanged('extra')">
-                <label class="form-check-label small text-dark cursor-pointer ms-2" for="acex_${mId}" title="${pathStr}">
-                    <i class="fas fa-file-alt text-secondary me-1 opacity-75"></i>${mName}
+                <input class="form-check-input acc-extra-cb cursor-pointer mt-0" type="checkbox" id="acex_${eId}" value="${eId}" ${checked} onchange="window.__accOverrideChanged('extra')">
+                <label class="form-check-label small text-body-emphasis cursor-pointer ms-2" for="acex_${eId}" title="${escHtml(pathStr)}">
+                    <i class="fas fa-file-alt text-secondary me-1 opacity-75"></i>${escHtml(mName)}
                 </label>
             </div>
         `);
@@ -287,7 +360,7 @@ window.renderAccDenyMenuCheckboxes = function () {
     const container = document.getElementById('accDenyMenuCheckboxes');
     if (!container) return;
     const fab = appState.overrideFab;
-    if (!fab) { container.innerHTML = '<div class="text-muted small px-2 py-1"><i class="fas fa-info-circle me-1 opacity-50"></i>請先選擇要設定的廠區</div>'; return; }
+    if (!fab) { container.innerHTML = `<div class="text-muted small px-2 py-1"><i class="fas fa-info-circle me-1 opacity-50"></i>${escHtml(t('acc_pick_fab_first', '請先選擇要設定的廠區'))}</div>`; return; }
 
     // 候選 = 該廠區 role allowed + 目前 modal 勾的 extra
     const roleAllowedSet = computeRoleAllowedSetForFab(fab);
@@ -298,7 +371,7 @@ window.renderAccDenyMenuCheckboxes = function () {
     const selected = (((appState.tempDenyMenus || {})[fab]) || []).map(window.cleanId);
 
     if (selectable.length === 0) {
-        container.innerHTML = '<div class="text-muted small px-2 py-1"><i class="fas fa-info-circle me-1 opacity-50"></i>此廠區沒有可被封鎖的看板（先勾選 Role 或加入額外開放）</div>';
+        container.innerHTML = `<div class="text-muted small px-2 py-1"><i class="fas fa-info-circle me-1 opacity-50"></i>${escHtml(t('acc_nothing_to_deny', '此廠區沒有可被封鎖的看板（先勾選 Role 或加入額外開放）'))}</div>`;
         return;
     }
 
@@ -308,11 +381,12 @@ window.renderAccDenyMenuCheckboxes = function () {
         const mName = m.displayName || m.DisplayName || m.name || m.SysName || mId;
         const checked = selected.includes(window.cleanId(mId)) ? 'checked' : '';
         const pathStr = typeof getFullMenuPathStr === 'function' ? getFullMenuPathStr(mId, getCustomMenus()) : mName;
+        const eId = escHtml(mId); // 同上：DB 值進 innerHTML 一律先轉義
         html.push(`
             <div class="form-check d-flex align-items-center">
-                <input class="form-check-input acc-deny-cb cursor-pointer mt-0" type="checkbox" id="acdn_${mId}" value="${mId}" ${checked} onchange="window.__accOverrideChanged('deny')">
-                <label class="form-check-label small text-dark cursor-pointer ms-2" for="acdn_${mId}" title="${pathStr}">
-                    <i class="fas fa-file-alt text-secondary me-1 opacity-75"></i>${mName}
+                <input class="form-check-input acc-deny-cb cursor-pointer mt-0" type="checkbox" id="acdn_${eId}" value="${eId}" ${checked} onchange="window.__accOverrideChanged('deny')">
+                <label class="form-check-label small text-body-emphasis cursor-pointer ms-2" for="acdn_${eId}" title="${escHtml(pathStr)}">
+                    <i class="fas fa-file-alt text-secondary me-1 opacity-75"></i>${escHtml(mName)}
                 </label>
             </div>
         `);
@@ -353,11 +427,11 @@ window.renderAccEffectivePreview = function () {
     });
 
     if (!fab) {
-        container.innerHTML = '<div class="text-muted small"><i class="fas fa-info-circle me-1 opacity-50"></i>選擇廠區後即可預覽該廠區實際可見看板</div>';
+        container.innerHTML = `<div class="text-muted small"><i class="fas fa-info-circle me-1 opacity-50"></i>${escHtml(t('acc_preview_hint', '選擇廠區後即可預覽該廠區實際可見看板'))}</div>`;
         return;
     }
     if (items.length === 0) {
-        container.innerHTML = '<div class="text-warning small"><i class="fas fa-exclamation-triangle me-1"></i>此帳號在「' + window.escapeHTML(fab) + '」目前沒有任何可見看板</div>';
+        container.innerHTML = `<div class="text-warning small"><i class="fas fa-exclamation-triangle me-1"></i>${escHtml(t('acc_no_visible_in_fab', '此帳號在「{0}」目前沒有任何可見看板').replace('{0}', fab))}</div>`;
         return;
     }
 
@@ -367,7 +441,7 @@ window.renderAccEffectivePreview = function () {
         const mId = window.cleanId(m.id || m.MenuId);
         const isExtra = checkedExtraIds.includes(mId);  // extra 綠 / role 藍
         const bg = isExtra ? 'bg-success-subtle text-success border-success' : 'bg-primary-subtle text-primary border-primary';
-        html.push(`<span class="badge border ${bg} border-opacity-50" style="font-size:0.7rem;"><i class="fas fa-file-alt me-1 opacity-75"></i>${mName}</span>`);
+        html.push(`<span class="badge border ${bg} border-opacity-50" style="font-size:0.7rem;"><i class="fas fa-file-alt me-1 opacity-75"></i>${escHtml(mName)}</span>`);
     });
     container.innerHTML = html.join('');
 };
@@ -381,16 +455,26 @@ export function renderAccDefaultPagesUI() {
         const fName = f.fabName || f.FabName || f.id || f.fabId || f.FabId || '';
         let defMenuId = appState.tempDefaultPages[fName];
         let defMenuObj = menus.find(m => window.cleanId(m.id || m.MenuId) === window.cleanId(defMenuId));
-        let displayTxt = defMenuObj ? getFullMenuPathStr(defMenuId, menus) : '系統自動抓取第一個可視看板';
+        // ⚠️ getFullMenuPathStr 回傳的是未轉義的 DB 顯示名稱，而下方是 innerHTML → 必須先 escHtml
+        //    （§4-前端-5「DB 資料進 DOM 必 escHtml()」，此處原本漏掉）。
+        let displayTxt = defMenuObj ? escHtml(getFullMenuPathStr(defMenuId, menus)) : escHtml(t('acc_default_auto_pick', '系統自動抓取第一個可視看板'));
         let txtColor = defMenuObj ? 'text-success fw-bold' : 'text-muted';
+
+        // ⭐️ K1：已存在的設定若指向「自己開不出東西」的節點（資料夾／佔位 link），要明講登入時會被展開到
+        //   第一個子看板 —— 舊版一律綠字顯示路徑，admin 完全看不出自己設了一個空殼
+        //   （實測 admin 00058897 的 12A 就是這種情況，每次登入都停在「ZE 內容建置中」）。
+        if (defMenuObj && !isMenuDirectlyOpenable(defMenuObj)) {
+            txtColor = 'text-warning fw-bold';
+            displayTxt += ` <i class="fas fa-level-down-alt ms-1" aria-hidden="true"></i> <span class="fw-normal">${escHtml(t('acc_default_resolves_hint', '(登入時落到第一個子看板)'))}</span>`;
+        }
 
         // 使用 data-fab + addEventListener 取代 inline onclick，避免名稱含引號時注入
         html += `
             <div class="d-flex align-items-center mb-2 border-bottom pb-2">
-                <span class="badge bg-secondary me-2" style="width: 45px;">${fName}</span>
-                <span class="flex-grow-1 text-truncate small ${txtColor}" id="def_text_${escAttr(fName)}">預設：${displayTxt}</span>
-                <button type="button" class="btn btn-sm btn-outline-primary py-0 px-3 fw-bold rounded-pill shadow-sm js-pick-default" data-fab="${escAttr(fName)}">指定</button>
-                <button type="button" class="btn btn-sm btn-outline-danger border-0 py-0 px-2 ms-1 js-clear-default" data-fab="${escAttr(fName)}" title="清除設定"><i class="fas fa-times"></i></button>
+                <span class="badge bg-secondary me-2" style="width: 45px;">${escHtml(fName)}</span>
+                <span class="flex-grow-1 text-truncate small ${txtColor}" id="def_text_${escAttr(fName)}">${escHtml(t('acc_default_prefix', '預設：'))}${displayTxt}</span>
+                <button type="button" class="btn btn-sm btn-outline-primary py-0 px-3 fw-bold rounded-pill shadow-sm js-pick-default" data-fab="${escAttr(fName)}">${escHtml(t('btn_assign', '指定'))}</button>
+                <button type="button" class="btn btn-sm btn-outline-danger border-0 py-0 px-2 ms-1 js-clear-default" data-fab="${escAttr(fName)}" title="${escAttr(t('btn_clear_setting', '清除設定'))}"><i class="fas fa-times"></i></button>
             </div>
         `;
     });
@@ -497,10 +581,53 @@ window.openMenuSelector = function (fabName) {
     //    （例：ZE 強化防禦群組）指定為預設首頁；登入時 goDefaultHome(navigation.js) 會自動展開、落到其下
     //    第一個可看的子看板。可見集合 (allowedIds) 完全不變、只放寬「可被選取的類型」，與側邊欄
     //    renderSidebarMenus(sidebar.js) 的可見範圍仍保持對齊。
-    const viewableMenus = allMenus.filter(m => (m.enabled !== false && m.IsEnabled !== false) && allowedIds.has(window.cleanId(m.id || m.MenuId)));
+    //   ⚠️ 主從關係：委派管理者只能指定自己授權範圍內的看板當預設首頁（admin 不受限）。
+    // ⭐️ 2026-08-24 第八輪 K1：挑選器必須先過「真的打得開」這一關。
+    //   本站多數 root 是 menuMode='link' 但 url / targetPage **皆為空字串**的「群組佔位節點」，
+    //   舊版把它們跟一般看板混在一起（還配 fa-file-alt 圖示）→ admin 根本看不出選到的是空殼，
+    //   使用者每次登入就停在「XXX 內容建置中」（實測 admin 00058897 的 12A 預設首頁正是這種節點）。
+    //   規則與 goDefaultHome(navigation.js) 的 `_isOpenable` + 步驟 2.5 完全對齊，兩邊要一起改：
+    //     ① 自己就開得出東西（app_grid / 有 url / 有 targetPage）→ 可選
+    //     ② 自己開不出來，但底下**有**開得出來的子孫（folder 或佔位 link）→ 可選，登入時自動落到第一個子看板
+    //     ③ 兩者皆非（空殼且沒有可開的子孫）→ 不列入，選了也只會得到死頁
+    const _accIsOpenable = isMenuDirectlyOpenable;
+    // 子孫只在「該帳號於此廠區看得到的集合」(allowedIds) 內尋找 —— 這才能預測目標帳號登入後實際會落到哪。
+    const _accHasOpenableDescendant = (rootId) => {
+        const queue = [window.cleanId(rootId)];
+        const visited = new Set(queue);
+        let guard = 0;
+        while (queue.length > 0 && guard++ < 500) {
+            const cid = queue.shift();
+            const children = allMenus.filter(x => {
+                if (x.enabled === false || x.IsEnabled === false) return false;
+                const xId = window.cleanId(x.id || x.MenuId);
+                if (visited.has(xId) || !allowedIds.has(xId)) return false;
+                const parents = [];
+                if (x.parentId) parents.push(x.parentId);
+                if (x.ParentMenuId) parents.push(x.ParentMenuId);
+                if (Array.isArray(x.parentIds)) parents.push(...x.parentIds);
+                return parents.some(p => window.cleanId(p) === cid);
+            });
+            for (const ch of children) {
+                if (_accIsOpenable(ch)) return true;
+                const chId = window.cleanId(ch.id || ch.MenuId);
+                visited.add(chId);
+                queue.push(chId);
+            }
+        }
+        return false;
+    };
+
+    const viewableMenus = allMenus.filter(m => (m.enabled !== false && m.IsEnabled !== false)
+        && allowedIds.has(window.cleanId(m.id || m.MenuId))
+        && isMenuGrantableByCurrentUser(m.id || m.MenuId)
+        && (_accIsOpenable(m) || _accHasOpenableDescendant(m.id || m.MenuId)));
 
     if (viewableMenus.length === 0) {
-        container.innerHTML = `<div class="text-center text-muted py-5 fw-bold"><i class="fas fa-folder-open mb-3 fs-1 opacity-50"></i><br>此帳號在該廠區沒有可觀看的看板。<br><small class="fw-normal">請先勾選下方的可視群組版面。</small></div>`;
+        const emptyDesc = isCurrentUserAccountAdmin()
+            ? t('acc_no_viewable_desc', '請先勾選下方的可視群組版面。')
+            : t('acc_no_grantable_desc', '您的授權範圍內在此廠區沒有可指定的看板。');
+        container.innerHTML = `<div class="text-center text-muted py-5 fw-bold"><i class="fas fa-folder-open mb-3 fs-1 opacity-50" aria-hidden="true"></i><br>${escHtml(t('acc_no_viewable_title', '此帳號在該廠區沒有可觀看的看板。'))}<br><small class="fw-normal">${escHtml(emptyDesc)}</small></div>`;
     } else {
         let groups = {};
         viewableMenus.forEach(m => {
@@ -512,7 +639,7 @@ window.openMenuSelector = function (fabName) {
             }
 
             let rId = rootNode ? window.cleanId(rootNode.id || rootNode.MenuId) : 'other';
-            let rName = rootNode ? (rootNode.displayName || rootNode.DisplayName || rootNode.name || rootNode.SysName) : '其他獨立看板';
+            let rName = rootNode ? (rootNode.displayName || rootNode.DisplayName || rootNode.name || rootNode.SysName) : t('acc_other_standalone', '其他獨立看板');
             if (typeof i18n !== 'undefined' && i18n[appState.currentLang] && i18n[appState.currentLang]['dyn_' + rId] && rootNode && !rootNode.isEdited && !rootNode.IsEdited) rName = i18n[appState.currentLang]['dyn_' + rId];
 
             const rOrder = rootNode ? (rootNode.order || rootNode.GlobalOrder || 999) : 999;
@@ -528,7 +655,10 @@ window.openMenuSelector = function (fabName) {
 
             const mMode = m.menuMode || m.MenuMode;
             const mOrder = m.order || m.GlobalOrder || 999;
-            groups[rId].items.push({ id: mId, name: m.name || m.SysName, displayName: m.displayName || m.DisplayName, subPath: subPath, type: mMode, order: mOrder });
+            // resolvesToChild：自己開不出東西、登入時會被 goDefaultHome 展開到第一個子看板的節點。
+            //   folder 與「url/targetPage 皆空的佔位 link」都算（K1：兩者對使用者的行為完全相同，
+            //   所以徽章與圖示也要一致，不能讓佔位 link 偽裝成一般看板）。
+            groups[rId].items.push({ id: mId, name: m.name || m.SysName, displayName: m.displayName || m.DisplayName, subPath: subPath, type: mMode, order: mOrder, resolvesToChild: !_accIsOpenable(m) });
         });
 
         const sortedGroupKeys = Object.keys(groups).sort((a, b) => groups[a].order - groups[b].order);
@@ -538,39 +668,43 @@ window.openMenuSelector = function (fabName) {
             let group = groups[rId];
             group.items.sort((a, b) => a.order - b.order);
 
-            let listHtml = `<div class="bg-white border border-top-0 rounded-bottom pt-1 pb-2 shadow-sm">`;
+            let listHtml = `<div class="bg-body border border-top-0 rounded-bottom pt-1 pb-2 shadow-sm">`;
             group.items.forEach(item => {
-                const isFolderItem = String(item.type || '').toLowerCase() === 'folder';
+                // K1：徽章/圖示看的是「行為」(resolvesToChild) 而不是 menuMode —— 佔位 link 與 folder 對
+                //     使用者是同一件事（登入落到第一個子看板），必須長得一樣才不會誤導管理者。
+                const isFolderItem = item.resolvesToChild === true;
                 let badge = item.type === 'app_grid'
-                    ? '<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 ms-2" style="font-size:0.6rem;">應用集合</span>'
-                    : (isFolderItem ? '<span class="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25 ms-2" style="font-size:0.6rem;">資料夾 (登入落第一個子看板)</span>' : '');
-                let subPathHtml = item.subPath ? `<div class="badge bg-secondary bg-opacity-10 text-secondary border mt-1 fw-normal" style="font-size:0.65rem;">位於: ${escHtml(item.subPath)}</div>` : '';
+                    ? `<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 ms-2" style="font-size:0.6rem;">${escHtml(t('wp_grid', '應用集合'))}</span>`
+                    : (isFolderItem ? `<span class="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25 ms-2" style="font-size:0.6rem;">${escHtml(t('acc_folder_badge', '資料夾 (登入落第一個子看板)'))}</span>` : '');
+                let subPathHtml = item.subPath ? `<div class="badge bg-secondary bg-opacity-10 text-secondary border mt-1 fw-normal" style="font-size:0.65rem;">${escHtml(t('acc_located_at', '位於: '))}${escHtml(item.subPath)}</div>` : '';
                 const itemIcon = item.type === 'app_grid' ? 'fa-th-large text-success' : (isFolderItem ? 'fa-folder text-warning' : 'fa-file-alt text-secondary');
 
                 listHtml += `
-                    <div class="drawer-item d-flex justify-content-between align-items-center p-2 border-bottom cursor-pointer hover-bg-light" style="transition: all 0.2s;" onclick="pickDefaultMenu('${_jsArg(item.id)}'); window.closeMenuSelector();">
+                    <div class="drawer-item d-flex justify-content-between align-items-center p-2 border-bottom cursor-pointer hover-bg-body-tertiary" style="transition: all 0.2s;" onclick="pickDefaultMenu('${_jsArg(item.id)}'); window.closeMenuSelector();">
                         <div class="pe-2">
-                            <div class="fw-bold text-dark d-flex align-items-center mb-0" style="font-size: 0.85rem;">
+                            <div class="fw-bold text-body-emphasis d-flex align-items-center mb-0" style="font-size: 0.85rem;">
                                 <i class="fas ${itemIcon} item-icon me-2 opacity-75"></i> ${escHtml(item.displayName)} ${badge}
                             </div>
                             ${subPathHtml}
                         </div>
-                        <button type="button" class="btn btn-sm btn-outline-primary px-3 fw-bold rounded-pill shadow-sm bg-white" style="font-size: 0.75rem; flex-shrink: 0;" onclick="event.stopPropagation(); pickDefaultMenu('${_jsArg(item.id)}'); window.closeMenuSelector();">選取</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary px-3 fw-bold rounded-pill shadow-sm bg-body" style="font-size: 0.75rem; flex-shrink: 0;" onclick="event.stopPropagation(); pickDefaultMenu('${_jsArg(item.id)}'); window.closeMenuSelector();">${escHtml(t('btn_select', '選取'))}</button>
                     </div>
                 `;
             });
             listHtml += `</div>`;
 
-            let iconHtml = typeof generateIconHtml === 'function' ? generateIconHtml(group.rootIcon, 'text-primary', '', true) : `<i class="${group.rootIcon} text-primary"></i>`;
+            // generateIconHtml 是靜態 import、必然存在 → 移除永遠不可達的 `<i class="${group.rootIcon}">` 後備分支
+            // （同 §4-前端-6 對原生 alert() 後備的處理；那條後備還是唯一沒轉義 rootIcon 的地方）。
+            let iconHtml = generateIconHtml(group.rootIcon, 'text-primary', '', true);
 
             html += `
                 <div class="drawer-group mb-3">
-                    <div class="drawer-group-title bg-white border rounded shadow-sm p-3 d-flex justify-content-between align-items-center cursor-pointer ${isFirst ? '' : 'collapsed'}" onclick="window.toggleDrawerCollapse(event, 'drawer_col_${index}', this)" aria-expanded="${isFirst ? 'true' : 'false'}">
+                    <div class="drawer-group-title bg-body border rounded shadow-sm p-3 d-flex justify-content-between align-items-center cursor-pointer ${isFirst ? '' : 'collapsed'}" onclick="window.toggleDrawerCollapse(event, 'drawer_col_${index}', this)" aria-expanded="${isFirst ? 'true' : 'false'}">
                         <div class="d-flex align-items-center">
                             <div style="width:24px; text-align:center;" class="me-2">${iconHtml}</div>
-                            <span class="fw-bold text-dark fs-6">${escHtml(group.rootName)}</span>
+                            <span class="fw-bold text-body-emphasis fs-6">${escHtml(group.rootName)}</span>
                         </div>
-                        <span class="badge bg-white text-dark border border-secondary rounded-pill shadow-sm px-2">${group.items.length}</span>
+                        <span class="badge bg-body-tertiary text-body border border-secondary rounded-pill shadow-sm px-2">${group.items.length}</span>
                     </div>
                     <div class="collapse ${isFirst ? 'show' : ''}" id="drawer_col_${index}">
                         ${listHtml}

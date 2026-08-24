@@ -158,11 +158,11 @@ public class FabsController : ControllerBase
 
 public class FabDto
 {
-    [Required(ErrorMessage = "廠區 ID 必填")]
+    [Required(ErrorMessage = "val_fabid_required")]
     [StringLength(50)]
     public string Id { get; set; } = string.Empty;
     
-    [Required(ErrorMessage = "廠區代碼必填")]
+    [Required(ErrorMessage = "val_fabcode_required")]
     [StringLength(50)]
     public string FabName { get; set; } = string.Empty;
     

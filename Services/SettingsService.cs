@@ -176,7 +176,7 @@ public class SettingsService : ISettingsService
         return dbData;
     }
 
-    public async Task<(bool success, string message)> SaveDataAsync(
+    public async Task<SaveDataResult> SaveDataAsync(
         Dictionary<string, List<Dictionary<string, JsonElement>>> payload)
     {
         var accountScopedTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -186,7 +186,8 @@ public class SettingsService : ISettingsService
         };
 
         int successCount = 0;
-        var errorLogs = new List<string>();
+        // L3：改存結構化的「略過原因」而非中文句子 —— 句子由前端 t() 組（後端不回可直接顯示的中文）。
+        var skipped = new List<SaveDataSkip>();
 
         // 全量覆寫 17 張表跨 DELETE+BULKINSERT，預設 30 秒對遠端 SQL Server 太短，
         //   實測 Sariel 遠端 + Excel 大資料量會在 DELETE FROM Menus / BULK INSERT 階段 timeout。
@@ -236,8 +237,7 @@ public class SettingsService : ISettingsService
             {
                 try { trans.Rollback(); } catch { }
                 _logger.LogError(ex, "[SaveData] 停用 FK 約束時取鎖逾時(1222)：資料表正被其他連線鎖住");
-                return (false, "資料表正被其他連線鎖定，等待 20 秒仍無法取得鎖，已取消匯入。" +
-                               "請檢查是否有其他人開著 SSMS 未 commit 的交易、或長時間佔用的查詢，放掉後再匯入一次即可。");
+                return new SaveDataResult(false, "err_save_locked");
             }
             _logger.LogWarning(ex, "Failed to disable FK constraints (batch)");
         }
@@ -330,13 +330,13 @@ public class SettingsService : ISettingsService
 
             if (oldCount > 0 && newCount == 0)
             {
-                errorLogs.Add($"[{tableName}] 拒絕覆寫：原 {oldCount} 筆，新資料為 0 筆（完全清空），本表略過。");
+                skipped.Add(new SaveDataSkip("skip_empty", tableName, oldCount, newCount));
                 continue;
             }
 
             if (oldCount >= 5 && newCount < oldCount * 0.2)
             {
-                errorLogs.Add($"[{tableName}] 拒絕覆寫：原 {oldCount} 筆，新資料僅 {newCount} 筆（縮減超過 80%），本表略過。");
+                skipped.Add(new SaveDataSkip("skip_shrink", tableName, oldCount, newCount));
                 continue;
             }
 
@@ -514,8 +514,7 @@ public class SettingsService : ISettingsService
                 if (sqlEx != null && sqlEx.Number == 1222)
                 {
                     _logger.LogError(ex, "[{TableName}] 取得鎖逾時(1222)：該表正被其他連線鎖住", tableName);
-                    return (false, $"[{tableName}] 資料表正被其他連線鎖定，等待 20 秒仍無法取得鎖，已取消全部異動。" +
-                                   "請檢查是否有其他人開著 SSMS 未 commit 的交易、或長時間佔用的查詢，放掉後再匯入一次即可。");
+                    return new SaveDataResult(false, "err_save_locked_table", tableName);
                 }
 
                 _logger.LogError(ex, "[{TableName}] 批次匯入失敗，已退回所有變更", tableName);
@@ -523,7 +522,7 @@ public class SettingsService : ISettingsService
                 //   (Round-7：之前怕洩漏所以隱藏，但 admin 看不到等於要去翻 server log，太不友善)
                 var detail = ex.Message;
                 if (ex.InnerException != null) detail += " | " + ex.InnerException.Message;
-                return (false, $"[{tableName}] 資料寫入失敗，已取消全部異動。錯誤詳情：{detail}");
+                return new SaveDataResult(false, "err_save_write_failed", $"[{tableName}] {detail}");
             }
         }
 
@@ -548,7 +547,7 @@ public class SettingsService : ISettingsService
             try { trans.Rollback(); } catch (Exception rbEx) { _logger.LogWarning(rbEx, "[SaveData] FK 驗證失敗後 rollback 也失敗"); }
             var fkDetail = ex.Message;
             if (ex.InnerException != null) fkDetail += " | " + ex.InnerException.Message;
-            return (false, $"資料外鍵完整性驗證失敗，已取消全部異動（可能有對應不到的關聯 Id）。錯誤詳情：{fkDetail}");
+            return new SaveDataResult(false, "err_save_fk_failed", fkDetail);
         }
         _logger.LogInformation("[SaveData] 重新啟用 FK {Ms} ms", sw.ElapsedMilliseconds);
 
@@ -558,16 +557,12 @@ public class SettingsService : ISettingsService
         // 寫入成功後，清除快取
         InvalidateInitialDataCache();
 
-        if (errorLogs.Count > 0)
-        {
-            string htmlMsg = $"<b>匯入完畢，成功: {successCount} 筆，略過異常: {errorLogs.Count} 筆。</b><br>" +
-                "<div style='max-height:250px; overflow-y:auto; text-align:left; font-size:0.8rem; margin-top:10px; padding:10px; background:#f8d7da; color:#721c24; border-radius:5px;'>" +
-                string.Join("<br>", errorLogs.Select(e => $"• {e}")) +
-                "</div><div style='margin-top:10px; font-size:0.8rem; color:#666;'>請檢查上述資料是否包含不合法的空值或是文字塞入數字欄位。正常的資料已順利寫入資料庫。</div>";
-            return (true, htmlMsg);
-        }
+        // ⚠️ 舊版在這裡直接組一整段帶 inline style 的中文 HTML 回前端（顏色寫死、無法翻譯、也繞過了
+        //    escHtml 的把關）。現改為只回代碼 + 結構化的略過清單，畫面由 api.js 的 renderSaveDataResult 組。
+        if (skipped.Count > 0)
+            return new SaveDataResult(true, "sync_partial_fmt", null, successCount, skipped);
 
-        return (true, $"全部資料 ({successCount} 筆) 已成功同步至資料庫！");
+        return new SaveDataResult(true, "sync_ok_fmt", null, successCount);
     }
 
     // 委派給 Singleton invalidator（與 EF SaveChanges 攔截器共用同一份快取 key/ETag）。
@@ -576,10 +571,10 @@ public class SettingsService : ISettingsService
 
     public void InvalidateVolatileDataCache() => _cacheInvalidator.InvalidateVolatile();
 
-    public async Task<(bool success, int loginCount, string? lastLoginTime, string? errorMessage)> UpdateLoginStatsAsync(string empId)
+    public async Task<(bool success, int loginCount, string? lastLoginTime, string? errorCode)> UpdateLoginStatsAsync(string empId)
     {
         if (string.IsNullOrWhiteSpace(empId))
-            return (false, 0, null, "EmpId 為必填欄位");
+            return (false, 0, null, "err_empid_required");
 
         using var conn = new SqlConnection(_connStr);
         await conn.OpenAsync();
@@ -611,7 +606,7 @@ public class SettingsService : ISettingsService
                 lastLogin?.ToString("yyyy-MM-dd HH:mm:ss"), null);
         }
 
-        return (false, 0, null, "找不到帳號 " + empId);
+        return (false, 0, null, "err_account_not_found");
     }
 
     private async Task RecordDailyUserVisitAsync(string empId, string? name, string? department)

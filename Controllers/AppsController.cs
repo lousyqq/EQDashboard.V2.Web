@@ -94,14 +94,19 @@ public class AppsController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteApp(string id, [FromServices] IActivityLogger activityLogger)
     {
-        var appItem = await _context.Apps.FirstOrDefaultAsync(a => a.AppId == id);
-        if (appItem == null) return NotFound();
-
         var isAdmin = User.IsInRole("admin");
         var empId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
 
-        if (!await _menuAuthService.CanEditOrDeleteMenuAsync(empId, appItem.MenuId ?? "", isAdmin))
-            return Forbid();
+        var appItem = await _context.Apps.FirstOrDefaultAsync(a => a.AppId == id);
+
+        // ⭐️ 2026-08-24 第八輪（第七輪 J11）：原本先 `if (appItem == null) return NotFound();` 再檢查權限
+        //    → 無權限者可以用「404 還是 403」的差異，逐一探測某個 AppId 到底存不存在。
+        //    現在把「不存在」與「沒權限」**收斂成同一個回應（404）**，兩種情況對外完全無法區分。
+        //    ⚠️ 這裡刻意回 404 而非 403 —— 沿用第七輪 J1 已定案的慣例
+        //       （`AccountsController` 對委派者點名查 admin 帳號也是回 404 而不是 403，不洩漏存在性）。
+        //    ⚠️ 順序不可還原：必須先拿到 appItem 才知道它的 MenuId，但**判定結果**要合併輸出。
+        if (appItem == null || !await _menuAuthService.CanEditOrDeleteMenuAsync(empId, appItem.MenuId ?? "", isAdmin))
+            return NotFound();
 
         var backupJson = System.Text.Json.JsonSerializer.Serialize(appItem);
         var oldIcon = appItem.IconBase64;
@@ -119,15 +124,15 @@ public class AppsController : ControllerBase
 
 public class AppDto
 {
-    [Required(ErrorMessage = "ID 必填")]
+    [Required(ErrorMessage = "val_id_required")]
     [StringLength(50)]
     public string Id { get; set; } = string.Empty;
 
-    [Required(ErrorMessage = "MenuId 必填")]
+    [Required(ErrorMessage = "val_menuid_required")]
     [StringLength(50)]
     public string MenuId { get; set; } = string.Empty;
 
-    [Required(ErrorMessage = "名稱必填")]
+    [Required(ErrorMessage = "val_name_required")]
     [StringLength(100)]
     public string Name { get; set; } = string.Empty;
 
@@ -136,12 +141,12 @@ public class AppDto
     //   —— 這類會被瀏覽器當成 https://evil.com 載入，造成 open-redirect / 載入外部惡意內容。
     //   (前端 sidebar.js / tables.js 把 App URL 渲染成 href 與 window.open 目標，無 scheme 驗證就會被 XSS)
     [StringLength(1000)]
-    [RegularExpression(@"^(https?://|/(?![/\\])).+$", ErrorMessage = "URL 必須以 http(s):// 開頭或 / 開頭的站內絕對路徑 (不可為 //外部網址)")]
+    [RegularExpression(@"^(https?://|/(?![/\\])).+$", ErrorMessage = "val_url_invalid")]
     public string? Url { get; set; }
 
     // 限制 Icon 大小避免有人塞 MB 級的 base64 把 InitialData cache 撐肥、拖慢全網。
     // 200 KB 以 base64 換算大約等於 150 KB 原始圖檔，icon 用綽綽有餘。
-    [StringLength(200_000, ErrorMessage = "Icon 不可超過 200KB")]
+    [StringLength(200_000, ErrorMessage = "val_icon_too_large")]
     public string? IconBase64 { get; set; }
 
     [StringLength(20)]

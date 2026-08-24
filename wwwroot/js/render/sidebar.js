@@ -82,11 +82,17 @@ window.getAllowedIdsWithHierarchy = function (menus, initialIds) {
 //      * 自己建立 (createdBy === appState.currentUser.id) → 可編輯/刪除
 //      * 被委派的節點本身或其下層子節點 → 可管理結構；若 canEditOthers=true，也能編輯/刪除別人的網頁
 //      * 委派節點的祖先 → 可管理結構（為了能在 Tree Builder 點到他）
+// canManageDescendants（2026-08-24 第八輪／第七輪 J5）：
+//   「這個節點自己不可編輯，但它底下有我被委派的子樹」。用來決定**要不要給一個入口**進到樹狀編輯器，
+//   而不是給編輯權 —— 樹狀編輯器內部本來就會對每個子節點各自跑 getMenuPermissions。
+//   為什麼需要它：被委派**子資料夾**（例：m_ze_2）的人，在「選單配置管理」只看得到祖先 root 那一列，
+//   而該列是 isAncestor → canEdit/canManageStructure 皆 false → 整頁 0 顆按鈕、只有「僅檢視」徽章
+//   → **完全沒有路徑進到自己被委派的子樹**，功能對它唯一的目標族群等於是壞的。
 window.getMenuPermissions = function (nodeId, nodeCreatedBy) {
-    let perms = { canView: false, canEdit: false, canDelete: false, canAddChild: false, canManageStructure: false };
+    let perms = { canView: false, canEdit: false, canDelete: false, canAddChild: false, canManageStructure: false, canManageDescendants: false };
     if (!appState.currentUser) return perms;
     if (appState.currentUser.roleLevel === 'admin') {
-        return { canView: true, canEdit: true, canDelete: true, canAddChild: true, canManageStructure: true };
+        return { canView: true, canEdit: true, canDelete: true, canAddChild: true, canManageStructure: true, canManageDescendants: true };
     }
 
     const isMyOwn = (nodeCreatedBy && window.cleanId(nodeCreatedBy) === window.cleanId(appState.currentUser.id));
@@ -147,8 +153,13 @@ window.getMenuPermissions = function (nodeId, nodeCreatedBy) {
         }
     }
     if (isAncestor) {
-        // 僅允許檢視，不可管理結構
+        // 祖先節點**本身**仍然不可編輯、不可管理結構（不能改它的名稱/網址，也不能直接往它底下加東西）——
+        // 但要開一個「進得去」的入口，讓委派者能走到自己真正被委派的子樹。
+        // ⚠️ 這只是入口，不是權限：樹狀編輯器對每個子節點各自判定，後端 BatchUpdateMenusAsync 也會逐筆檢查。
+        perms.canManageDescendants = true;
     }
+    // 自己就管得動的節點，當然也管得動它的子孫（讓下游只需判斷這一個旗標）
+    if (perms.canManageStructure) perms.canManageDescendants = true;
 
     if (perms.canEdit || perms.canManageStructure || isDelegatedNode || isUnder || isAncestor) {
         perms.canView = true;
@@ -254,6 +265,23 @@ export function applyPinnedNewFirst(tableId, rows, getId) {
     return head.concat(rows.filter(r => !head.includes(r)));
 }
 
+// ⭐️ 2026-08-24 第八輪 J8：DataTables 的 destroy() **不會**清掉它塞在 <th> 上的 aria-label / aria-sort，
+//    下一次 init 是直接在既有值後面「再接一段」 → 實測「廠區管理」重繪 3 次就累加到 5 段
+//    「: activate to sort column ascending」，zh→en→ja→zh 往返後變 8 段；
+//    而且開頭的欄名永遠停在**初次初始化時的語言**（切到英文/日文仍念中文「廠區(ID)」）。
+//    所有 client-side DataTable（fab/role/webpage/menuConfig/apply/audit/personal）都中招。
+//    修法：destroy() 之後、重新 init 之前把這兩個屬性移掉，讓 DataTables 用當下的語言重新產生。
+//    ⚠️ 必須在 safeDestroyDataTable 與 initDataTable 內建的 destroy 分支**兩處**都做 ——
+//       少數 render 路徑沒先呼叫 safeDestroyDataTable，只補一處會漏掉。
+function clearDtHeaderAria(tableId) {
+    try {
+        document.querySelectorAll('#' + CSS.escape(tableId) + ' thead th').forEach(th => {
+            th.removeAttribute('aria-label');
+            th.removeAttribute('aria-sort');
+        });
+    } catch (e) { }
+}
+
 // 防呆小幫手：安全摧毀 DataTable（摧毀前先記住目前所在分頁＋每頁筆數，供重建後還原，避免狀態啟用/禁用、編輯、刪除後跳回第一頁/預設筆數）
 export function safeDestroyDataTable(tableId) {
     try {
@@ -261,6 +289,7 @@ export function safeDestroyDataTable(tableId) {
             try { _dtPageMemory[tableId] = $('#' + tableId).DataTable().page(); } catch (e) { }
             rememberDtPageLen(tableId);
             $('#' + tableId).DataTable().destroy();
+            clearDtHeaderAria(tableId);
         }
     } catch (e) { }
 }
@@ -275,6 +304,7 @@ export function initDataTable(tableId, sortable = true) {
                 rememberDtPageLen(tableId);
                 $('#' + tableId).DataTable().destroy();
             }
+            clearDtHeaderAria(tableId);   // J8：無論走哪條 destroy 路徑，init 前一律清乾淨
             const dt = $('#' + tableId).DataTable({
                 language: (typeof getDataTableLang === 'function') ? getDataTableLang() : {},
                 pageLength: getDtPageLen(tableId), lengthMenu: [10, 25, 50, 100], ordering: sortable, order: [], autoWidth: false, stateSave: false
@@ -556,7 +586,7 @@ export function renderSidebarMenus() {
         if (rootMenus && rootMenus.length > 0) {
             rootMenus.forEach(root => {
                 if (root.id === 'system_settings') return;
-                let dName = root.displayName || root.name || '未命名選單';
+                let dName = root.displayName || root.name || t('menu_unnamed', '未命名選單');
                 if (typeof i18n !== 'undefined' && i18n[appState.currentLang] && i18n[appState.currentLang]['dyn_' + root.id] && !root.isEdited) dName = i18n[appState.currentLang]['dyn_' + root.id];
                 const isActive = window.cleanId(root.id) === window.cleanId(appState.currentActiveTopMenuId) ? 'active' : '';
                 // ⚠️ ID 進 JS onclick 一律 _jsArg()（CLAUDE.md §4-前端-5）：看板 ID 是管理者自由輸入
@@ -601,13 +631,22 @@ export function renderSidebarMenus() {
             sysMenus.forEach(sm => {
                 // role/tabindex 必留：這是 <div> 不是 <button>，沒有它就完全 Tab 不到、Enter 也沒反應。
                 // Enter/Space 的實際啟動由 main.js 的委派 keydown 統一處理（子選單是 lazy 插入的，逐處綁定會漏）。
-                if (sm.display) { const smName = t(sm.i18nKey, sm.fallback); html += `<div class="menu-item" role="button" tabindex="0" onclick="navTo('${sm.id}', this, '${smName}')"><i class="${sm.icon} menu-icon" aria-hidden="true"></i> <span class="text-truncate">${smName}</span></div>`; }
+                // 第 4 參數傳 i18nKey（L1）：這些系統設定分頁**不會**被 renderSidebarMenus 還原 `.active`
+                // （還原是靠 appState.currentActiveSidebarMenuId，而 navTo 這條路徑不會設它）→ 切語言時
+                // refreshBreadcrumb 找不到節點可取名，只能靠 key 重譯，否則麵包屑會卡在進來時的語系。
+                if (sm.display) { const smName = t(sm.i18nKey, sm.fallback); html += `<div class="menu-item" role="button" tabindex="0" onclick="navTo('${sm.id}', this, '${smName}', '${sm.i18nKey}')"><i class="${sm.icon} menu-icon" aria-hidden="true"></i> <span class="text-truncate">${smName}</span></div>`; }
             });
         } else {
             const activeRoot = rootMenus.find(m => window.cleanId(m.id) === window.cleanId(appState.currentActiveTopMenuId));
+            // ⚠️ 2026-08-24（第七輪 J11）：#sidebar-module-title 的 data-i18n 已移除（它是 JS 動態填值的元素），
+            //    所以「找不到 activeRoot」這條路徑必須自己補上預設字串，否則會殘留上一個模組的名稱。
+            if (!activeRoot) {
+                const fallbackTitleEl = document.getElementById('sidebar-module-title');
+                if (fallbackTitleEl) fallbackTitleEl.innerText = t('sidebar_module', '模組目錄');
+            }
             if (activeRoot) {
                 const titleEl = document.getElementById('sidebar-module-title');
-                if (titleEl) titleEl.innerText = activeRoot.displayName || activeRoot.name || '未命名選單';
+                if (titleEl) titleEl.innerText = activeRoot.displayName || activeRoot.name || t('menu_unnamed', '未命名選單');
                 const isFolder = (activeRoot.menuMode || activeRoot.MenuMode) === 'folder';
                 const subMenus = isFolder ? menus.filter(m => m.id !== activeRoot.id && (window.isParentMatch(m.parentId, activeRoot) || (m.parentIds || []).some(pid => window.isParentMatch(pid, activeRoot)))) : [];
 

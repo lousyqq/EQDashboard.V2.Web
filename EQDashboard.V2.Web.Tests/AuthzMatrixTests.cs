@@ -172,17 +172,109 @@ public class AuthzMatrixTests : IClassFixture<EqDashboardWebAppFactory>
         Assert.ProperSuperset(subMenus, adminMenus);       // admin 嚴格涵蓋 subadmin 的可見集合且更多
     }
 
-    /// <summary>admin-only 端點：subadmin / normal 皆 403，admin 200。AccountsController 為 [Authorize(Roles="admin")]。</summary>
+    /// <summary>
+    /// AccountsController 的 policy 是 <c>CanManageAccounts</c> = <c>admin || CanEditOthers</c>：
+    /// admin 與委派管理者(subadmin) 皆 200，純 user(normal) 403。
+    /// ⚠️ 2026-08-24 第七輪 J2 之前 subadmin 也被斷言為 403 —— 那與 policy 實際行為不符，
+    ///    真正的問題是前端表格自己多加了一道 admin-only 判斷導致空白頁。
+    /// </summary>
     [Fact]
-    public async Task AccountsEndpoint_AdminOnly_403ForNonAdmin()
+    public async Task AccountsEndpoint_AllowsDelegatedManager_ForbidsPlainUser()
     {
         var admin = await _factory.GetAuthedClientAsync(AdminId, AdminPw);
         var subadmin = await _factory.GetAuthedClientAsync(SubadminId, SubadminPw);
         var normal = await _factory.GetAuthedClientAsync(NormalId, NormalPw);
 
         Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync("/api/Accounts")).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await subadmin.GetAsync("/api/Accounts")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await subadmin.GetAsync("/api/Accounts")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await normal.GetAsync("/api/Accounts")).StatusCode);
+    }
+
+    /// <summary>委派管理者的帳號清單不得含任何 admin 帳號；全量匯出端點對他一律 403（否則過濾等於白做）。</summary>
+    [Fact]
+    public async Task Accounts_DelegatedManager_CannotSeeAdminAccountsNorExport()
+    {
+        var subadmin = await _factory.GetAuthedClientAsync(SubadminId, SubadminPw);
+
+        var resp = await subadmin.GetAsync("/api/Accounts?page=1&pageSize=100");
+        resp.EnsureSuccessStatusCode();
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        var items = doc.RootElement.GetProperty("items").EnumerateArray().ToList();
+        Assert.NotEmpty(items); // 至少看得到自己與其他一般帳號
+        Assert.DoesNotContain(items, el =>
+            string.Equals(el.GetProperty("roleLevel").GetString(), "admin", StringComparison.OrdinalIgnoreCase));
+
+        // 直接點名 admin 帳號 → 404（不洩漏存在性），而非 200
+        Assert.Equal(HttpStatusCode.NotFound, (await subadmin.GetAsync($"/api/Accounts/{AdminId}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await subadmin.GetAsync("/api/Accounts/export")).StatusCode);
+    }
+
+    /// <summary>
+    /// 🔴 提權回歸測試（2026-08-24 第七輪 J1）：委派管理者 PUT 自己的帳號、把 RoleLevel 改成 admin。
+    /// 修正前實測會回 200 且 DB 真的變成 admin（自我提權）；修正後 Service 強制把 RoleLevel/CanEditOthers
+    /// 寫回 DB 現值，故請求仍 200（表單其他欄位照存）但**等級必須維持 user**。
+    /// 送出的 body 是「先 GET 回來的完整明細 + 只改 roleLevel」，因此對其他欄位是等值寫入、不污染資料。
+    /// </summary>
+    [Fact]
+    public async Task Subadmin_CannotEscalateOwnRoleLevel()
+    {
+        var subadmin = await _factory.GetAuthedClientAsync(SubadminId, SubadminPw);
+
+        var before = await subadmin.GetFromJsonAsync<JsonElement>($"/api/Accounts/{SubadminId}");
+        Assert.Equal("user", before.GetProperty("roleLevel").GetString());
+
+        var payload = new
+        {
+            empId = SubadminId,
+            name = before.GetProperty("name").GetString(),
+            department = before.GetProperty("department").GetString(),
+            roleLevel = "admin",   // ← 提權嘗試
+            canEditOthers = true,
+            assignedRoles = before.GetProperty("assignedRoles").EnumerateArray().Select(x => x.GetString()).ToList(),
+            manageableMenus = before.GetProperty("manageableMenus").EnumerateArray().Select(x => x.GetString()).ToList()
+        };
+
+        var token = await GetCsrfTokenAsync(subadmin);
+        var req = new HttpRequestMessage(HttpMethod.Put, $"/api/Accounts/{SubadminId}") { Content = JsonContent.Create(payload) };
+        req.Headers.Add("X-Requested-With", "XMLHttpRequest");
+        req.Headers.Add("X-CSRF-TOKEN", token);
+        var resp = await subadmin.SendAsync(req);
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var after = await subadmin.GetFromJsonAsync<JsonElement>($"/api/Accounts/{SubadminId}");
+        Assert.Equal("user", after.GetProperty("roleLevel").GetString()); // 🔴 這行就是 J1 的回歸鎖
+        // 委派目錄不得因為這趟等值寫入而遺失（主從合併把範圍內/外的都保住）
+        Assert.Equal(
+            before.GetProperty("manageableMenus").EnumerateArray().Select(x => x.GetString()).OrderBy(x => x).ToList(),
+            after.GetProperty("manageableMenus").EnumerateArray().Select(x => x.GetString()).OrderBy(x => x).ToList());
+    }
+
+    /// <summary>委派管理者不得新增/刪除帳號，也不得編輯 admin 帳號（後者回 404：不洩漏存在性）。</summary>
+    [Fact]
+    public async Task Subadmin_CannotCreateDeleteOrTouchAdminAccounts()
+    {
+        var subadmin = await _factory.GetAuthedClientAsync(SubadminId, SubadminPw);
+        var token = await GetCsrfTokenAsync(subadmin);
+
+        HttpRequestMessage Build(HttpMethod method, string url, object? body = null)
+        {
+            var r = new HttpRequestMessage(method, url);
+            if (body != null) r.Content = JsonContent.Create(body);
+            r.Headers.Add("X-Requested-With", "XMLHttpRequest");
+            r.Headers.Add("X-CSRF-TOKEN", token);
+            return r;
+        }
+
+        var create = await subadmin.SendAsync(Build(HttpMethod.Post, "/api/Accounts",
+            new { empId = "t_j1_probe", name = "probe", roleLevel = "user", canEditOthers = false }));
+        Assert.Equal(HttpStatusCode.Forbidden, create.StatusCode);
+
+        var del = await subadmin.SendAsync(Build(HttpMethod.Delete, $"/api/Accounts/{NormalId}"));
+        Assert.Equal(HttpStatusCode.Forbidden, del.StatusCode);
+
+        var touchAdmin = await subadmin.SendAsync(Build(HttpMethod.Put, $"/api/Accounts/{AdminId}",
+            new { empId = AdminId, name = "x", roleLevel = "admin", canEditOthers = true }));
+        Assert.Equal(HttpStatusCode.Forbidden, touchAdmin.StatusCode);
     }
 
     /// <summary>CSRF 第一道：寫入請求缺 X-Requested-With → 400（在進到 controller 前即被 middleware 攔下，無 DB 異動）。</summary>

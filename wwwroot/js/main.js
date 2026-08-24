@@ -325,6 +325,36 @@ document.addEventListener("DOMContentLoaded", async () => {
             // 1) 有 DB 資料時，嘗試還原 localStorage 中既有的 appState.currentUser
             const restored = restoreLoginFromStorage();
             if (restored) {
+                // ⭐️ Session-based UpdateLoginStats
+                try {
+                    if (!sessionStorage.getItem('session_login_recorded')) {
+                        sessionStorage.setItem('session_login_recorded', '1');
+                        fetch(window.toAppUrl ? window.toAppUrl('/Settings/UpdateLoginStats') : '/Settings/UpdateLoginStats', { 
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                        }).then(r => r.json()).then(data => {
+                            if (data && data.success && window.appState && window.appState.currentUser) {
+                                if (typeof data.loginCount === 'number') window.appState.currentUser.loginCount = data.loginCount;
+                                if (data.lastLoginTime) window.appState.currentUser.lastLoginTime = data.lastLoginTime;
+                                
+                                localStorage.setItem('umc_current_user', JSON.stringify(window.appState.currentUser));
+                                
+                                if (window.appState.accounts) {
+                                    const acc = window.appState.accounts.find(x => String(x.empId).toLowerCase() === String(window.appState.currentUser.id).toLowerCase());
+                                    if (acc) {
+                                        acc.loginCount = data.loginCount;
+                                        acc.lastLoginTime = window.appState.currentUser.lastLoginTime;
+                                    }
+                                }
+                                
+                                if (typeof window.renderAccountProfile === 'function') {
+                                    window.renderAccountProfile();
+                                }
+                            }
+                        }).catch(e => console.warn('Failed to update session stats:', e));
+                    }
+                } catch(e) {}
+                
                 initDashboardUI();
             } else {
                 const ready = await waitForTryAutoLogin(5000);

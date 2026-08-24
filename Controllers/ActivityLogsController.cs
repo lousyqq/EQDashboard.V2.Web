@@ -76,6 +76,16 @@ public class ActivityLogsController : ControllerBase
     public async Task<IActionResult> Purge([FromQuery] int days = 90)
     {
         var deleted = await _activityLogger.PurgeOlderThanAsync(days);
+
+        // ⭐️ 2026-08-24 第八輪（第七輪 J11 / 同 G13）：Purge 是破壞性且不可還原的操作，卻是全站唯一
+        //    **沒有留下任何軌跡**的一支 —— 諷刺的是它清的正是操作紀錄本身，出事後連「誰在什麼時候清掉多少筆」
+        //    都查不到。這裡補上稽核；⚠️ **必須在 PurgeOlderThanAsync 之後才寫**，否則這筆稽核紀錄
+        //    會落在自己要清除的時間範圍外／內都說不準，先寫先被自己清掉。
+        //    （`PurgeOlderThanAsync` 本身已有 `days < 1 → 1` 的下限保護，不會被 days=0 清空整張表。）
+        //    參數順序 = (ctx, category, action, targetType, targetId, detail)
+        await _activityLogger.LogAuditAsync(HttpContext, "ActivityLogs", "Purge", "ActivityLog", days.ToString(),
+            System.Text.Json.JsonSerializer.Serialize(new { days, deleted }));
+
         return Ok(new { success = true, deleted, days });
     }
 

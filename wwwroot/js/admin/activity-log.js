@@ -85,7 +85,7 @@ export function renderActivityRow(r) {
             ? `<span class="badge border border-danger text-danger">${r.statusCode ?? '✗'}</span>`
             : `<span class="badge border border-secondary text-secondary">${r.statusCode ?? '—'}</span>`;
     const sourceBadge = r.loginSource
-        ? `<span class="badge bg-light text-dark border">${window.escapeHTML(r.loginSource)}</span>`
+        ? `<span class="badge bg-body-tertiary text-body-emphasis border">${window.escapeHTML(r.loginSource)}</span>`
         : '';
     const detailHtml = r.detail || r.errorMessage
         ? `<small class="text-muted">${window.escapeHTML(r.errorMessage || r.detail || '').slice(0, 120)}</small>`

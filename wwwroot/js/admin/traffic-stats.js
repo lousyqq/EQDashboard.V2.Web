@@ -16,14 +16,17 @@ window._trafficDetailPage = 1;
 window._trafficDetailPageSize = 20;
 window._trafficDetailTotal = 0;
 
-// 殭屍看板的「建立日期」欄。後端 GetZombieMenus 回 createTime + createTimeKind 三態：
+// 看板的「建立日期」欄。後端 GetMenuClickStats / GetZombieMenus 都回 createTime + createTimeKind 三態：
 //   exact    → Menus.CreatedAt 有值，直接顯示
 //   inferred → CreatedAt 為 NULL（欄位 2026-08-11 才加，之前建立的都沒有），
 //              改用「歷來最早一次點擊日」當下限 → 必須標示成推估值，不可假裝是建立日
 //   unknown  → 既無 CreatedAt、也從未被點過 → 誠實顯示「未知」
 // 為什麼要分三態：舊資料 31 筆 CreatedAt 全為 NULL，若一律顯示 "-"，
-// 管理員無法分辨「真的長期沒人用」與「單純沒有建檔時間」，殭屍清單就失去判讀價值。
-function zombieCreateCell(item) {
+// 管理員無法分辨「真的長期沒人用」與「單純沒有建檔時間」，殭屍判讀就失去價值。
+// ⚠️ 2026-08-24 第八輪 K3：殭屍看板分頁併入「看板點擊率」後，這個欄位一度整個消失（未點擊的看板
+//    最後一欄只剩「未知」）—— 那是 E9 成果的功能退化。函式改名 zombieCreateCell → menuCreateCell，
+//    因為它現在服務的是整張點擊率表，不再專屬殭屍清單。
+function menuCreateCell(item) {
     const kind = item.createTimeKind || (item.createTime ? 'exact' : 'unknown');
     if (kind === 'exact') return escHtml(item.createTime);
     if (kind === 'inferred') {
@@ -36,8 +39,15 @@ function zombieCreateCell(item) {
 
 function renderTrendChartSVG(containerId, data, labelKey, valueKeys, colors, labels) {
     const container = document.getElementById(containerId);
-    if (!container || !data || data.length === 0) return;
-    
+    if (!container) return;
+    // L8：舊版在這裡直接 return，既不清空也不隱藏 container → 把天數範圍改成一段沒有資料的區間時，
+    //     畫面會留著「上一次查詢的折線圖」，而下方的數字表格卻是空的（兩者互相矛盾）。
+    if (!data || data.length === 0) {
+        container.innerHTML = '';
+        container.style.display = 'none';
+        return;
+    }
+
     // Determine bounds
     const width = 800;
     const height = 200;
@@ -56,7 +66,13 @@ function renderTrendChartSVG(containerId, data, labelKey, valueKeys, colors, lab
 
     const xStep = data.length > 1 ? plotW / (data.length - 1) : plotW;
 
-    let svg = `<svg viewBox="0 0 ${width} ${height}" style="width:100%; height:100%; overflow:visible; font-family:var(--bs-font-sans-serif, system-ui, sans-serif);">`;
+    // L6：純圖形對讀螢幕等同空白 → 補 role="img" + aria-label 說明資料點數與系列，並指向下方表格。
+    //     （`chart_trend_aria` / `list_sep` 這兩個 key 早就備好了，但一直沒有任何地方用到。）
+    const ariaLabel = t('chart_trend_aria', '趨勢折線圖（{0} 個資料點，系列：{1}）。完整數值請見下方表格。')
+        .replace('{0}', data.length)
+        .replace('{1}', labels.join(t('list_sep', '、')));
+
+    let svg = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escHtml(ariaLabel)}" style="width:100%; height:100%; overflow:visible; font-family:var(--bs-font-sans-serif, system-ui, sans-serif);">`;
 
     // Grid lines and Y-axis labels
     const yTicks = 4;
@@ -182,7 +198,7 @@ export async function loadTrafficStats() {
                     const pct = Math.min(100, Math.round(((item.visits || 0) / maxVisits) * 100));
                     return `
                         <tr>
-                            <td class="fw-bold text-dark"><i class="far fa-calendar text-primary me-1"></i>${escHtml(item.date)}</td>
+                            <td class="fw-bold text-body-emphasis"><i class="far fa-calendar text-primary me-1"></i>${escHtml(item.date)}</td>
                             <td><span class="badge bg-primary px-3 py-1" style="font-size: 0.85rem;">${t('ts_people_fmt', '{0} 人').replace('{0}', (item.dau || 0).toLocaleString())}</span></td>
                             <td class="fw-bold">${t('ts_times_fmt', '{0} 人次').replace('{0}', (item.visits || 0).toLocaleString())}</td>
                             <td style="min-width: 180px;">
@@ -214,7 +230,7 @@ export async function loadTrafficStats() {
                     const pct = Math.min(100, Math.round(((item.visits || 0) / maxVisits) * 100));
                     return `
                         <tr>
-                            <td class="fw-bold text-dark"><i class="far fa-calendar-alt text-success me-1"></i>${escHtml(item.month)}</td>
+                            <td class="fw-bold text-body-emphasis"><i class="far fa-calendar-alt text-success me-1"></i>${escHtml(item.month)}</td>
                             <td><span class="badge bg-success px-3 py-1" style="font-size: 0.85rem;">${t('ts_people_fmt', '{0} 人').replace('{0}', (item.mau || 0).toLocaleString())}</span></td>
                             <td class="fw-bold">${t('ts_times_fmt', '{0} 人次').replace('{0}', (item.visits || 0).toLocaleString())}</td>
                             <td style="min-width: 180px;">
@@ -246,8 +262,8 @@ export async function loadTrafficStats() {
                     const pct = Math.min(100, Math.round(((item.visits || 0) / totalDeptVisits) * 100));
                     return `
                         <tr>
-                            <td class="fw-bold text-dark"><i class="fas fa-building text-info me-2" aria-hidden="true"></i>${escHtml(item.department || t('dept_unspecified_other', '未指定/其他'))}</td>
-                            <td><span class="badge bg-info text-dark px-3 py-1" style="font-size: 0.85rem;">${t('ts_people_fmt', '{0} 人').replace('{0}', (item.activeUsers || 0).toLocaleString())}</span></td>
+                            <td class="fw-bold text-body-emphasis"><i class="fas fa-building text-info me-2" aria-hidden="true"></i>${escHtml(item.department || t('dept_unspecified_other', '未指定/其他'))}</td>
+                            <td><span class="badge bg-info-subtle text-info-emphasis px-3 py-1" style="font-size: 0.85rem;">${t('ts_people_fmt', '{0} 人').replace('{0}', (item.activeUsers || 0).toLocaleString())}</span></td>
                             <td class="fw-bold">${t('ts_times_fmt', '{0} 人次').replace('{0}', (item.visits || 0).toLocaleString())}</td>
                             <td style="min-width: 180px;">
                                 <div class="d-flex align-items-center gap-2">
@@ -266,60 +282,46 @@ export async function loadTrafficStats() {
         // 當點擊進入統計時，順便載入第一頁每日明細
         loadTrafficDetails(1);
 
-        // 5. Popular Menus (常用看板)
+        // 5. Menu Clicks（看板點擊率；含原「殭屍看板」＝ totalClicks 為 0 的列）
         const popularBody = document.getElementById('tsPopularBody');
+        const TS_CLICK_COLS = 4;
         if (popularBody) {
-            popularBody.innerHTML = skeletonRows(4, 5);
+            popularBody.innerHTML = skeletonRows(5, TS_CLICK_COLS);
             fetch(`/api/Analytics/MenuClickStats?days=${days}`)
                 .then(r => r.ok ? r.json() : Promise.reject('HTTP ' + r.status))
                 .then(d => {
                     if (!d.items || d.items.length === 0) {
-                        popularBody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-muted">${escHtml(t('ts_no_popular', '目前無看板點擊紀錄'))}</td></tr>`;
+                        popularBody.innerHTML = `<tr><td colspan="${TS_CLICK_COLS}" class="text-center py-4 text-muted">${escHtml(t('ts_no_popular', '目前無看板點擊紀錄'))}</td></tr>`;
                     } else {
-                        popularBody.innerHTML = d.items.map(item => `
+                        popularBody.innerHTML = d.items.map(item => {
+                            const isZombie = item.totalClicks === 0;
+                            const icon = isZombie ? '<i class="fas fa-ghost text-warning me-2" aria-hidden="true"></i>' : '<i class="fas fa-desktop text-primary me-2" aria-hidden="true"></i>';
+                            const nameText = escHtml(item.menuName || t('menu_deleted', '已刪除看板'));
+                            const clickBadge = isZombie ? `<span class="badge bg-secondary px-3 py-1">0</span>` : `<span class="badge bg-primary px-3 py-1">${t('ts_count_fmt', '{0} 次').replace('{0}', (item.totalClicks || 0).toLocaleString())}</span>`;
+                            const userBadge = isZombie ? `<span class="badge bg-secondary px-3 py-1">0</span>` : `<span class="badge bg-info-subtle text-info-emphasis px-3 py-1">${t('ts_people_fmt', '{0} 人').replace('{0}', (item.activeUsers || 0).toLocaleString())}</span>`;
+                            const lastClickText = isZombie
+                                ? `<span class="fst-italic opacity-75">${escHtml(t('ts_never_clicked', '從未點擊'))}</span>`
+                                : escHtml(item.lastClick);
+                            return `
                             <tr>
-                                <td class="fw-bold text-dark"><i class="fas fa-desktop text-primary me-2" aria-hidden="true"></i>${escHtml(item.menuName || t('menu_deleted', '已刪除看板'))}</td>
-                                <td><span class="badge bg-primary px-3 py-1">${t('ts_count_fmt', '{0} 次').replace('{0}', (item.totalClicks || 0).toLocaleString())}</span></td>
-                                <td><span class="badge bg-info text-dark px-3 py-1">${t('ts_people_fmt', '{0} 人').replace('{0}', (item.activeUsers || 0).toLocaleString())}</span></td>
-                                <td class="text-muted small">${escHtml(item.lastClick)}</td>
-                            </tr>
-                        `).join('');
+                                <td class="fw-bold text-body-emphasis">${icon}${nameText}</td>
+                                <td>${clickBadge}</td>
+                                <td>${userBadge}</td>
+                                <td class="text-muted small">${lastClickText}</td>
+                            </tr>`;
+                        }).join('');
                     }
                 })
                 .catch(e => {
-                    console.error('載入常用看板失敗', e);
-                    popularBody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-danger">${escHtml(t('load_failed', '載入失敗: '))}${escHtml(e.message || e)}</td></tr>`;
+                    console.error('載入看板點擊率失敗', e);
+                    popularBody.innerHTML = `<tr><td colspan="${TS_CLICK_COLS}" class="text-center py-4 text-danger">${escHtml(t('load_failed', '載入失敗: '))}${escHtml(e.message || e)}</td></tr>`;
                 });
         }
 
-        // 6. Zombie Menus (殭屍看板)
-        const zombieBody = document.getElementById('tsZombieBody');
-        const zombieDesc = document.getElementById('tsZombieDesc');
-        if (zombieBody) {
-            zombieBody.innerHTML = skeletonRows(4, 5);
-            fetch(`/api/Analytics/ZombieMenus?days=${days}`)
-                .then(r => r.ok ? r.json() : Promise.reject('HTTP ' + r.status))
-                .then(d => {
-                    if (zombieDesc) zombieDesc.innerText = t('ts_zombie_desc_fmt', '以下看板在過去 {d} 天內從未被點擊過。')
-                        .replace('{d}', d.thresholdDays || days);
-                    if (!d.items || d.items.length === 0) {
-                        zombieBody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-muted">${escHtml(t('ts_no_zombie', '恭喜！目前沒有殭屍看板'))}</td></tr>`;
-                    } else {
-                        zombieBody.innerHTML = d.items.map(item => `
-                            <tr>
-                                <td class="text-muted small">${escHtml(item.menuId)}</td>
-                                <td class="fw-bold text-dark"><i class="fas fa-ghost text-warning me-2"></i>${escHtml(item.menuName)}</td>
-                                <td>${escHtml(item.creator)}</td>
-                                <td class="text-muted small">${zombieCreateCell(item)}</td>
-                            </tr>
-                        `).join('');
-                    }
-                })
-                .catch(e => {
-                    console.error('載入殭屍看板失敗', e);
-                    zombieBody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-danger">${escHtml(t('load_failed', '載入失敗: '))}${escHtml(e.message || e)}</td></tr>`;
-                });
-        }
+        // ⚠️ 2026-08-24 第八輪 K3：原本這裡還有一整段獨立的「殭屍看板」渲染（#tsZombieBody）。
+        //    該分頁的 HTML 已在合併時從 index.html 移除 → getElementById 永遠回 null、整段從不執行，
+        //    是典型的 A5 / F10 死碼（撤掉入口卻留著邏輯）。已刪除；殭屍看板現在就是上表 totalClicks=0 的列，
+        //    「建立日期」欄由 menuCreateCell() 呈現 E9 的三態（exact / inferred / unknown）。
 
     } catch (err) {
         console.error('[loadTrafficStats] 載入統計失敗:', err);
@@ -375,11 +377,11 @@ export async function loadTrafficDetails(page = 1) {
         if (tbody) {
             tbody.innerHTML = items.map(item => `
                 <tr>
-                    <td><span class="badge bg-light text-dark border">${escHtml(item.visitDate)}</span></td>
+                    <td><span class="badge bg-body-tertiary text-body-emphasis border">${escHtml(item.visitDate)}</span></td>
                     <td class="fw-bold font-monospace">${escHtml(item.empId)}</td>
                     <td class="fw-bold text-primary">${escHtml(item.empName)}</td>
                     <td><span class="badge bg-secondary">${escHtml(item.department || t('unspecified', '未指定'))}</span></td>
-                    <td><span class="badge bg-info text-dark px-2 py-1">${t('ts_count_fmt', '{0} 次').replace('{0}', item.visitCount ?? 1)}</span></td>
+                    <td><span class="badge bg-info-subtle text-info-emphasis px-2 py-1">${t('ts_count_fmt', '{0} 次').replace('{0}', item.visitCount ?? 1)}</span></td>
                     <td class="small text-muted font-monospace">${escHtml(item.firstVisitTime)}</td>
                     <td class="small text-muted font-monospace">${escHtml(item.lastVisitTime)}</td>
                 </tr>

@@ -14,16 +14,16 @@
         bottom: 0;
         left: 0;
         height: 100%;
-        z-index: 3000; /* 高於 top-navbar(2000)，低於 modal backdrop 之上層提示 */
+        z-index: 1045; /* Bootstrap offcanvas standard, above top-navbar(1030) */
         box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25);
     }
 
-    /* 背景遮罩：側欄展開時鋪滿畫面，點擊由 layout.js 收合側欄 */
+    /* 背景遮罩：側欄展開時蓋滿畫面，點擊由 layout.js 攔截收起 */
     #sidebar-backdrop {
         display: none;
         position: fixed;
         inset: 0;
-        z-index: 2999;
+        z-index: 1040; /* Bootstrap modal-backdrop standard */
         background: rgba(15, 23, 42, 0.45);
     }
 
@@ -62,6 +62,22 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
+    }
+
+    /* ⭐️ 2026-08-24 第八輪 K2：表格內的 form-switch 開關 375px 實測僅 29×14px
+       （個人頁面管理／選單配置管理／看板網頁管理共 24 顆），低於 WCAG 2.5.8 AA 的 24×24。
+       D2/E12 當年放大的是「工具列圖示鈕」，Bootstrap 的 .form-switch 沒被涵蓋到。
+       ⚠️ **不要**直接放大 .form-check-input 的 width/height 或加 padding —— input 是 replaced element，
+          Bootstrap 的 switch 靠 background-image 畫圓鈕，動尺寸會讓圓鈕位置與比例整個跑掉。
+       修法：`render/tables.js` 已把三個 switch 的外層 <div> 改成 <label>（label 包住 input ＝ 隱式關聯，
+          點 label 任何位置都會切換），這裡只負責把 label 的命中區撐到 44px。視覺尺寸完全不變。 */
+    label.form-check.form-switch {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 0;
+        cursor: pointer;
     }
 
     /* ⭐️ F5（2026-08-16）：頂列水平溢位修復。

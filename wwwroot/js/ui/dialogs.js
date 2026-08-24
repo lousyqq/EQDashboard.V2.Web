@@ -10,7 +10,9 @@ export function generateIconHtml(iconVal, colorCls, extraCls, isFolder = false) 
     // 圖片來源 = data: URI 或任何含 '/' 的路徑（/images/icons/... 實體檔、舊 icon/...）；FA class 永不含 '/'
     const cleanIcon = typeof window.resolveIconUrl === 'function' ? window.resolveIconUrl(iconVal) : iconVal;
     if (cleanIcon && (cleanIcon.startsWith('data:') || cleanIcon.includes('/'))) return `<img src="${window.escapeHTML(cleanIcon)}" class="custom-icon ${extraCls}" alt="icon" onerror="this.onerror=null;this.replaceWith(document.createElement('i'));this.className='fas fa-file-alt text-muted ${extraCls}';">`;
-    return `<i class="${iconVal} ${colorCls} ${extraCls}"></i>`;
+    // ⚠️ iconVal 是未轉義的 DB 值（Menus.Icon / Apps.IconBase64，管理者可自由填）→ 進 class 屬性前必須轉義。
+    //    上一行的 <img> 分支與 render/sidebar-item.js:22 的等價程式碼都有轉義，只有這行漏掉（L4）。
+    return `<i class="${window.escapeHTML(iconVal)} ${colorCls} ${extraCls}"></i>`;
 }
 
 // （2026-08-13 移除 updateSyncButtonUI / appState.hasUnsavedChanges：
@@ -244,8 +246,12 @@ window.skeletonRows = skeletonRows;
 // =========================================================================
 
 export function setButtonLoading(btnId, isLoading) {
-    const btn = typeof btnId === 'string' ? document.getElementById(btnId) : btnId;
+    let btn = typeof btnId === 'string' ? document.getElementById(btnId) : btnId;
     if (!btn) return;
+    if (btn.tagName && btn.tagName.toUpperCase() === 'FORM') {
+        btn = btn.querySelector('button[type="submit"], input[type="submit"]');
+        if (!btn) return;
+    }
     if (isLoading) {
         btn.classList.add('btn-loading');
         btn.disabled = true;

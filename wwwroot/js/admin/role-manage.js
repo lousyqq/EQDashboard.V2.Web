@@ -1,4 +1,4 @@
-﻿// === admin/role-manage.js - 群組管理 CRUD ===
+// === admin/role-manage.js - 群組管理 CRUD ===
 
 import { getCustomMenus, getRoles, t } from '../config.js';
 
@@ -37,7 +37,7 @@ export function toggleRoleMenuSelection(el) {
     const icon = el.querySelector('.role-check-icon');
 
     if (cb.checked) {
-        el.classList.remove('bg-white', 'text-secondary', 'border-secondary');
+        el.classList.remove('bg-body-tertiary', 'text-body-secondary', 'border-secondary');
         el.classList.add('bg-primary', 'text-white', 'border-primary');
         if (icon) {
             icon.classList.remove('far', 'fa-circle', 'opacity-50');
@@ -45,7 +45,7 @@ export function toggleRoleMenuSelection(el) {
         }
     } else {
         el.classList.remove('bg-primary', 'text-white', 'border-primary');
-        el.classList.add('bg-white', 'text-secondary', 'border-secondary');
+        el.classList.add('bg-body-tertiary', 'text-body-secondary', 'border-secondary');
         if (icon) {
             icon.classList.remove('fas', 'fa-check-circle');
             icon.classList.add('far', 'fa-circle', 'opacity-50');
@@ -93,7 +93,7 @@ window.renderRoleMenuCheckboxes = function (selectedIds) {
         const mDName = m.displayName || m.DisplayName || '';
         const isSelected = selectedIds.includes(mId);
 
-        const bgClass = isSelected ? 'bg-primary text-white border-primary' : 'bg-white text-secondary border-secondary';
+        const bgClass = isSelected ? 'bg-primary text-white border-primary' : 'bg-body-tertiary text-body-secondary border-secondary';
         const chkClass = isSelected ? 'fas fa-check-circle' : 'far fa-circle opacity-50';
 
         html.push(`
@@ -101,7 +101,7 @@ window.renderRoleMenuCheckboxes = function (selectedIds) {
                  style="transition: all 0.2s; font-size: 0.95rem;" draggable="true" 
                  ondragstart="window.rmDragStart(event, '${mId}')" ondragover="window.rmDragOver(event)" ondragleave="window.rmDragLeave(event)" ondrop="window.rmDrop(event, '${mId}')"
                  onclick="toggleRoleMenuSelection(this)">
-                <i class="fas fa-grip-vertical me-2 opacity-50" title="拖曳排序" onclick="event.stopPropagation()"></i>
+                <i class="fas fa-grip-vertical me-2 opacity-50" title="${t('hint_drag_sort', '拖曳排序')}" onclick="event.stopPropagation()"></i>
                 <i class="role-check-icon ${chkClass} me-1"></i>
                 <span class="fw-bold tracking-wide">${window.escapeHTML(mDName)}</span>
                 <input type="checkbox" class="d-none role-menu-cb" value="${window.escapeHTML(mId)}" ${isSelected ? 'checked' : ''}>
