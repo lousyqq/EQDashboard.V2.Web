@@ -403,6 +403,13 @@ app.Use(async (context, next) =>
         // （現代瀏覽器以 CSP 為準、忽略 XFO，所以只改 XFO 沒用，這裡也要放行 'self'）
         "frame-ancestors 'self'; " +
         "form-action 'self'";
+
+    if (!app.Environment.IsDevelopment())
+    {
+        context.Response.Headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
+    }
+    context.Response.Headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
+    
     await next();
 });
 
@@ -432,12 +439,12 @@ app.UseStaticFiles(new StaticFileOptions
             name.EndsWith(".css", StringComparison.OrdinalIgnoreCase) ||
             name.EndsWith(".html", StringComparison.OrdinalIgnoreCase))
         {
-            ctx.Context.Response.Headers.Append("Cache-Control", "no-cache");
+            ctx.Context.Response.Headers["Cache-Control"] = "no-cache";
         }
         else
         {
             // 圖片 / 字型 / favicon 等不常變動資產：保留 7 天長快取
-            ctx.Context.Response.Headers.Append("Cache-Control", "public,max-age=604800");
+            ctx.Context.Response.Headers["Cache-Control"] = "public,max-age=604800";
         }
     }
 });

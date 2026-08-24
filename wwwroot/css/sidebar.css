@@ -98,6 +98,10 @@ body.sidebar-hidden #sidebar {
         color: var(--active-text);
     }
 
+    .menu-item:hover i.menu-icon {
+        color: var(--active-text);
+    }
+
     .menu-item.active {
         background: var(--active-bg);
         color: var(--active-text);
@@ -108,6 +112,11 @@ body.sidebar-hidden #sidebar {
         .menu-item.active i.menu-icon {
             color: var(--active-text);
         }
+
+    .menu-item:focus-visible, .menu-item.sub-item:focus-visible {
+        outline: 2px solid var(--primary-color);
+        outline-offset: -2px;
+    }
 
     .menu-item[aria-expanded="true"] .dropdown-arrow {
         transform: rotate(90deg);

@@ -99,6 +99,12 @@ export function changeLanguage(lang, persist = true) {
         if (pageId === 'page-audit-manage' && typeof renderAuditTable === 'function') renderAuditTable();
         if (pageId === 'page-activity-log' && typeof loadActivityLogs === 'function') loadActivityLogs();
         if (pageId === 'page-traffic-stats' && typeof loadTrafficStats === 'function') loadTrafficStats();
+        if (pageId === 'page-app-grid' && typeof renderAppGrid === 'function') renderAppGrid();
+        if (pageId === 'page-under-construction') {
+            const textEl = document.getElementById('under-construction-text');
+            const dName = document.getElementById('bc-name')?.innerText;
+            if (textEl) textEl.innerText = t('under_construction_fmt', '{0} 內容建置中').replace('{0}', dName || '');
+        }
         // 最近瀏覽頁的卡片與空狀態文字也是動態產生的，需一併重繪才會跟著換語系
         if (pageId === 'page-recent') openRecentPage();
     }
@@ -586,6 +592,8 @@ export function navTo(pageId, element, subTitle = '') {
         // 離開看板頁時收掉載入/失敗覆蓋層並取消逾時計時，避免下次進來殘留舊狀態
         if (_iframeTimeoutId) { clearTimeout(_iframeTimeoutId); _iframeTimeoutId = null; }
         setIframeStatus('none');
+        const iframe = document.getElementById('main-iframe');
+        if (iframe) iframe.src = 'about:blank';
     }
 
     const bcPath = document.getElementById('bc-path');

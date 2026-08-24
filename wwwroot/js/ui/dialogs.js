@@ -1,4 +1,4 @@
-﻿import { enforceSystemModeUI } from './layout.js';
+import { enforceSystemModeUI } from './layout.js';
 import { changeLanguage } from './navigation.js';
 import { appState } from '../store.js';
 import { t } from '../config.js';
@@ -66,6 +66,12 @@ export function showToast(msg, type = 'success', delay = 3200, isHtml = false) {
         // 需高於 modal(1060) / offcanvas(2050)，Toast 才不會被遮住
         container.style.zIndex = '20000';
         document.body.appendChild(container);
+    }
+
+    const MAX_TOASTS = 5;
+    const existingToasts = container.querySelectorAll('.toast');
+    if (existingToasts.length >= MAX_TOASTS) {
+        existingToasts[0].remove(); // remove oldest
     }
 
     const style = TOAST_STYLES[type] || TOAST_STYLES.success;

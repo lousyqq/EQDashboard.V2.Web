@@ -153,7 +153,7 @@ public class AnalyticsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "取得全站統計趨勢失敗");
-            return StatusCode(500, new { error = "載入統計失敗，請稍後重試" });
+            return StatusCode(500, new { success = false, errorCode = "err_load_stats_failed" });
         }
     }
 
@@ -176,9 +176,16 @@ public class AnalyticsController : ControllerBase
         {
             var query = _context.DailyUserVisits.AsNoTracking().AsQueryable();
 
-            if (!string.IsNullOrWhiteSpace(date) && DateTime.TryParse(date, out var parsedDate))
+            if (!string.IsNullOrWhiteSpace(date))
             {
-                query = query.Where(x => x.VisitDate == parsedDate.Date);
+                if (DateTime.TryParse(date, out var parsedDate))
+                {
+                    query = query.Where(x => x.VisitDate == parsedDate.Date);
+                }
+                else
+                {
+                    return BadRequest(new { success = false, errorCode = "err_invalid_date" });
+                }
             }
             if (!string.IsNullOrWhiteSpace(dept))
             {
@@ -219,7 +226,7 @@ public class AnalyticsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "查詢每日造訪明細失敗");
-            return StatusCode(500, new { error = "查詢失敗，請稍後重試" });
+            return StatusCode(500, new { success = false, errorCode = "err_load_stats_failed" });
         }
     }
 
@@ -252,7 +259,10 @@ public class AnalyticsController : ControllerBase
                 .OrderByDescending(x => x.TotalClicks)
                 .ToListAsync();
 
-            var menus = await _context.Menus.AsNoTracking().ToDictionaryAsync(m => m.MenuId, m => m.DisplayName);
+            var clickedIds = query.Select(x => x.MenuId).ToList();
+            var menus = await _context.Menus.AsNoTracking()
+                .Where(m => clickedIds.Contains(m.MenuId))
+                .ToDictionaryAsync(m => m.MenuId, m => m.DisplayName);
 
             // menuName 查不到時回 null（不要塞「已刪除看板」這種中文字面值 —— 前端無從翻譯），
             //   由前端以 t('menu_deleted') 呈現。
@@ -270,7 +280,7 @@ public class AnalyticsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "查詢看板使用排行失敗");
-            return StatusCode(500, new { error = "查詢失敗，請稍後重試" });
+            return StatusCode(500, new { success = false, errorCode = "err_load_stats_failed" });
         }
     }
 
@@ -295,13 +305,6 @@ public class AnalyticsController : ControllerBase
             var today = sqlToday != default ? sqlToday.Date : DateTime.Now.Date;
             var cutoffDate = today.AddDays(-days + 1);
 
-            // 取得近 N 天有被點擊過的 MenuId
-            var activeMenuIds = await _context.DailyMenuClicks.AsNoTracking()
-                .Where(x => x.ClickDate >= cutoffDate)
-                .Select(x => x.MenuId)
-                .Distinct()
-                .ToListAsync();
-
             // 取得有效的看板 (不包含 AppGrid, Folder, Pool 項目與停用看板)
             // ⚠️ 殭屍防誤判機制：只挑出 CreatedAt 早於 cutoffDate 的看板 (或者舊資料沒有 CreatedAt 的看板)
             var candidates = await _context.Menus.AsNoTracking()
@@ -310,7 +313,7 @@ public class AnalyticsController : ControllerBase
                             m.MenuMode != "folder" &&
                             m.MenuMode != "app_grid")
                 .Where(m => m.CreatedAt == null || m.CreatedAt < cutoffDate)
-                .Where(m => !activeMenuIds.Contains(m.MenuId))
+                .Where(m => !_context.DailyMenuClicks.Any(c => c.ClickDate >= cutoffDate && c.MenuId == m.MenuId))
                 .Select(m => new
                 {
                     m.MenuId,
@@ -327,13 +330,23 @@ public class AnalyticsController : ControllerBase
             //    並以 createTimeKind 標示資料來源，讓前端能誠實標註是推估值。
             //    ⚠️ 仍然不寫回 Menus.CreatedAt —— 舊資料的 NULL 不可用推估值漂白，否則真殭屍會被洗白。
             var unknownIds = candidates.Where(c => c.CreatedAt == null).Select(c => c.MenuId).ToList();
-            var firstSeen = unknownIds.Count == 0
-                ? new Dictionary<string, DateTime>()
-                : await _context.DailyMenuClicks.AsNoTracking()
-                    .Where(x => unknownIds.Contains(x.MenuId))
-                    .GroupBy(x => x.MenuId)
-                    .Select(g => new { MenuId = g.Key, First = g.Min(x => x.ClickDate) })
-                    .ToDictionaryAsync(x => x.MenuId, x => x.First);
+            var firstSeen = new Dictionary<string, DateTime>();
+            if (unknownIds.Count > 0)
+            {
+                foreach (var chunk in unknownIds.Chunk(1000))
+                {
+                    var batchFirstSeen = await _context.DailyMenuClicks.AsNoTracking()
+                        .Where(x => chunk.Contains(x.MenuId))
+                        .GroupBy(x => x.MenuId)
+                        .Select(g => new { MenuId = g.Key, First = g.Min(x => x.ClickDate) })
+                        .ToDictionaryAsync(x => x.MenuId, x => x.First);
+                    
+                    foreach (var kvp in batchFirstSeen)
+                    {
+                        firstSeen[kvp.Key] = kvp.Value;
+                    }
+                }
+            }
 
             var zombieMenus = candidates.Select(c =>
             {
@@ -370,7 +383,7 @@ public class AnalyticsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "查詢殭屍看板清單失敗");
-            return StatusCode(500, new { error = "查詢失敗，請稍後重試" });
+            return StatusCode(500, new { success = false, errorCode = "err_load_stats_failed" });
         }
     }
 

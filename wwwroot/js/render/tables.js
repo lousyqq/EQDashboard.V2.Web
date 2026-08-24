@@ -1,4 +1,4 @@
-﻿// === render/tables.js - 管理表格渲染 (Fab, Role, Account, Webpage, MenuConfig, Apply, Audit, AppGrid) ===
+// === render/tables.js - 管理表格渲染 (Fab, Role, Account, Webpage, MenuConfig, Apply, Audit, AppGrid) ===
 
 import { getCustomMenus, getDataTableLang, getFabs, getPersonalSettings, getRequests, getRoles, savePersonalSettings, t } from '../config.js';
 
@@ -128,26 +128,26 @@ export function renderPersonalMenuManage() {
                 : `<span class="chevron-btn text-muted me-2" style="cursor:default; opacity:0.3; padding:0 10px;"><i class="fas fa-minus"></i></span>`;
 
             const iconHtml = generateIconHtml(menu.icon, isHidden ? 'text-muted' : 'text-primary', 'me-2 fs-6', menu.menuMode === 'folder');
-            const toggleHtml = `<div class="form-check form-switch m-0 d-flex justify-content-center" ${noDrag}><input class="form-check-input cursor-pointer" type="checkbox" onchange="togglePersonalProp('${menuJsId}', 'hidden', !this.checked)" ${!isHidden ? 'checked' : ''} title="顯示/隱藏"></div>`;
+            const toggleHtml = `<div class="form-check form-switch m-0 d-flex justify-content-center" ${noDrag}><input class="form-check-input cursor-pointer" type="checkbox" onchange="togglePersonalProp('${menuJsId}', 'hidden', !this.checked)" ${!isHidden ? 'checked' : ''} title="${t('th_status', '顯示/隱藏')}"></div>`;
 
             // 開啟方式：folder/有子選單者顯示「-」；leaf 顯示彩色文字（與 TEST_20260429.html:3709 對齊）
             // 實際變更走右側「編輯」按鈕 → 個人選單設定 Modal 內的「開啟偏好」下拉
             const targetTextMap = {
-                'iframe': '<span class="text-primary fw-bold small">畫面內嵌</span>',
-                'iframe_fullscreen': '<span class="text-purple fw-bold small">內嵌全螢幕</span>',
-                'blank': '<span class="text-info fw-bold small">另開新分頁</span>',
-                'ie': '<span class="text-info fw-bold small">另開分頁 (IE)</span>',
-                'fullscreen': '<span class="text-success fw-bold small">新視窗開啟(全螢幕)</span>',
-                'popup': '<span class="text-warning fw-bold small">彈出小視窗</span>'
+                'iframe': '<span class="text-primary fw-bold small">' + t('iframe', '畫面內嵌') + '</span>',
+                'iframe_fullscreen': '<span class="text-purple fw-bold small">' + t('iframe_fullscreen', '內嵌全螢幕') + '</span>',
+                'blank': '<span class="text-info fw-bold small">' + t('blank', '另開新分頁') + '</span>',
+                'ie': '<span class="text-info fw-bold small">' + t('ie_mode', '另開分頁 (IE)') + '</span>',
+                'fullscreen': '<span class="text-success fw-bold small">' + t('fullscreen', '新視窗開啟(全螢幕)') + '</span>',
+                'popup': '<span class="text-warning fw-bold small">' + t('popup', '彈出小視窗') + '</span>'
             };
             const targetSelectHtml = hasChildren
                 ? '<span class="text-muted">-</span>'
                 : (targetTextMap[currentTarget] || targetTextMap['iframe']);
 
             const trAttr = `draggable="true" ondragstart="handleDragStart(event, '${menuJsId}', '${parentJsId}')" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, '${menuJsId}', '${parentJsId}', 'personal')"`;
-            const levelMap = { 0: '主選單', 1: '子選單', 2: '次子選單' };
+            const levelMap = { 0: t('menu_level_0', '主選單'), 1: t('menu_level_1', '子選單'), 2: t('menu_level_2', '次子選單') };
 
-            let dName = menu.displayName || menu.name || '未命名選單';
+            let dName = menu.displayName || menu.name || t('menu_unnamed', '未命名選單');
             if (typeof i18n !== 'undefined' && i18n[appState.currentLang] && i18n[appState.currentLang]['dyn_' + menu.id] && !menu.isEdited) {
                 dName = i18n[appState.currentLang]['dyn_' + menu.id];
             }
@@ -155,7 +155,7 @@ export function renderPersonalMenuManage() {
 
             const col1Html = `
                 <div class="d-flex align-items-center">
-                    <i class="fas fa-grip-vertical text-muted me-2" style="cursor: grab;" title="拖曳排序"></i>
+                    <i class="fas fa-grip-vertical text-muted me-2" style="cursor: grab;" title="${t('hint_drag_handle', '拖曳排序')}"></i>
                     ${expandBtn}
                     <div style="width:24px; text-align:center;">${iconHtml}</div>
                     <div class="ms-2 text-start lh-sm">
@@ -293,12 +293,12 @@ export function renderFabTable() {
             let rName = r ? (r.groupName || r.GroupName || rId) : rId;
             return r ? `<span class="badge badge-flat-list me-1">${window.escapeHTML(rName)}</span>` : '';
         }).join('');
-        if (!roleBadges) roleBadges = '<span class="text-muted small">未綁定</span>';
+        if (!roleBadges) roleBadges = '<span class="text-muted small">' + t('unbound', '未綁定') + '</span>';
 
         // ⚠️ ID 進 JS onclick 一律 _jsArg()（CLAUDE.md §4-前端-5）：廠區 ID 是管理者自由輸入，
         //   含 `'` 會直接讓 handler 語法錯誤、惡意內容則是注入。
         const fJsId = window._jsArg(fId);
-        let actionBtns = `<div class="d-flex flex-nowrap justify-content-center gap-2"><button type="button" class="btn btn-sm btn-outline-primary btn-action-icon" onclick="event.stopPropagation(); editFab('${fJsId}');" title="編輯"><i class="fas fa-edit"></i></button><button type="button" class="btn btn-sm btn-outline-danger btn-action-icon" onclick="event.stopPropagation(); deleteFab('${fJsId}')" title="刪除"><i class="fas fa-trash-alt"></i></button></div>`;
+        let actionBtns = `<div class="d-flex flex-nowrap justify-content-center gap-2"><button type="button" class="btn btn-sm btn-outline-primary btn-action-icon" onclick="event.stopPropagation(); editFab('${fJsId}');" title="${t('btn_edit', '編輯')}"><i class="fas fa-edit"></i></button><button type="button" class="btn btn-sm btn-outline-danger btn-action-icon" onclick="event.stopPropagation(); deleteFab('${fJsId}')" title="${t('btn_delete', '刪除')}"><i class="fas fa-trash-alt"></i></button></div>`;
         htmlBuffer.push(`<tr><td class="text-start ps-3 fw-bold align-middle">${fName}</td><td class="align-middle">${dName}</td><td class="align-middle">${dLang === 'en' ? 'English' : (dLang === 'ja' ? '日本語' : '繁體中文')}</td><td class="text-start align-middle">${roleBadges}</td><td class="text-center align-middle" style="white-space: nowrap; width: 1%;">${actionBtns}</td></tr>`);
     });
     tbody.innerHTML = htmlBuffer.join('');
@@ -315,7 +315,7 @@ export function renderRoleTable() {
             let mName = m ? (m.displayName || m.DisplayName || mId) : mId;
             return m ? `<span class="badge badge-flat-list me-1 mb-1">${window.escapeHTML(mName)}</span>` : '';
         }).join('');
-        if (!menuBadges) menuBadges = '<span class="text-muted small">無綁定看板</span>';
+        if (!menuBadges) menuBadges = '<span class="text-muted small">' + t('no_bound_menus', '無綁定看板') + '</span>';
         const rId = r.id || r.roleId || r.RoleId || ''; const rName = window.escapeHTML(r.groupName || r.GroupName || rId);
         const rJsId = window._jsArg(rId);
         let actionBtns = `<div class="d-flex flex-nowrap justify-content-center gap-2"><button type="button" class="btn btn-sm btn-outline-primary btn-action-icon" onclick="event.stopPropagation(); editRole('${rJsId}');" title="編輯"><i class="fas fa-edit"></i></button><button type="button" class="btn btn-sm btn-outline-danger btn-action-icon" onclick="event.stopPropagation(); deleteRole('${rJsId}')" title="刪除"><i class="fas fa-trash-alt"></i></button></div>`;
@@ -349,18 +349,18 @@ function _accFabBadges(assignedRoles) {
         const fName = f.displayName || f.DisplayName || f.fabName || f.FabName || f.id || f.FabId;
         return `<span class="badge badge-flat-list me-1 mb-1">${window.escapeHTML(fName)}</span>`;
     }).join('');
-    return badges || '<span class="text-muted small">無可視廠區</span>';
+    return badges || '<span class="text-muted small">' + t('no_visible_fabs', '無可視廠區') + '</span>';
 }
 
 // 由帳號的 defaultPages（{廠區:menuId}）渲染「登入預設首頁」欄。
 function _accDefaultPagesHtml(defaultPages) {
     const dPages = defaultPages || {};
     const menus = getCustomMenus();
-    if (Object.keys(dPages).length === 0) return '<span class="text-muted small">未設定 (自動抓取第一個)</span>';
+    if (Object.keys(dPages).length === 0) return '<span class="text-muted small">' + t('default_home_auto', '未設定 (自動抓取第一個)') + '</span>';
     let html = '';
     for (let fab in dPages) {
         const m = menus.find(x => window.cleanId(x.id || x.MenuId) === window.cleanId(dPages[fab]));
-        const pathStr = m ? getFullMenuPathStr(m.id || m.MenuId, menus) : '找不到看板';
+        const pathStr = m ? getFullMenuPathStr(m.id || m.MenuId, menus) : t('err_menu_not_found', '找不到看板');
         html += `<div class="small mb-1"><span class="badge bg-secondary me-1" style="width:40px;">${window.escapeHTML(fab)}</span><span class="text-success fw-bold">${window.escapeHTML(pathStr)}</span></div>`;
     }
     return html;
@@ -370,22 +370,22 @@ function _accDefaultPagesHtml(defaultPages) {
 function _accRoleAndStatusHtml(roleLevel, canEditOthers, manageableMenus) {
     const isAdm = String(roleLevel || '').toLowerCase() === 'admin';
     if (isAdm) {
-        return `<div class="d-inline-block"><span class="badge bg-danger px-2 py-1 shadow-sm" style="font-size: 0.82rem;"><i class="fas fa-crown me-1 text-warning"></i>全域管理員 (Admin)</span></div>`;
+        return `<div class="d-inline-block"><span class="badge bg-danger px-2 py-1 shadow-sm" style="font-size: 0.82rem;"><i class="fas fa-crown me-1 text-warning"></i>${t('role_global_admin', '全域管理員 (Admin)')}</span></div>`;
     }
     const mIds = manageableMenus || [];
     const hasDelegation = mIds.length > 0 || (canEditOthers === true);
     if (!hasDelegation) {
-        return `<div class="d-inline-block"><span class="badge bg-secondary px-2 py-1" style="font-size: 0.8rem;"><i class="fas fa-user me-1"></i>一般使用者</span></div>`;
+        return `<div class="d-inline-block"><span class="badge bg-secondary px-2 py-1" style="font-size: 0.8rem;"><i class="fas fa-user me-1"></i>${t('role_normal_user', '一般使用者')}</span></div>`;
     }
     if (canEditOthers === true) {
         return `<div class="d-flex flex-column align-items-center gap-1">
-            <span class="badge bg-primary px-2 py-1 shadow-sm" style="font-size: 0.78rem;"><i class="fas fa-user-check me-1"></i>委派管理員</span>
-            <span class="badge bg-info text-dark border px-2 py-1 shadow-sm" style="font-size: 0.72rem;" title="允許變更他人建立的內容"><i class="fas fa-user-cog me-1"></i>含變更他人權限</span>
+            <span class="badge bg-primary px-2 py-1 shadow-sm" style="font-size: 0.78rem;"><i class="fas fa-user-check me-1"></i>${t('role_delegated_admin', '委派管理員')}</span>
+            <span class="badge bg-info text-dark border px-2 py-1 shadow-sm" style="font-size: 0.72rem;" title="允許變更他人建立的內容"><i class="fas fa-user-cog me-1"></i>${t('role_can_edit_others', '含變更他人權限')}</span>
         </div>`;
     } else {
         return `<div class="d-flex flex-column align-items-center gap-1">
             <span class="badge bg-primary px-2 py-1 shadow-sm" style="font-size: 0.78rem;"><i class="fas fa-user-check me-1"></i>委派管理員</span>
-            <span class="badge bg-light text-secondary border px-2 py-1" style="font-size: 0.72rem;" title="僅允許編輯自己建立的內容"><i class="fas fa-lock me-1"></i>限改自己建立</span>
+            <span class="badge bg-light text-secondary border px-2 py-1" style="font-size: 0.72rem;" title="僅允許編輯自己建立的內容"><i class="fas fa-lock me-1"></i>${t('role_edit_self_only', '限改自己建立')}</span>
         </div>`;
     }
 }
@@ -397,11 +397,11 @@ function _accScopeAndManagedHtml(assignedRoles, manageableMenus, roleLevel) {
     
     let managedHtml = '';
     if (isAdm) {
-        managedHtml = '<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-2 py-1 mt-1 d-inline-block"><i class="fas fa-check-double me-1"></i>全廠區/全系統所有選單</span>';
+        managedHtml = '<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-2 py-1 mt-1 d-inline-block"><i class="fas fa-check-double me-1"></i>${t('scope_all_menus', '全廠區/全系統所有選單')}</span>';
     } else {
         const mIds = manageableMenus || [];
         if (mIds.length === 0) {
-            managedHtml = '<span class="text-muted small mt-1 d-inline-block">— (無特定委派目錄)</span>';
+            managedHtml = '<span class="text-muted small mt-1 d-inline-block">${t('scope_none', '— (無特定委派目錄)')}</span>';
         } else {
             const menus = getCustomMenus();
             const badges = mIds.map(id => {
@@ -415,11 +415,11 @@ function _accScopeAndManagedHtml(assignedRoles, manageableMenus, roleLevel) {
 
     return `<div class="text-start py-1">
         <div class="mb-1 d-flex align-items-baseline flex-wrap gap-1">
-            <span class="badge bg-secondary bg-opacity-10 text-secondary border px-1" style="font-size:0.7rem;"><i class="fas fa-eye me-1"></i>可視</span>
+            <span class="badge bg-secondary bg-opacity-10 text-secondary border px-1" style="font-size:0.7rem;"><i class="fas fa-eye me-1"></i>${t('lbl_visible', '可視')}</span>
             <div class="d-inline-block" style="white-space: normal;">${fabBadges}</div>
         </div>
         <div class="d-flex align-items-baseline flex-wrap gap-1 border-top pt-1 mt-1">
-            <span class="badge bg-warning bg-opacity-10 text-dark border px-1" style="font-size:0.7rem;"><i class="fas fa-tasks me-1"></i>管轄</span>
+            <span class="badge bg-warning bg-opacity-10 text-dark border px-1" style="font-size:0.7rem;"><i class="fas fa-tasks me-1"></i>${t('lbl_manageable', '管轄')}</span>
             <div class="d-inline-block" style="white-space: normal;">${managedHtml}</div>
         </div>
     </div>`;
@@ -548,6 +548,7 @@ export function renderWebpageTable() {
         const mExtUrl = m.url || m.Url || '';
         const mIntPage = m.targetPage || m.TargetPage || '';
         const mIcon = m.icon || m.Icon; const mId = m.id || m.MenuId;
+        const mJsId = window._jsArg(mId);
         const mDName = window.escapeHTML(m.displayName || m.DisplayName); const mSysName = window.escapeHTML(m.name || m.SysName);
 
         // 狀態欄改為可即時切換的開關（同 選單配置管理）；啟用顯示在側邊欄/上方導覽，停用則隱藏
@@ -555,7 +556,7 @@ export function renderWebpageTable() {
         let statusBadge = canToggle
             ? `<div class="form-check form-switch d-flex justify-content-center m-0">
                    <input class="form-check-input cursor-pointer" type="checkbox" ${mEnabled ? 'checked' : ''}
-                          onchange="window.toggleMenuEnable('${mId}', this.checked)" title="啟用 / 停用">
+                          onchange="window.toggleMenuEnable('${mJsId}', this.checked)" title="啟用 / 停用">
                </div>`
             : (mEnabled ? '<span class="badge bg-success">啟用</span>' : '<span class="badge bg-secondary">停用</span>');
         let typeBadge = mMode === 'app_grid'
@@ -600,7 +601,6 @@ export function renderWebpageTable() {
 
         // 按鈕依權限顯示：admin / 自己建立 一律 OK；委派 user 需 canEditOthers
         // ⚠️ 看板 ID 進 onclick / ondragstart / ondrop 一律 _jsArg()（CLAUDE.md §4-前端-5）
-        const mJsId = window._jsArg(mId);
         let btnsHtml = '';
         if (perms.canEdit) {
             btnsHtml += `<button type="button" class="btn btn-sm btn-outline-primary btn-action-icon" onclick="event.stopPropagation(); openAddWebpageModal('${mJsId}');" title="編輯"><i class="fas fa-edit"></i></button>`;
@@ -657,8 +657,10 @@ export function renderMenuConfigTable() {
 
     let htmlBuffer = [];
     roots.forEach(m => {
+        const nodeJsId = window._jsArg(m.id);   // ⚠️ ID 進 JS onclick 一律 _jsArg()（CLAUDE.md §4-前端-5）
+
         // ⭐️ 狀態開關互動功能：移除 disabled 並綁定 onchange 事件
-        let statusSwitch = `<div class="form-check form-switch d-flex justify-content-center"><input class="form-check-input cursor-pointer" type="checkbox" ${m.enabled ? 'checked' : ''} onchange="window.toggleMenuEnable('${m.id}', this.checked)"></div>`;
+        let statusSwitch = `<div class="form-check form-switch d-flex justify-content-center"><input class="form-check-input cursor-pointer" type="checkbox" ${m.enabled ? 'checked' : ''} onchange="window.toggleMenuEnable('${nodeJsId}', this.checked)"></div>`;
         let typeBadge = m.menuMode === 'folder' ? '<span class="badge bg-warning text-dark border"><i class="fas fa-folder me-1"></i>主選單</span>' : (m.menuMode === 'app_grid' ? '<span class="badge bg-success text-white border"><i class="fas fa-th-large me-1"></i>應用集合</span>' : '<span class="badge border border-primary text-primary bg-white"><i class="fas fa-link me-1"></i>獨立網頁</span>');
 
         const tMap = {
@@ -683,7 +685,6 @@ export function renderMenuConfigTable() {
         }
 
         const perms = window.getMenuPermissions(m.id || m.MenuId, m.createdBy || m.CreatedBy);
-        const nodeJsId = window._jsArg(m.id);   // ⚠️ ID 進 JS onclick 一律 _jsArg()（CLAUDE.md §4-前端-5）
         let actionBtnsHtml = '';
         // 編輯：可編輯 或 可管理結構（後者讓被委派的祖先可以調整內部組合）
         if (perms.canEdit || perms.canManageStructure) {
@@ -708,7 +709,7 @@ export function renderMenuConfigTable() {
             </div>`;
 
         htmlBuffer.push(`
-            <tr class="draggable-row" draggable="true" ondragstart="handleDragStart(event, '${m.id}', null)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, '${m.id}', null, 'system')">
+            <tr class="draggable-row" draggable="true" ondragstart="handleDragStart(event, '${nodeJsId}', null)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, '${nodeJsId}', null, 'system')">
                 <td class="text-start ps-3 align-middle">${sysNameHtml}</td>
                 <td class="align-middle">${typeBadge}</td>
                 <td class="align-middle">${statusSwitch}</td>
@@ -730,7 +731,7 @@ export function renderApplyTable() {
     safeDestroyDataTable('dtApply'); const tbody = document.getElementById('applyTableBody');
     if (!tbody || !appState.currentUser) return; tbody.innerHTML = '';
     const reqs = getRequests().filter(r => (r.empId || r.EmpId) === appState.currentUser.id).sort((a, b) => (b.timestamp || b.Timestamp) - (a.timestamp || a.Timestamp));
-    const statusMap = { 'pending': '<span class="badge bg-secondary">待審核</span>', 'processing': '<span class="badge bg-primary">處理中</span>', 'resolved': '<span class="badge bg-success">已完成</span>', 'rejected': '<span class="badge bg-danger">已駁回</span>', 'withdrawn': '<span class="badge bg-dark">已撤回</span>' };
+    const statusMap = { 'pending': '<span class="badge bg-secondary">${t('status_pending', '待審核')}</span>', 'processing': '<span class="badge bg-primary">${t('status_processing', '處理中')}</span>', 'resolved': '<span class="badge bg-success">${t('status_completed', '已完成')}</span>', 'rejected': '<span class="badge bg-danger">${t('status_rejected', '已駁回')}</span>', 'withdrawn': '<span class="badge bg-dark">${t('status_withdrawn', '已撤回')}</span>' };
 
     let htmlBuffer = [];
     reqs.forEach(r => {
@@ -741,19 +742,19 @@ export function renderApplyTable() {
             let pad = (n) => n < 10 ? '0' + n : n;
             dateStr = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
         }
-        const typeBadge = `<span class="badge border border-secondary text-secondary bg-light mb-1">${window.escapeHTML(r.reqType || r.ReqType || '系統需求')}</span>`;
+        const typeBadge = `<span class="badge border border-secondary text-secondary bg-light mb-1">${window.escapeHTML(r.reqType || r.ReqType || t('req_type_system', '系統需求'))}</span>`;
         const replyTxt = r.reply || r.Reply;
-        const replyMsg = replyTxt ? `<div class="small text-primary fw-bold text-truncate" style="max-width: 250px;" title="${window.escapeHTML(replyTxt)}"><i class="fas fa-comment-dots me-1"></i>${window.escapeHTML(replyTxt)}</div>` : '<span class="text-muted small"><i class="fas fa-hourglass-half me-1"></i>等待管理員處理中...</span>';
+        const replyMsg = replyTxt ? `<div class="small text-primary fw-bold text-truncate" style="max-width: 250px;" title="${window.escapeHTML(replyTxt)}"><i class="fas fa-comment-dots me-1"></i>${window.escapeHTML(replyTxt)}</div>` : '<span class="text-muted small"><i class="fas fa-hourglass-half me-1"></i>${t('req_waiting_admin', '等待管理員處理中...')}</span>';
 
         const rStatus = r.status || r.Status || 'pending'; const rId = r.id || r.RequestId || r.Id;
         const reqJsId = window._jsArg(rId);   // ⚠️ ID 進 JS onclick 一律 _jsArg()（CLAUDE.md §4-前端-5）
         let actionBtnsHtml = '';
-        if (rStatus === 'withdrawn') actionBtnsHtml = `<button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 fw-bold text-nowrap" onclick="event.stopPropagation(); deleteApplyItem('${reqJsId}')"><i class="fas fa-trash-alt me-1"></i> 刪除紀錄</button>`;
-        else if (rStatus === 'pending' || !rStatus) actionBtnsHtml = `<button type="button" class="btn btn-sm btn-outline-warning text-dark py-0 px-2 fw-bold text-nowrap" onclick="event.stopPropagation(); withdrawApply('${reqJsId}');"><i class="fas fa-undo me-1"></i> 撤回</button>`;
+        if (rStatus === 'withdrawn') actionBtnsHtml = `<button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 fw-bold text-nowrap" onclick="event.stopPropagation(); deleteApplyItem('${reqJsId}')"><i class="fas fa-trash-alt me-1"></i> ${t('btn_delete_record', '刪除紀錄')}</button>`;
+        else if (rStatus === 'pending' || !rStatus) actionBtnsHtml = `<button type="button" class="btn btn-sm btn-outline-warning text-dark py-0 px-2 fw-bold text-nowrap" onclick="event.stopPropagation(); withdrawApply('${reqJsId}');"><i class="fas fa-undo me-1"></i> ${t('btn_withdraw', '撤回')}</button>`;
         else actionBtnsHtml = `<span class="badge bg-light text-muted border">審核中/已鎖定</span>`;
 
         let actionBtns = `<div class="d-flex flex-nowrap justify-content-center gap-2">${actionBtnsHtml}</div>`;
-        let wdInfo = rStatus === 'withdrawn' ? `<div class="text-danger mt-1 small fw-bold"><i class="fas fa-info-circle"></i> 撤回原因: ${window.escapeHTML(r.withdrawReason || r.WithdrawReason)}</div>` : '';
+        let wdInfo = rStatus === 'withdrawn' ? `<div class="text-danger mt-1 small fw-bold"><i class="fas fa-info-circle"></i> ${t('req_withdraw_reason', '撤回原因:')}  ${window.escapeHTML(r.withdrawReason || r.WithdrawReason)}</div>` : '';
 
         htmlBuffer.push(`<tr><td class="small text-muted align-middle">${dateStr}</td><td class="align-middle">${typeBadge}<br><span class="fw-bold small text-dark">${window.escapeHTML(r.fab || r.FabId || '全域 (Global)')}</span></td><td class="align-middle text-start"><div class="fw-bold text-dark" style="white-space: pre-wrap; font-size:0.85rem;">${window.escapeHTML(r.reason || r.Reason)}</div>${wdInfo}</td><td class="align-middle">${statusMap[rStatus]}</td><td class="align-middle text-start">${replyMsg}</td><td class="text-center align-middle" onmouseenter="this.closest('tr').setAttribute('draggable', false)" onmouseleave="this.closest('tr').setAttribute('draggable', true)" style="white-space: nowrap; width: 1%;">${actionBtns}</td></tr>`);
     });
@@ -764,7 +765,7 @@ export function renderApplyTable() {
 export function renderAuditTable() {
     safeDestroyDataTable('dtAudit'); const tbody = document.getElementById('auditTableBody'); if (!tbody) return; tbody.innerHTML = '';
     const reqs = getRequests().sort((a, b) => (b.timestamp || b.Timestamp) - (a.timestamp || a.Timestamp));
-    const statusMap = { 'pending': '<span class="badge bg-secondary">待審核</span>', 'processing': '<span class="badge bg-primary">處理中</span>', 'resolved': '<span class="badge bg-success">已完成</span>', 'rejected': '<span class="badge bg-danger">已駁回</span>', 'withdrawn': '<span class="badge bg-dark">已撤回</span>' };
+    const statusMap = { 'pending': '<span class="badge bg-secondary">${t('status_pending', '待審核')}</span>', 'processing': '<span class="badge bg-primary">${t('status_processing', '處理中')}</span>', 'resolved': '<span class="badge bg-success">${t('status_completed', '已完成')}</span>', 'rejected': '<span class="badge bg-danger">${t('status_rejected', '已駁回')}</span>', 'withdrawn': '<span class="badge bg-dark">${t('status_withdrawn', '已撤回')}</span>' };
 
     let htmlBuffer = [];
     reqs.forEach(r => {
@@ -777,9 +778,9 @@ export function renderAuditTable() {
         }
         const typeBadge = `<span class="badge border border-secondary text-secondary bg-light mb-1">${window.escapeHTML(r.reqType || r.ReqType || '系統需求')}</span>`;
         const rStatus = r.status || r.Status || 'pending';
-        let wdInfo = rStatus === 'withdrawn' ? `<div class="text-danger mt-1 small fw-bold"><i class="fas fa-info-circle"></i> 撤回原因: ${window.escapeHTML(r.withdrawReason || r.WithdrawReason)}</div>` : '';
+        let wdInfo = rStatus === 'withdrawn' ? `<div class="text-danger mt-1 small fw-bold"><i class="fas fa-info-circle"></i> ${t('req_withdraw_reason', '撤回原因:')} ${window.escapeHTML(r.withdrawReason || r.WithdrawReason)}</div>` : '';
         const replyTxt = r.reply || r.Reply;
-        const replyMsg = replyTxt ? `<div class="small text-primary fw-bold text-truncate" style="max-width: 200px;" title="${window.escapeHTML(replyTxt)}"><i class="fas fa-comment-dots me-1"></i>${window.escapeHTML(replyTxt)}</div>` : '<span class="text-muted small">尚未回覆</span>';
+        const replyMsg = replyTxt ? `<div class="small text-primary fw-bold text-truncate" style="max-width: 200px;" title="${window.escapeHTML(replyTxt)}"><i class="fas fa-comment-dots me-1"></i>${window.escapeHTML(replyTxt)}</div>` : '<span class="text-muted small">${t('req_no_reply', '尚未回覆')}</span>';
         const rId = r.id || r.RequestId || r.Id;
         const auditJsId = window._jsArg(rId);   // ⚠️ ID 進 JS onclick 一律 _jsArg()（CLAUDE.md §4-前端-5）
 
@@ -814,7 +815,7 @@ export function renderAppGrid(containerId, appList) {
         html += `<div class="app-card" title="${aName}">${actionsHtml}<div class="app-icon-box" ${actionAttr}>${imgHtml}</div><div class="app-name" ${actionAttr}>${aName}</div></div>`;
     });
     if (canManage) {
-        html += `<div class="app-card app-add" title="新增 APP"><div class="app-icon-box app-add-box" data-action="add-app"><i class="fas fa-plus"></i></div><div class="app-name text-muted">新增 APP</div></div>`;
+        html += `<div class="app-card app-add" title="${t('btn_add_app', '新增 APP')}"><div class="app-icon-box app-add-box" data-action="add-app"><i class="fas fa-plus"></i></div><div class="app-name text-muted">${t('btn_add_app', '新增 APP')}</div></div>`;
     }
     container.innerHTML = html;
 }
@@ -839,7 +840,7 @@ window.renderFabRoleCheckboxes = function (selectedIds) {
     htmlBuffer.push(`
         <div class="form-check form-check-inline border rounded px-3 py-1 bg-white mb-1 shadow-sm" style="border-color:#dee2e6 !important;">
             <input class="form-check-input ms-0 me-2 fab-role-cb cursor-pointer" type="radio" name="fabRoleRadioGroup" id="fab_role_none" value="" ${noneChecked}>
-            <label class="form-check-label small fw-bold text-muted cursor-pointer" for="fab_role_none">無 (不指派)</label>
+            <label class="form-check-label small fw-bold text-muted cursor-pointer" for="fab_role_none">${t('opt_none_unassigned', '無 (不指派)')}</label>
         </div>
     `);
 

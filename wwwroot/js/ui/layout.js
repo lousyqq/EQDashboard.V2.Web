@@ -1,4 +1,4 @@
-﻿import { getCustomMenus, t } from '../config.js';
+import { getCustomMenus, t } from '../config.js';
 
 
 import { renderSidebarMenus } from '../render/sidebar.js';
@@ -273,7 +273,7 @@ window.switchLayoutMode = switchLayoutMode;
 const RWD_SIDEBAR_BREAKPOINT = 992;
 function isNarrowViewport() { return window.innerWidth <= RWD_SIDEBAR_BREAKPOINT; }
 
-document.addEventListener('DOMContentLoaded', () => {
+const initLayout = () => {
     if (isNarrowViewport()) document.body.classList.add('sidebar-hidden');
 
     // 跨越斷點時同步：縮窄 → 收合；放寬 → 還原顯示（桌機預設側欄可見）
@@ -298,7 +298,9 @@ document.addEventListener('DOMContentLoaded', () => {
             document.body.classList.add('sidebar-hidden');
         }
     });
-});
+};
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initLayout);
+else initLayout();
 
 // Expose for HTML inline handlers
 window.toggleSidebar = toggleSidebar;

@@ -94,7 +94,7 @@ public class AuthController : ControllerBase
                 authenticated = false,
                 empId = (string?)null,
                 rawName,
-                message = "未偵測到 Windows 登入帳號"
+                errorCode = "err_no_windows_account"
             });
         }
 
@@ -105,53 +105,57 @@ public class AuthController : ControllerBase
         {
             var (lookupName, lookupDept) = await _authService.LookupPersonFromNotesAsync(empId);
 
-            if (isDefaultAdmin)
+            if (isDefaultAdmin || _authSettings.OpenAccessMode)
             {
-                account = new Account
+                try
                 {
-                    EmpId = empId,
-                    Name = !string.IsNullOrWhiteSpace(lookupName) ? lookupName : empId,
-                    // ⚠️ 查不到部門時一律留 null，**不要**塞角色名稱（曾寫成 "系統管理員"／"一般使用者"）。
-                    //    Department 是給「各部門活躍比率」報表分群用的欄位：
-                    //      ① UpdateLoginStats 會把它抄進 DailyUserVisits.Department（SettingsService 的 COALESCE 鏈）
-                    //         → 假部門會在報表上長出一個不存在的部門；
-                    //      ② 硬編中文在 en/ja 介面也會照樣顯示中文。
-                    //    null 的呈現由前端負責（i18n key `dept_unknown`，三語齊備），
-                    //    報表端 AnalyticsController 也已有 `x.Department ?? "未指定/其他"` 兜底。
-                    Department = string.IsNullOrWhiteSpace(lookupDept) ? null : lookupDept,
-                    RoleLevel = "admin",
-                    CanEditOthers = true,
-                    LoginCount = 0,
-                    LastLoginTime = DateTime.UtcNow
-                };
-                _context.Accounts.Add(account);
-                await _context.SaveChangesAsync();
-                _logger.LogInformation("✅ WhoAmI 自動建立預設 Admin 帳號：{EmpId}", empId);
-            }
-            else if (_authSettings.OpenAccessMode)
-            {
-                account = new Account
-                {
-                    EmpId = empId,
-                    Name = !string.IsNullOrWhiteSpace(lookupName) ? lookupName : empId,
-                    Department = string.IsNullOrWhiteSpace(lookupDept) ? null : lookupDept,   // 見上方 WhoAmI/admin 分支的說明：查不到就留 null
-                    RoleLevel = "user",
-                    CanEditOthers = false,
-                    LoginCount = 0,
-                    LastLoginTime = DateTime.UtcNow
-                };
-                _context.Accounts.Add(account);
+                    if (isDefaultAdmin)
+                    {
+                        account = new Account
+                        {
+                            EmpId = empId,
+                            Name = !string.IsNullOrWhiteSpace(lookupName) ? lookupName : empId,
+                            Department = string.IsNullOrWhiteSpace(lookupDept) ? null : lookupDept,
+                            RoleLevel = "admin",
+                            CanEditOthers = true,
+                            LoginCount = 0,
+                            LastLoginTime = DateTime.UtcNow
+                        };
+                        _context.Accounts.Add(account);
+                        await _context.SaveChangesAsync();
+                        _logger.LogInformation("✅ WhoAmI 自動建立預設 Admin 帳號：{EmpId}", empId);
+                    }
+                    else
+                    {
+                        account = new Account
+                        {
+                            EmpId = empId,
+                            Name = !string.IsNullOrWhiteSpace(lookupName) ? lookupName : empId,
+                            Department = string.IsNullOrWhiteSpace(lookupDept) ? null : lookupDept,
+                            RoleLevel = "user",
+                            CanEditOthers = false,
+                            LoginCount = 0,
+                            LastLoginTime = DateTime.UtcNow
+                        };
+                        _context.Accounts.Add(account);
 
-                // 賦予所有現有角色群組權限，使「可視廠區為所有廠區」；登入預設首頁不設定（為未設定，自動抓取第一個）
-                var allRoleIds = await _context.Roles.AsNoTracking().Select(r => r.RoleId).ToListAsync();
-                foreach (var rId in allRoleIds)
-                {
-                    _context.MapAccountRoles.Add(new MapAccountRole { EmpId = empId, RoleId = rId });
+                        var allRoleIds = await _context.Roles.AsNoTracking().Select(r => r.RoleId).ToListAsync();
+                        foreach (var rId in allRoleIds)
+                        {
+                            _context.MapAccountRoles.Add(new MapAccountRole { EmpId = empId, RoleId = rId });
+                        }
+
+                        await _context.SaveChangesAsync();
+                        _logger.LogInformation("✅ WhoAmI (OpenAccessMode=true) 自動加入新帳號為 user，已配置所有廠區可視且首頁未設定：{EmpId}", empId);
+                    }
                 }
-
-                await _context.SaveChangesAsync();
-
-                _logger.LogInformation("✅ WhoAmI (OpenAccessMode=true) 自動加入新帳號為 user，已配置所有廠區可視且首頁未設定：{EmpId}", empId);
+                catch (DbUpdateException ex) when (ex.InnerException?.Message?.Contains("PRIMARY KEY") == true || ex.InnerException?.Message?.Contains("UNIQUE") == true)
+                {
+                    _logger.LogInformation("WhoAmI: 併發建帳偵測到 PK 衝突，改為讀取既有帳號：{EmpId}", empId);
+                    _context.ChangeTracker.Clear();
+                    account = await _authService.FindAccountAsync(empId);
+                    if (account == null) return StatusCode(500, new { success = false, message = "Account creation failed" });
+                }
             }
             else
             {
@@ -165,7 +169,7 @@ public class AuthController : ControllerBase
                     empId,
                     rawName,
                     source = loginSource,
-                    message = $"[{empId}] 無瀏覽此網頁的權限"
+                    errorCode = "err_no_access"
                 });
             }
         }
@@ -323,7 +327,7 @@ public class AuthController : ControllerBase
             return Unauthorized(new
             {
                 success = false,
-                message = "本環境已停用手動登入，請改用桌機 Windows 帳號自動登入。"
+                errorCode = "err_manual_login_disabled"
             });
         }
 
@@ -331,7 +335,7 @@ public class AuthController : ControllerBase
         {
             await _activityLogger.LogLoginAsync(HttpContext, "(empty)", null, "manual", false,
                 errorMessage: "工號為空");
-            return BadRequest(new { success = false, message = "工號不得為空" });
+            return BadRequest(new { success = false, errorCode = "err_empid_required" });
         }
 
         var empId = req.EmpId.Trim();
@@ -365,7 +369,7 @@ public class AuthController : ControllerBase
             {
                 await _activityLogger.LogLoginAsync(HttpContext, empId, null, "manual", false,
                     errorMessage: errMsg ?? "LDAP 驗證失敗");
-                return Unauthorized(new { success = false, message = errMsg ?? "驗證失敗" });
+                return Unauthorized(new { success = false, errorCode = "err_auth_failed" });
             }
             loginSource = "manual";
         }
@@ -383,8 +387,8 @@ public class AuthController : ControllerBase
                 account = new Models.Account
                 {
                     EmpId = "admin",
-                    Name = "系統管理員(臨時)",
-                    Department = "系統救援",
+                    Name = "Emergency Admin",
+                    Department = null,
                     RoleLevel = "admin",
                     CanEditOthers = true
                 };
@@ -396,44 +400,54 @@ public class AuthController : ControllerBase
                 {
                     var (lookupName, lookupDept) = await _authService.LookupPersonFromNotesAsync(empId);
 
-                    if (isDefaultAdmin)
+                    try
                     {
-                        account = new Models.Account
+                        if (isDefaultAdmin)
                         {
-                            EmpId = empId,
-                            Name = !string.IsNullOrWhiteSpace(lookupName) ? lookupName : empId,
-                            Department = string.IsNullOrWhiteSpace(lookupDept) ? null : lookupDept,   // 同 WhoAmI 分支：查不到就留 null，不塞角色名稱
-                            RoleLevel = "admin",
-                            CanEditOthers = true,
-                            LoginCount = 0,
-                            LastLoginTime = DateTime.UtcNow
-                        };
-                        _context.Accounts.Add(account);
-                        await _context.SaveChangesAsync();
-                        _logger.LogInformation("✅ Login 自動建立預設 Admin 帳號：{EmpId}", empId);
-                    }
-                    else if (_authSettings.OpenAccessMode)
-                    {
-                        account = new Models.Account
-                        {
-                            EmpId = empId,
-                            Name = !string.IsNullOrWhiteSpace(lookupName) ? lookupName : empId,
-                            Department = string.IsNullOrWhiteSpace(lookupDept) ? null : lookupDept,   // 同 WhoAmI 分支：查不到就留 null，不塞角色名稱
-                            RoleLevel = "user",
-                            CanEditOthers = false,
-                            LoginCount = 0,
-                            LastLoginTime = DateTime.UtcNow
-                        };
-                        _context.Accounts.Add(account);
-
-                        var allRoleIds = await _context.Roles.AsNoTracking().Select(r => r.RoleId).ToListAsync();
-                        foreach (var rId in allRoleIds)
-                        {
-                            _context.MapAccountRoles.Add(new MapAccountRole { EmpId = empId, RoleId = rId });
+                            account = new Models.Account
+                            {
+                                EmpId = empId,
+                                Name = !string.IsNullOrWhiteSpace(lookupName) ? lookupName : empId,
+                                Department = string.IsNullOrWhiteSpace(lookupDept) ? null : lookupDept,
+                                RoleLevel = "admin",
+                                CanEditOthers = true,
+                                LoginCount = 0,
+                                LastLoginTime = DateTime.UtcNow
+                            };
+                            _context.Accounts.Add(account);
+                            await _context.SaveChangesAsync();
+                            _logger.LogInformation("✅ Login 自動建立預設 Admin 帳號：{EmpId}", empId);
                         }
+                        else
+                        {
+                            account = new Models.Account
+                            {
+                                EmpId = empId,
+                                Name = !string.IsNullOrWhiteSpace(lookupName) ? lookupName : empId,
+                                Department = string.IsNullOrWhiteSpace(lookupDept) ? null : lookupDept,
+                                RoleLevel = "user",
+                                CanEditOthers = false,
+                                LoginCount = 0,
+                                LastLoginTime = DateTime.UtcNow
+                            };
+                            _context.Accounts.Add(account);
 
-                        await _context.SaveChangesAsync();
-                        _logger.LogInformation("✅ Login (OpenAccessMode=true) 自動加入新帳號為 user：{EmpId}", empId);
+                            var allRoleIds = await _context.Roles.AsNoTracking().Select(r => r.RoleId).ToListAsync();
+                            foreach (var rId in allRoleIds)
+                            {
+                                _context.MapAccountRoles.Add(new MapAccountRole { EmpId = empId, RoleId = rId });
+                            }
+
+                            await _context.SaveChangesAsync();
+                            _logger.LogInformation("✅ Login (OpenAccessMode=true) 自動加入新帳號為 user：{EmpId}", empId);
+                        }
+                    }
+                    catch (DbUpdateException ex) when (ex.InnerException?.Message?.Contains("PRIMARY KEY") == true || ex.InnerException?.Message?.Contains("UNIQUE") == true)
+                    {
+                        _logger.LogInformation("Login: 併發建帳偵測到 PK 衝突，改為讀取既有帳號：{EmpId}", empId);
+                        _context.ChangeTracker.Clear();
+                        account = await _authService.FindAccountAsync(empId);
+                        if (account == null) return StatusCode(500, new { success = false, message = "Account creation failed" });
                     }
                 }
                 else
@@ -443,7 +457,7 @@ public class AuthController : ControllerBase
                     return Unauthorized(new
                     {
                         success = false,
-                        message = $"工號 [{empId}] 尚未建立帳號，請聯絡管理員。"
+                        errorCode = "err_account_not_found"
                     });
                 }
             }
@@ -451,7 +465,7 @@ public class AuthController : ControllerBase
 
         if (account == null)
         {
-            return Unauthorized(new { success = false, message = $"工號 [{empId}] 帳號資訊驗證失敗。" });
+            return Unauthorized(new { success = false, errorCode = "err_account_verify_failed" });
         }
 
         // 寫入 Cookie
@@ -475,6 +489,11 @@ public class AuthController : ControllerBase
 
         await _activityLogger.LogLoginAsync(HttpContext, account.EmpId, account.Name, loginSource, true);
 
+        var assignedRoles = await _context.MapAccountRoles.AsNoTracking()
+            .Where(m => m.EmpId == account.EmpId).Select(m => m.RoleId).ToListAsync();
+        var defaultPages = await _context.MapAccountDefaultPages.AsNoTracking()
+            .Where(m => m.EmpId == account.EmpId).ToDictionaryAsync(m => m.FabId, m => m.MenuId ?? "");
+
         return Ok(new
         {
             success = true,
@@ -490,9 +509,10 @@ public class AuthController : ControllerBase
                 department = account.Department ?? "",
                 roleLevel = account.RoleLevel ?? "user",
                 canEditOthers = account.CanEditOthers,
-                assignedRoles = Array.Empty<string>(),
+                assignedRoles = assignedRoles,
                 manageableMenus = Array.Empty<string>(),
-                defaultPages = new Dictionary<string, string>()
+                defaultPages = defaultPages,
+                preferences = account.Preferences ?? "{}"
             }
         });
     }
@@ -516,7 +536,7 @@ public class AuthController : ControllerBase
 
 public class LoginRequest
 {
-    [Required(ErrorMessage = "工號不得為空")]
+    [Required]
     [StringLength(50)]
     public string EmpId { get; set; } = string.Empty;
 

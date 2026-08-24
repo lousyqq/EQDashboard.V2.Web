@@ -286,7 +286,7 @@ export async function loadTrafficDetails(page = 1) {
                     <td class="fw-bold font-monospace">${escHtml(item.empId)}</td>
                     <td class="fw-bold text-primary">${escHtml(item.empName)}</td>
                     <td><span class="badge bg-secondary">${escHtml(item.department || t('unspecified', '未指定'))}</span></td>
-                    <td><span class="badge bg-info text-dark px-2 py-1">${t('ts_count_fmt', '{0} 次').replace('{0}', item.visitCount || 1)}</span></td>
+                    <td><span class="badge bg-info text-dark px-2 py-1">${t('ts_count_fmt', '{0} 次').replace('{0}', item.visitCount ?? 1)}</span></td>
                     <td class="small text-muted font-monospace">${escHtml(item.firstVisitTime)}</td>
                     <td class="small text-muted font-monospace">${escHtml(item.lastVisitTime)}</td>
                 </tr>
@@ -300,14 +300,16 @@ export async function loadTrafficDetails(page = 1) {
 }
 
 // 明細篩選輸入框按 Enter 直接送出查詢（回到第 1 頁）
-document.addEventListener('DOMContentLoaded', () => {
+const initTrafficStats = () => {
     ['tsDetailDate', 'tsDetailDept', 'tsDetailKeyword'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') { e.preventDefault(); loadTrafficDetails(1); }
         });
     });
-});
+};
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initTrafficStats);
+else initTrafficStats();
 
 export function changeTrafficDetailPage(delta) {
     const targetPage = window._trafficDetailPage + delta;

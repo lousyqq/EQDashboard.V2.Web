@@ -1,4 +1,4 @@
-﻿/* === responsive.css - RWD 斷點（≤992px 平板 / ≤768px 手機）=== */
+/* === responsive.css - RWD 斷點（≤992px 平板 / ≤768px 手機）=== */
 /* 桌機版樣式一律維持原檔（variables/navbar/sidebar/components），此檔僅疊加小螢幕覆寫。 */
 
 /* 側欄浮層遮罩：預設（桌機）永遠隱藏，僅於 ≤992px 且側欄展開時顯示 */
@@ -35,11 +35,6 @@
        （2026-08-13 修：原本 display:none 整列隱藏，而側欄在此斷點預設也是收起的
         → 使用者在手機/平板上完全失去「我在哪」的定位。現改為隱藏上層路徑與裝飾圖示、
         只留 #bc-name，並限制寬度避免擠壓工具列。） */
-    .nav-breadcrumb-inline {
-        min-width: 0;
-        flex-shrink: 1;
-    }
-
     .nav-breadcrumb-inline #bc-path,
     .nav-breadcrumb-inline .monitoring-dot,
     .nav-breadcrumb-inline .fa-satellite-dish {

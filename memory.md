@@ -117,6 +117,35 @@
 ## 3. In Progress / To-Do (進行中與待辦事項)
 - [ ] **使用者操作手冊產出**：針對目前專案網頁所提供的功能，產出一份完整的使用者操作手冊的 PPT 或文件規劃。
 
+### 第五輪健檢 (2026-08-24 盤點與修復完成)
+- **後端核心防護與效能 (C2~C4, H4, M3~M5)**：
+  - C2：修正 `SaveDataAsync` 的小型表安全閥，明確排除 `Accounts` 及 `Map_Account_*` 表（此類表受 `GetInitialData` scope-to-own 影響，全表 DELETE 會導致資料遺失）。
+  - C3：修正 `Login` 端點，補撈並回傳真實的 `assignedRoles` 與 `defaultPages`，不再回傳空陣列。
+  - C4：在 `WhoAmI` 與 `Login` 自動建帳流程中，補上 `DbUpdateException` (PK/UNIQUE 衝突) 的 `try/catch` 攔截與重試。
+  - H4：修正 `GetZombieMenus` 中的 EF Core `IN` 參數上限問題，改用子查詢與分批 (Chunking) 處理。
+  - M3：`AnalyticsController.GetDetails` 對無效日期格式確實回傳 400 BadRequest。
+  - M4：修正 `GetMenuClickStats` 效能，僅查詢被點擊過的 `MenuId` 的 `DisplayName`。
+  - M5：`Program.cs` 加上 `Strict-Transport-Security` 與 `Permissions-Policy`。
+- **前端核心邏輯與生命週期 (H3, H9, H10, M6~M8)**：
+  - H3：`menu-manage.js` 在 `folder` 轉為其他模式釋放子節點時，補上 `isPoolItem = true`。
+  - H9：修正 `layout.js` 與 `traffic-stats.js` 綁定 `DOMContentLoaded` 的時序問題。
+  - H10：在 `navigation.js` `navTo()` 切換離開 iframe 看板時，自動重設 `iframe.src = 'about:blank'`。
+  - M6：修正 `visitCount` 判斷，將 `|| 1` 改為 `?? 1`。
+  - M7：`saveMenuNodeItem` 補上系統與顯示名稱必填驗證（`shakeInput`）。
+  - M8：`changeLanguage` 加入對 `page-app-grid` 與 `page-under-construction` 的重繪觸發。
+- **前端 UI/UX 與樣式 (C1, H6, H8, L1~L4, M10)**：
+  - C1：修復 `modals.html` 三處因 `aria-label` 插入位置錯誤而導致 `onchange` 箭頭函式斷裂的 file input。
+  - H6：將 `modals.html` 內的 `bg-light`/`text-dark`/`bg-white` 升級為 Bootstrap 語意化類別 (`bg-body-tertiary`/`text-body`/`bg-body`)。
+  - H8：`sidebar.css` 補上 `.menu-item:focus-visible` 無障礙焦點樣式。
+  - L1/L3：清理 `components.css` 與 `responsive.css` 內無效的深色模式/flex 死碼。
+  - L2：修正 `layout.js` `resize` 邏輯，僅在使用者未手動收起側欄時才恢復顯示。
+  - L4：同步 `sidebar.css` hover 時的圖示與文字顏色。
+  - M10：將 `index.html` 的行內捲軸樣式抽取為 `.table-scroll-container` 類別。
+- **i18n 完整度提升 (M1, M2, H1, H7, M9)**：
+  - M1/M2：將 `AuthController` 與 `AnalyticsController` 內硬編碼中文訊息改為 `errorCode` 代碼。
+  - H1/H7：將 `tables.js` (~45處) 與 `menu-manage.js` (~10處) 硬編碼中文包上 `t('...', '...')`。
+  - M9：修正 `config.js` 內多語系字典重複的 `btn_close` 鍵值。
+
 ### 第三輪健檢 (2026-08-15 盤點 → 2026-08-16 全數處理完畢)
 
 > **E1~E13 已修復、E14 評估後刻意不改**（全部細節見 §2 的三條 Done）。

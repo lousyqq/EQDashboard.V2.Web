@@ -1,10 +1,10 @@
-<!-- partials/modals.html - 所有 Bootstrap Modal 集中管理 -->
+﻿<!-- partials/modals.html - 所有 Bootstrap Modal 集中管理 -->
     <!-- ================= 核心 Modals 區塊 (全數補齊恢復) ================= -->
     <!-- 1. 廠區管理 Modal -->
     <div class="modal fade" id="fabModal" tabindex="-1" aria-labelledby="fabModalTitle">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content border-0 shadow">
-                <div class="modal-header bg-light border-bottom"><h5 class="modal-title fw-bold" data-i18n="fab_edit" id="fabModalTitle">廠區編輯</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉" data-i18n-aria-label="btn_close"></button></div>
+                <div class="modal-header bg-body-tertiary border-bottom"><h5 class="modal-title fw-bold" data-i18n="fab_edit" id="fabModalTitle">廠區編輯</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉" data-i18n-aria-label="btn_close"></button></div>
                 <div class="modal-body py-4">
                     <form id="fabForm" onsubmit="saveFabItem(event)">
                         <input type="hidden" id="editFabId">
@@ -26,7 +26,7 @@
     <div class="modal fade" id="roleModal" tabindex="-1" aria-labelledby="roleModalTitle">
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content border-0 shadow">
-                <div class="modal-header bg-light border-bottom"><h5 class="modal-title fw-bold" data-i18n="role_edit" id="roleModalTitle">群組編輯</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉" data-i18n-aria-label="btn_close"></button></div>
+                <div class="modal-header bg-body-tertiary border-bottom"><h5 class="modal-title fw-bold" data-i18n="role_edit" id="roleModalTitle">群組編輯</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉" data-i18n-aria-label="btn_close"></button></div>
                 <div class="modal-body py-4">
                     <form id="roleForm" onsubmit="saveRoleItem(event)">
                         <input type="hidden" id="editRoleId">
@@ -51,8 +51,8 @@
         <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
             <div class="modal-content border-0 shadow-lg">
                 <form id="accForm">
-                    <div class="modal-header bg-light border-bottom py-3">
-                        <h5 class="modal-title fw-bold text-dark fs-5" id="accModalTitle">
+                    <div class="modal-header bg-body-tertiary border-bottom py-3">
+                        <h5 class="modal-title fw-bold text-body fs-5" id="accModalTitle">
                             <i class="fas fa-user-cog text-primary me-2"></i><span data-i18n="acc_edit">帳號設定</span>
                         </h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉" data-i18n-aria-label="btn_close"></button>
@@ -66,7 +66,7 @@
                         <div class="row g-2 mb-3">
                             <div class="col-md-4">
                                 <label class="form-label small fw-bold text-secondary mb-1" data-i18n="th_emp_id" for="accEmpId">工號 <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control form-control-sm bg-light fw-bold text-dark" id="accEmpId" required>
+                                <input type="text" class="form-control form-control-sm bg-body-tertiary fw-bold text-body" id="accEmpId" required>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label small fw-bold text-secondary mb-1" data-i18n="name" for="accName">姓名</label>
@@ -81,14 +81,14 @@
                         <!-- 管理層級獨立一行 (編輯系統 admin 帳號時隱藏整段) -->
                         <div class="mb-3" id="accRoleLevelGroup">
                             <label class="form-label small fw-bold text-secondary mb-1" data-i18n="role_level" for="accRoleLevel">管理層級</label>
-                            <select class="form-select form-select-sm border-secondary shadow-sm fw-bold text-dark" id="accRoleLevel" onchange="typeof toggleAccDelegationUI === 'function' ? toggleAccDelegationUI() : null">
+                            <select class="form-select form-select-sm border-secondary shadow-sm fw-bold text-body" id="accRoleLevel" onchange="typeof toggleAccDelegationUI === 'function' ? toggleAccDelegationUI() : null">
                                 <option value="user" data-i18n="opt_role_user">User - 無全域設定權限</option>
                                 <option value="admin" class="text-danger" data-i18n="opt_role_admin">Admin - 最高管理權限</option>
                             </select>
                         </div>
 
                         <!-- 各廠區預設首頁 -->
-                        <div class="mb-3 bg-white border rounded p-2 shadow-sm">
+                        <div class="mb-3 bg-body border rounded p-2 shadow-sm">
                             <label class="form-label fw-bold text-primary mb-2 small" id="accDefaultPagesContainerLabel">
                                 <i class="fas fa-home me-1"></i><span data-i18n="lbl_default_pages">各廠區登入預設首頁</span> <span class="fw-normal text-muted" data-i18n="hint_default_page">(若未設定將自動抓取第一個看板)</span>
                             </label>
@@ -99,21 +99,21 @@
 
                         <!-- 委派管理區塊 (還原 User 專屬選項與黃色資料夾樹) -->
                         <div id="accDelegationGroup" class="mb-3 border rounded shadow-sm" style="display: none;">
-                            <div class="bg-light border-bottom p-2 rounded-top">
+                            <div class="bg-body-tertiary border-bottom p-2 rounded-top">
                                 <div class="form-check form-switch m-0 d-flex align-items-center">
                                     <input class="form-check-input cursor-pointer m-0 me-2" type="checkbox" id="accEnableDelegation" onchange="typeof toggleDelegationDetails === 'function' ? toggleDelegationDetails() : null">
                                     <label class="form-check-label fw-bold text-primary cursor-pointer small" for="accEnableDelegation"><span data-i18n="delegation">啟用委派管理</span> <span class="badge bg-primary ms-1" data-i18n="badge_user_only">User 專屬</span></label>
                                 </div>
                             </div>
-                            <div id="accDelegationDetails" class="p-2 bg-white rounded-bottom" style="display: none;">
+                            <div id="accDelegationDetails" class="p-2 bg-body rounded-bottom" style="display: none;">
                                 <div class="form-check mb-2 p-0">
-                                    <div class="d-inline-flex align-items-center bg-light border rounded px-2 py-1 shadow-sm">
+                                    <div class="d-inline-flex align-items-center bg-body-tertiary border rounded px-2 py-1 shadow-sm">
                                         <input class="form-check-input cursor-pointer m-0 me-2" type="checkbox" id="accCanEditOthers" style="transform: scale(0.9);">
-                                        <label class="form-check-label fw-bold text-dark cursor-pointer small" for="accCanEditOthers"><span data-i18n="can_edit_others">允許變更他人內容</span> <span class="text-muted fw-normal ms-1" data-i18n="hint_can_edit_others">(若未勾選則只能編輯自己建立的看板)</span></label>
+                                        <label class="form-check-label fw-bold text-body cursor-pointer small" for="accCanEditOthers"><span data-i18n="can_edit_others">允許變更他人內容</span> <span class="text-muted fw-normal ms-1" data-i18n="hint_can_edit_others">(若未勾選則只能編輯自己建立的看板)</span></label>
                                     </div>
                                 </div>
                                 <label class="form-label text-secondary fw-bold mb-1 small d-block" data-i18n="manage_menu" id="accManageMenuCheckboxesLabel">管理目錄：</label>
-                                <div role="group" aria-labelledby="accManageMenuCheckboxesLabel" id="accManageMenuCheckboxes" class="border rounded p-2 bg-light d-flex flex-column gap-1" style="max-height: 150px; overflow-y: auto;"></div>
+                                <div role="group" aria-labelledby="accManageMenuCheckboxesLabel" id="accManageMenuCheckboxes" class="border rounded p-2 bg-body-tertiary d-flex flex-column gap-1" style="max-height: 150px; overflow-y: auto;"></div>
                             </div>
                         </div>
 
@@ -140,7 +140,7 @@
                                 <div id="accOverrideFabSelector" class="mb-2 px-1"></div>
 
                                 <!-- 額外開放 -->
-                                <div class="mb-2 bg-white border border-success border-opacity-25 rounded p-2 shadow-sm">
+                                <div class="mb-2 bg-body border border-success border-opacity-25 rounded p-2 shadow-sm">
                                     <label class="form-label fw-bold text-success mb-1 small" id="accExtraMenuCheckboxesLabel">
                                         <i class="fas fa-plus-circle me-1"></i><span data-i18n="lbl_extra_menus">額外開放看板</span> <span class="text-muted fw-normal" data-i18n="hint_extra_allow">(在 Role 之外加上這些)</span>
                                     </label>
@@ -148,7 +148,7 @@
                                 </div>
 
                                 <!-- 個別封鎖 -->
-                                <div class="mb-2 bg-white border border-danger border-opacity-25 rounded p-2 shadow-sm">
+                                <div class="mb-2 bg-body border border-danger border-opacity-25 rounded p-2 shadow-sm">
                                     <label class="form-label fw-bold text-danger mb-1 small" id="accDenyMenuCheckboxesLabel">
                                         <i class="fas fa-ban me-1"></i><span data-i18n="lbl_deny_menus">個別封鎖看板</span> <span class="text-muted fw-normal" data-i18n="hint_individual_deny">(從 Role 給的範圍扣除這些)</span>
                                     </label>
@@ -156,7 +156,7 @@
                                 </div>
 
                                 <!-- 預覽 -->
-                                <div class="bg-light border rounded p-2 shadow-sm">
+                                <div class="bg-body-tertiary border rounded p-2 shadow-sm">
                                     <label class="form-label fw-bold text-primary mb-1 small" id="accEffectivePreviewLabel">
                                         <i class="fas fa-eye me-1"></i><span data-i18n="lbl_effective_preview">目前實際可見的看板預覽</span>
                                         <span class="text-muted fw-normal" data-i18n="hint_live_calc">(即時計算)</span>
@@ -167,7 +167,7 @@
                         </div>
                     </div>
 
-                    <div class="modal-footer border-top-0 bg-light py-2">
+                    <div class="modal-footer border-top-0 bg-body-tertiary py-2">
                         <button type="button" class="btn btn-outline-secondary btn-sm px-4 fw-bold" data-bs-dismiss="modal" data-i18n="modal_btn_cancel">取消</button>
                         <button type="button" class="btn btn-primary btn-sm px-4 fw-bold shadow-sm" onclick="saveAccountItem(event)"><i class="fas fa-save me-1"></i><span data-i18n="modal_btn_save"> 儲存</span></button>
                     </div>
@@ -179,8 +179,8 @@
     <div class="modal fade" id="webpageModal" tabindex="-1" aria-labelledby="webpageModalTitle">
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content border-0 shadow">
-                <div class="modal-header bg-light border-bottom">
-                    <h6 class="modal-title fw-bold text-dark" id="webpageModalTitle"><i class="fas fa-file-code text-primary me-2"></i><span data-i18n="wp_edit">看板網頁內容配置</span></h6>
+                <div class="modal-header bg-body-tertiary border-bottom">
+                    <h6 class="modal-title fw-bold text-body" id="webpageModalTitle"><i class="fas fa-file-code text-primary me-2"></i><span data-i18n="wp_edit">看板網頁內容配置</span></h6>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉" data-i18n-aria-label="btn_close"></button>
                 </div>
                 <div class="modal-body py-3">
@@ -220,7 +220,7 @@
                                         <option value="fas fa-th-large" data-i18n="opt_icon_appgrid">🔠 應用集合塊</option>
                                         <option value="custom" class="fw-bold text-primary" data-i18n="opt_icon_upload">📁 上傳自訂圖示...</option>
                                     </select>
-                                    <input type="file" id="wpIconFile" class="form-control form-control-sm w-50" style="display:none;" accept="image/*" onchange="compressImageFile(this.files[0], base64 = aria-label="上傳自訂圖示" data-i18n-aria-label="lbl_icon_upload"> document.getElementById('wpCustomIconBase64').value = base64)">
+                                    <input type="file" id="wpIconFile" class="form-control form-control-sm w-50" style="display:none;" accept="image/*" aria-label="上傳自訂圖示" data-i18n-aria-label="lbl_icon_upload" onchange="compressImageFile(this.files[0], base64 => document.getElementById('wpCustomIconBase64').value = base64)">
                                     <input type="hidden" id="wpCustomIconBase64">
                                 </div>
                             </div>
@@ -284,7 +284,7 @@
     <div class="modal fade" id="menuNodeModal" tabindex="-1" aria-labelledby="menuNodeModalTitle">
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content border-0 shadow">
-                <div class="modal-header bg-light border-bottom">
+                <div class="modal-header bg-body-tertiary border-bottom">
                     <!-- Round-5 B4：<span data-i18n>...</span> 補閉合 -->
                     <h5 class="modal-title fw-bold text-primary" id="menuNodeModalTitle"><i class="fas fa-sitemap me-2"></i><span data-i18n="menu_edit">配置主選單</span></h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉" data-i18n-aria-label="btn_close"></button>
@@ -324,7 +324,7 @@
                                     <option value="fas fa-chart-line text-success" data-i18n="opt_icon_chart_plain">圖表圖示</option>
                                     <option value="custom" data-i18n="opt_icon_custom">自訂...</option>
                                 </select>
-                                <input type="file" id="nodeIconFile" class="form-control form-control-sm mt-2" accept="image/*" style="display:none;" onchange="compressImageFile(this.files[0], base64 = aria-label="上傳自訂圖示" data-i18n-aria-label="lbl_icon_upload"> document.getElementById('nodeCustomIconBase64').value = base64)">
+                                <input type="file" id="nodeIconFile" class="form-control form-control-sm mt-2" accept="image/*" style="display:none;" aria-label="上傳自訂圖示" data-i18n-aria-label="lbl_icon_upload" onchange="compressImageFile(this.files[0], base64 => document.getElementById('nodeCustomIconBase64').value = base64)">
                                 <input type="hidden" id="nodeCustomIconBase64">
                             </div>
                         </div>
@@ -336,10 +336,10 @@
 
                         <div id="treeBuilderSection" class="mt-4 pt-3 border-top">
                             <div class="mb-2 text-primary fw-bold"><i class="fas fa-list-ul me-1"></i> <span data-i18n="lbl_contained_config">底下包含的看板與群組配置</span> <small class="text-muted fw-normal" data-i18n="hint_drag_handle">(拖曳左側圖示可排序)</small></div>
-                            <div class="border rounded bg-white p-3 shadow-sm">
+                            <div class="border rounded bg-body p-3 shadow-sm">
                                 <div id="treeBuilderContainer" style="min-height: 50px;"></div>
                                 <div class="d-flex gap-2 mt-3 pt-2 border-top border-light" id="tbRootBtnsContainer">
-                                    <button type="button" id="tbRootAddLinkBtn" class="btn btn-sm btn-outline-primary fw-bold bg-white" onclick="window.tbAddLink(document.getElementById('treeBuilderContainer'))"><i class="fas fa-link me-1"></i><span data-i18n="btn_add_existing_menu">加入現有看板</span></button>
+                                    <button type="button" id="tbRootAddLinkBtn" class="btn btn-sm btn-outline-primary fw-bold bg-body" onclick="window.tbAddLink(document.getElementById('treeBuilderContainer'))"><i class="fas fa-link me-1"></i><span data-i18n="btn_add_existing_menu">加入現有看板</span></button>
                                     <button type="button" id="tbRootAddFolderBtn" class="btn btn-sm btn-dark fw-bold" onclick="window.tbAddFolder(document.getElementById('treeBuilderContainer'))"><i class="fas fa-folder me-1"></i><span data-i18n="btn_create_subgroup">建立子群組</span></button>
                                 </div>
                             </div>
@@ -386,7 +386,7 @@
     <div class="modal fade" id="appGridModal" tabindex="-1" aria-labelledby="appGridModalTitle">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content border-0 shadow">
-                <div class="modal-header bg-light border-bottom"><h5 class="modal-title fw-bold" id="appGridModalTitle" data-i18n="app_edit">APP 編輯</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉" data-i18n-aria-label="btn_close"></button></div>
+                <div class="modal-header bg-body-tertiary border-bottom"><h5 class="modal-title fw-bold" id="appGridModalTitle" data-i18n="app_edit">APP 編輯</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉" data-i18n-aria-label="btn_close"></button></div>
                 <div class="modal-body py-4">
                     <form id="appForm" onsubmit="saveAppItem(event)">
                         <input type="hidden" id="appIdInput">
@@ -395,12 +395,12 @@
                         <div class="mb-3"><label class="form-label fw-bold small" data-i18n="open_target" for="appTarget">開啟方式</label><select id="appTarget" class="form-select"><option value="iframe" data-i18n="opt_target_iframe">內部嵌入 (Iframe)</option><option value="iframe_fullscreen" data-i18n="iframe_fullscreen">內部嵌入 (全螢幕/沉浸模式)</option><option value="blank" data-i18n="blank">新分頁 (Blank)</option><option value="fullscreen" class="text-success fw-bold" data-i18n="fullscreen">新視窗開啟 (全螢幕)</option><option value="popup" data-i18n="popup">新視窗開啟 (彈出小視窗)</option></select><div class="form-text text-muted small mt-1"><i class="fas fa-info-circle me-1 text-primary"></i><span data-i18n="hint_xframe">提示：若目標網站設有防嵌入規範（如 X-Frame-Options 導致畫面空白），請改選「新分頁」或「新視窗開啟」。</span></div></div>
                         <div class="mb-4">
                             <label class="form-label fw-bold small mb-2" id="appIconPreviewBoxLabel" data-i18n="lbl_app_icon">APP 圖示 (支援上傳圖檔)</label>
-                            <div role="group" aria-labelledby="appIconPreviewBoxLabel" id="appIconPreviewBox" class="border rounded p-3 mb-3 bg-light align-items-center shadow-sm d-none" style="display:none !important;">
-                                <div class="bg-white border rounded p-1 me-3 d-flex align-items-center justify-content-center" style="width:72px; height:72px; flex-shrink:0;">
+                            <div role="group" aria-labelledby="appIconPreviewBoxLabel" id="appIconPreviewBox" class="border rounded p-3 mb-3 bg-body-tertiary align-items-center shadow-sm d-none" style="display:none !important;">
+                                <div class="bg-body border rounded p-1 me-3 d-flex align-items-center justify-content-center" style="width:72px; height:72px; flex-shrink:0;">
                                     <img id="appIconPreview" src="" alt="Icon Preview" style="max-width:64px; max-height:64px; object-fit:contain; border-radius:4px;">
                                 </div>
                                 <div class="flex-grow-1">
-                                    <div id="appIconPreviewTitle" class="fw-bold fs-6 text-dark mb-1" data-i18n="msg_icon_configured">目前已配置專屬圖示</div>
+                                    <div id="appIconPreviewTitle" class="fw-bold fs-6 text-body mb-1" data-i18n="msg_icon_configured">目前已配置專屬圖示</div>
                                     <div id="appIconPreviewSub" class="text-muted small mb-0" data-i18n="msg_icon_replace_hint">若需更換請重新選擇檔案；若不更換請留空</div>
                                 </div>
                                 <button type="button" id="appIconClearBtn" class="btn btn-sm btn-outline-danger ms-2" title="移除圖示" onclick="clearAppIconUpload()">
@@ -420,8 +420,8 @@
     <div class="modal fade" id="personalMenuModal" tabindex="-1" aria-labelledby="personalMenuModalTitle">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content border-0 shadow">
-                <div class="modal-header bg-light border-bottom">
-                    <h6 class="modal-title fw-bold text-dark" id="personalMenuModalTitle"><i class="fas fa-user-edit text-primary me-2"></i><span data-i18n="personal_menu_title">個人選單設定</span></h6>
+                <div class="modal-header bg-body-tertiary border-bottom">
+                    <h6 class="modal-title fw-bold text-body" id="personalMenuModalTitle"><i class="fas fa-user-edit text-primary me-2"></i><span data-i18n="personal_menu_title">個人選單設定</span></h6>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉" data-i18n-aria-label="btn_close"></button>
                 </div>
                 <div class="modal-body py-3">
@@ -429,12 +429,12 @@
                         <input type="hidden" id="editPersonalMenuId">
                         <div class="mb-2">
                             <label class="form-label fw-bold text-muted small mb-0" data-i18n="ts_th_menu_name" for="personalMenuName">看板名稱</label>
-                            <input type="text" id="personalMenuName" class="form-control form-control-sm bg-light border-0" readonly disabled>
+                            <input type="text" id="personalMenuName" class="form-control form-control-sm bg-body-tertiary border-0" readonly disabled>
                         </div>
-                        <div class="mb-3 p-2 bg-light border rounded">
+                        <div class="mb-3 p-2 bg-body-tertiary border rounded">
                             <div class="form-check form-switch m-0">
                                 <input class="form-check-input cursor-pointer" type="checkbox" id="personalMenuVisible">
-                                <label class="form-check-label fw-bold text-dark cursor-pointer small" for="personalMenuVisible" data-i18n="lbl_show_in_sidebar">顯示在左側選單</label>
+                                <label class="form-check-label fw-bold text-body cursor-pointer small" for="personalMenuVisible" data-i18n="lbl_show_in_sidebar">顯示在左側選單</label>
                             </div>
                         </div>
                         <div class="mb-2">
@@ -450,7 +450,7 @@
                                     <option value="fas fa-heart text-danger" data-i18n="opt_icon_heart">❤️ 愛心</option>
                                     <option value="custom" class="fw-bold text-primary" data-i18n="opt_icon_upload">📁 上傳自訂圖示...</option>
                                 </select>
-                                <input type="file" id="personalMenuIconFile" class="form-control form-control-sm w-50" style="display:none;" accept="image/*" onchange="compressImageFile(this.files[0], base64 = aria-label="上傳自訂圖示" data-i18n-aria-label="lbl_icon_upload"> document.getElementById('personalMenuCustomIconBase64').value = base64)">
+                                <input type="file" id="personalMenuIconFile" class="form-control form-control-sm w-50" style="display:none;" accept="image/*" aria-label="上傳自訂圖示" data-i18n-aria-label="lbl_icon_upload" onchange="compressImageFile(this.files[0], base64 => document.getElementById('personalMenuCustomIconBase64').value = base64)">
                                 <input type="hidden" id="personalMenuCustomIconBase64">
                             </div>
                         </div>
@@ -479,7 +479,7 @@
     <div class="modal fade" id="applyModal" tabindex="-1" aria-labelledby="applyModalTitle">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content border-0 shadow">
-                <div class="modal-header bg-light border-bottom"><h5 class="modal-title fw-bold" id="applyModalTitle" data-i18n="apply_submit_title">需求申請送出</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉" data-i18n-aria-label="btn_close"></button></div>
+                <div class="modal-header bg-body-tertiary border-bottom"><h5 class="modal-title fw-bold" id="applyModalTitle" data-i18n="apply_submit_title">需求申請送出</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉" data-i18n-aria-label="btn_close"></button></div>
                 <div class="modal-body py-4">
                     <form onsubmit="submitApplyItem(event)">
                         <input type="hidden" id="applyReqId">
@@ -499,7 +499,7 @@
     <div class="modal fade" id="withdrawModal" tabindex="-1" aria-labelledby="withdrawModalTitle">
         <div class="modal-dialog modal-dialog-centered modal-sm">
             <div class="modal-content border-0 shadow">
-                <div class="modal-header bg-light border-bottom"><h6 class="modal-title fw-bold text-danger" id="withdrawModalTitle"><i class="fas fa-undo me-2"></i><span data-i18n="withdraw_title">撤回申請</span></h6><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉" data-i18n-aria-label="btn_close"></button></div>
+                <div class="modal-header bg-body-tertiary border-bottom"><h6 class="modal-title fw-bold text-danger" id="withdrawModalTitle"><i class="fas fa-undo me-2"></i><span data-i18n="withdraw_title">撤回申請</span></h6><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉" data-i18n-aria-label="btn_close"></button></div>
                 <div class="modal-body py-4">
                     <form onsubmit="submitWithdrawItem(event)">
                         <input type="hidden" id="withdrawReqId">
@@ -522,14 +522,14 @@
                 <div class="modal-body py-3">
                     <form onsubmit="saveAuditItem(event)">
                         <input type="hidden" id="auditReqId">
-                        <div class="row g-2 mb-3 bg-light p-2 rounded border">
-                            <div class="col-md-3"><label class="form-label fw-bold text-muted small mb-0" data-i18n="th_applicant" for="auditApplicant">申請人</label><input type="text" id="auditApplicant" class="form-control form-control-sm border-0 bg-transparent fw-bold text-dark" readonly></div>
-                            <div class="col-md-3"><label class="form-label fw-bold text-muted small mb-0" data-i18n="th_apply_time" for="auditTime">申請時間</label><input type="text" id="auditTime" class="form-control form-control-sm border-0 bg-transparent fw-bold text-dark" readonly></div>
+                        <div class="row g-2 mb-3 bg-body-tertiary p-2 rounded border">
+                            <div class="col-md-3"><label class="form-label fw-bold text-muted small mb-0" data-i18n="th_applicant" for="auditApplicant">申請人</label><input type="text" id="auditApplicant" class="form-control form-control-sm border-0 bg-transparent fw-bold text-body" readonly></div>
+                            <div class="col-md-3"><label class="form-label fw-bold text-muted small mb-0" data-i18n="th_apply_time" for="auditTime">申請時間</label><input type="text" id="auditTime" class="form-control form-control-sm border-0 bg-transparent fw-bold text-body" readonly></div>
                             <div class="col-md-3"><label class="form-label fw-bold text-muted small mb-0" for="auditType" data-i18n="lbl_apply_type">申請類別</label><input type="text" id="auditType" class="form-control form-control-sm border-0 bg-transparent fw-bold text-primary" readonly></div>
-                            <div class="col-md-3"><label class="form-label fw-bold text-muted small mb-0" for="auditFab" data-i18n="lbl_related_fab">關聯廠區</label><input type="text" id="auditFab" class="form-control form-control-sm border-0 bg-transparent fw-bold text-dark" readonly></div>
+                            <div class="col-md-3"><label class="form-label fw-bold text-muted small mb-0" for="auditFab" data-i18n="lbl_related_fab">關聯廠區</label><input type="text" id="auditFab" class="form-control form-control-sm border-0 bg-transparent fw-bold text-body" readonly></div>
                             <div class="col-12 mt-2">
                                 <label class="form-label fw-bold text-muted small mb-0" id="auditReasonDisplayLabel" data-i18n="lbl_apply_content">申請內容</label>
-                                <div role="group" aria-labelledby="auditReasonDisplayLabel" class="p-2 border rounded bg-white mt-1 small" id="auditReasonDisplay" style="white-space: pre-wrap; min-height: 60px;"></div>
+                                <div role="group" aria-labelledby="auditReasonDisplayLabel" class="p-2 border rounded bg-body mt-1 small" id="auditReasonDisplay" style="white-space: pre-wrap; min-height: 60px;"></div>
                             </div>
                         </div>
                         <div class="mb-3">
@@ -559,21 +559,21 @@
     <!-- 11. 首頁預設看板選擇器 (Offcanvas ⭐️徹底強化版：強制霸道置頂，不怕被蓋住) -->
     <!-- ========================================================================= -->
     <div class="offcanvas offcanvas-end shadow-lg border-0" tabindex="-1" id="menuSelectDrawer" style="width: 400px; z-index: 10600; visibility: hidden; transition: transform 0.3s ease-in-out;">
-        <div class="offcanvas-header bg-light border-bottom">
+        <div class="offcanvas-header bg-body-tertiary border-bottom">
             <h5 class="offcanvas-title fw-bold text-primary">
                 <i class="fas fa-crosshairs me-2"></i><span data-i18n="offcanvas_pick_default">選擇預設看板</span>
             </h5>
             <button type="button" class="btn-close" onclick="typeof closeMenuSelector === 'function' ? closeMenuSelector() : null" aria-label="關閉" data-i18n-aria-label="btn_close"></button>
         </div>
-        <div class="offcanvas-body p-0 d-flex flex-column bg-white">
+        <div class="offcanvas-body p-0 d-flex flex-column bg-body">
             <div class="p-3 border-bottom shadow-sm z-1">
                 <div class="input-group">
-                    <span class="input-group-text bg-light border-end-0"><i class="fas fa-search text-muted"></i></span>
-                    <input type="text" class="form-control border-start-0 ps-0 bg-light" id="menuSelectSearchInput" placeholder="搜尋看板名稱、識別碼..." onkeyup="typeof filterMenuSelectDrawer === 'function' ? filterMenuSelectDrawer() : null" data-i18n-placeholder="ph_menu_search">
+                    <span class="input-group-text bg-body-tertiary border-end-0"><i class="fas fa-search text-muted"></i></span>
+                    <input type="text" class="form-control border-start-0 ps-0 bg-body-tertiary" id="menuSelectSearchInput" placeholder="搜尋看板名稱、識別碼..." onkeyup="typeof filterMenuSelectDrawer === 'function' ? filterMenuSelectDrawer() : null" data-i18n-placeholder="ph_menu_search">
                 </div>
             </div>
             <input type="hidden" id="pickingForFab">
-            <div id="menuSelectDrawerContainer" class="flex-grow-1 overflow-auto p-3 bg-light" style="padding-bottom: 80px !important;">
+            <div id="menuSelectDrawerContainer" class="flex-grow-1 overflow-auto p-3 bg-body-tertiary" style="padding-bottom: 80px !important;">
                 <!-- 動態產生選單內容 -->
             </div>
         </div>

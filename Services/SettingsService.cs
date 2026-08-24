@@ -179,6 +179,12 @@ public class SettingsService : ISettingsService
     public async Task<(bool success, string message)> SaveDataAsync(
         Dictionary<string, List<Dictionary<string, JsonElement>>> payload)
     {
+        var accountScopedTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "Accounts", "Map_Account_Role", "Map_Account_ManageMenu", 
+            "Map_Account_DefaultPage", "Map_Account_ExtraMenu", "Map_Account_DenyMenu"
+        };
+
         int successCount = 0;
         var errorLogs = new List<string>();
 
@@ -307,17 +313,9 @@ public class SettingsService : ISettingsService
 
         foreach (var tableName in TableNames)
         {
+            if (accountScopedTables.Contains(tableName)) continue;
             if (!payload.ContainsKey(tableName) || payload[tableName] == null) continue;
             var tableData = payload[tableName];
-
-            // 檢查是否有真實有效的資料
-            bool hasAnyValidData = tableData.Any(row =>
-                row != null && row.Count > 0 && row.Any(p =>
-                    p.Value.ValueKind != JsonValueKind.Null &&
-                    p.Value.ValueKind != JsonValueKind.Undefined &&
-                    !string.IsNullOrWhiteSpace(p.Value.ToString())));
-
-            if (!hasAnyValidData) continue;
 
             // 確認資料表是否存在 (直接判斷 schema 是否有抓到該表)
             if (!allColumnTypes.ContainsKey(tableName)) continue;
@@ -330,11 +328,21 @@ public class SettingsService : ISettingsService
                 p.Value.ValueKind != JsonValueKind.Undefined &&
                 !string.IsNullOrWhiteSpace(p.Value.ToString())));
 
+            if (oldCount > 0 && newCount == 0)
+            {
+                errorLogs.Add($"[{tableName}] 拒絕覆寫：原 {oldCount} 筆，新資料為 0 筆（完全清空），本表略過。");
+                continue;
+            }
+
             if (oldCount >= 5 && newCount < oldCount * 0.2)
             {
                 errorLogs.Add($"[{tableName}] 拒絕覆寫：原 {oldCount} 筆，新資料僅 {newCount} 筆（縮減超過 80%），本表略過。");
                 continue;
             }
+
+            // 檢查是否有真實有效的資料 (既然上面已判斷 newCount, 這裡其實多餘, 但保留相容)
+            bool hasAnyValidData = newCount > 0;
+            if (!hasAnyValidData) continue;
 
             // 清空舊資料
             long tBeforeDelete = sw.ElapsedMilliseconds;

@@ -41,11 +41,11 @@ export function togglePerAllMenus() {
     if (appState.isPerAllExpanded) {
         appState.expandedPerMenuIds.clear();
         appState.isPerAllExpanded = false;
-        if (btn) btn.innerHTML = '<i class="fas fa-expand-arrows-alt me-1"></i> 全部展開';
+        if (btn) btn.innerHTML = '<i class="fas fa-expand-arrows-alt me-1"></i> ' + t('btn_expand_all', '全部展開');
     } else {
         menusWithChildren.forEach(m => appState.expandedPerMenuIds.add(m.id));
         appState.isPerAllExpanded = true;
-        if (btn) btn.innerHTML = '<i class="fas fa-compress-arrows-alt me-1"></i> 全部收合';
+        if (btn) btn.innerHTML = '<i class="fas fa-compress-arrows-alt me-1"></i> ' + t('btn_collapse_all', '全部收合');
     }
     if (typeof renderPersonalMenuManage === 'function') renderPersonalMenuManage();
 }
@@ -293,7 +293,7 @@ export function toggleNodeMode() {
 
 export function getLinkOptionsHtml(selectedId) {
     let menus = getCustomMenus().filter(m => m.menuMode !== 'folder');
-    let html = '<option value="">請選擇看板...</option>';
+    let html = '<option value="">' + t('opt_select_menu', '請選擇看板...') + '</option>';
     menus.forEach(m => {
         let sel = window.cleanId(m.id) === window.cleanId(selectedId) ? 'selected' : '';
         html += `<option value="${window.escapeHTML(m.id)}" ${sel}>${window.escapeHTML(m.displayName)} (${window.escapeHTML(m.name)})</option>`;
@@ -316,7 +316,7 @@ window.tbAddLink = function (container, menuId = null, opts) {
     if (draggable) div.setAttribute('draggable', 'true');
     const handleHtml = draggable
         ? '<i class="fas fa-grip-vertical text-muted me-3 cursor-move tb-drag-handle" style="cursor: grab;"></i>'
-        : '<i class="fas fa-lock text-muted me-3" style="opacity:0.3;" title="您沒有變更他人內容的權限"></i>';
+        : '<i class="fas fa-lock text-muted me-3" style="opacity:0.3;" title="${t('err_no_edit_others', '您沒有變更他人內容的權限')}"></i>';
     const removeBtnHtml = removable
         ? '<button type="button" class="btn btn-sm text-danger border-0 ms-2" onclick="this.closest(\'.tb-item\').remove()"><i class="fas fa-times"></i></button>'
         : '';
@@ -347,16 +347,16 @@ window.tbAddFolder = function (container, folderName = '', folderId = '', opts) 
         ? '<i class="fas fa-grip-vertical text-muted me-3 cursor-move tb-drag-handle" style="cursor: grab;"></i>'
         : '<i class="fas fa-lock text-muted me-3" style="opacity:0.3;" title="您沒有變更他人內容的權限"></i>';
     const removeBtnHtml = removable
-        ? '<button type="button" class="btn btn-sm btn-outline-danger border-0 ms-2" onclick="this.closest(\'.tb-item\').remove()"><i class="fas fa-trash-alt me-1"></i>移除群組</button>'
+        ? '<button type="button" class="btn btn-sm btn-outline-danger border-0 ms-2" onclick="this.closest(\'.tb-item\').remove()"><i class="fas fa-trash-alt me-1"></i>' + t('btn_remove_group', '移除群組') + '</button>'
         : '';
     const addChildBtnHtml = canAddChild
-        ? `<div class="ps-4 ms-2 mt-1"><button type="button" class="btn btn-sm btn-link text-decoration-none fw-bold p-0" onclick="window.tbAddLink(this.closest('.tb-folder').querySelector('.tb-children'))"><i class="fas fa-plus me-1"></i>加入看板</button></div>`
+        ? `<div class="ps-4 ms-2 mt-1"><button type="button" class="btn btn-sm btn-link text-decoration-none fw-bold p-0" onclick="window.tbAddLink(this.closest('.tb-folder').querySelector('.tb-children'))"><i class="fas fa-plus me-1"></i>${t('btn_add_menu', '加入看板')}</button></div>`
         : '';
     div.innerHTML = `
         <div class="d-flex align-items-center mb-2">
             ${handleHtml}
             <i class="fas fa-folder text-warning me-2 fs-5"></i>
-            <input type="text" class="form-control form-control-sm flex-grow-1 border-warning fw-bold text-dark tb-folder-name" value="${window.escapeHTML(folderName)}" placeholder="群組名稱" ${nameEditable ? '' : 'readonly'}>
+            <input type="text" class="form-control form-control-sm flex-grow-1 border-warning fw-bold text-dark tb-folder-name" value="${window.escapeHTML(folderName)}" placeholder="${t('ph_group_name', '群組名稱')}" ${nameEditable ? '' : 'readonly'}>
             ${removeBtnHtml}
         </div>
         <div class="tb-children ps-4 ms-2 border-start border-warning border-2 pb-1 pt-1" style="min-height: 30px;"></div>
@@ -444,7 +444,7 @@ export function parseTreeDOM(container, parentId) {
         } else if (type === 'folder') {
             let nameInput = el.querySelector('.tb-folder-name');
             let folderId = el.getAttribute('data-id');
-            let folderName = nameInput ? nameInput.value.trim() : '未命名群組';
+            let folderName = nameInput ? nameInput.value.trim() : t('unnamed_group', '未命名群組');
 
             if (!folderId || folderId.startsWith('temp_') || folderId === '') {
                 folderId = 'f_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
@@ -534,8 +534,13 @@ export async function saveMenuNodeItem(e) {
         let mObj = id ? menus.find(x => window.cleanId(x.id) === window.cleanId(id)) : { id: 'm_' + Date.now(), isPoolItem: false, createdBy: appState.currentUser.id, parentId: null, parentIds: [] };
         mObj._wasTouched = true;
 
-        mObj.name = document.getElementById('nodeName').value.trim();
-        mObj.displayName = document.getElementById('nodeDisplayName').value.trim();
+        const nodeName = document.getElementById('nodeName').value.trim();
+        const nodeDisplayName = document.getElementById('nodeDisplayName').value.trim();
+        if (!nodeName) return window.shakeInput('nodeName');
+        if (!nodeDisplayName) return window.shakeInput('nodeDisplayName');
+        
+        mObj.name = nodeName;
+        mObj.displayName = nodeDisplayName;
         mObj.menuMode = isFolder ? 'folder' : 'link';
         mObj.icon = getSelectedIconVal('node');
         const descEl = document.getElementById('nodeDescription');
@@ -590,7 +595,10 @@ export async function saveMenuNodeItem(e) {
                     delete m.parentOrders[mObj.id];
                     touched = true;
                 }
-                if (touched) m._wasTouched = true;
+                if (touched) {
+                    m.isPoolItem = true;
+                    m._wasTouched = true;
+                }
             });
             foldersToDelete = oldDescendants;
             menus = menus.filter(m => !oldDescendants.includes(m.id));

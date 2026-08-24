@@ -1,4 +1,4 @@
-﻿import { appState } from './store.js';
+import { appState } from './store.js';
 
 // === 資料庫 / LocalStorage 鍵值常數 (已棄用 LocalStorage，僅留作常數參考) ===
 const DB_MENUS = 'umc_menus_v1';
@@ -160,7 +160,6 @@ const i18n = {
         ph_withdraw_reason: "請填寫撤回原因...",
         ph_audit_reply: "請輸入回覆給使用者的意見或目前處理進度...",
         ph_menu_search: "搜尋看板名稱、識別碼...",
-        btn_close: "關閉",
         ts_zombie_desc_fmt: "以下看板在過去 {d} 天內從未被點擊過。",
         ts_no_zombie: "恭喜！目前沒有殭屍看板",
         ts_created_unknown: "未知",
@@ -376,7 +375,6 @@ const i18n = {
         ph_withdraw_reason: "Enter the reason for withdrawal...",
         ph_audit_reply: "Reply to the user, or note the current progress...",
         ph_menu_search: "Search by dashboard name or ID...",
-        btn_close: "Close",
         ts_zombie_desc_fmt: "These dashboards have not been clicked in the last {d} days.",
         ts_no_zombie: "All clear — no unused dashboards",
         ts_created_unknown: "Unknown",
@@ -592,7 +590,6 @@ const i18n = {
         ph_withdraw_reason: "撤回理由をご記入ください...",
         ph_audit_reply: "ユーザーへの返信または現在の対応状況を入力...",
         ph_menu_search: "ダッシュボード名・IDで検索...",
-        btn_close: "閉じる",
         ts_zombie_desc_fmt: "過去 {d} 日間クリックされていないダッシュボードです。",
         ts_no_zombie: "おめでとうございます！未使用のダッシュボードはありません",
         ts_created_unknown: "不明",
