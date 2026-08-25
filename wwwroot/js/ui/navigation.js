@@ -782,18 +782,21 @@ export function openDynamicIframe(url, title, element, isFullscreen = false) {
         finalUrl = finalUrl.includes('?') ? `${finalUrl}&fab=${appState.currentFab}` : `${finalUrl}?fab=${appState.currentFab}`;
     }
 
-    // ⚠️ 動態 sandbox：對 same-origin URL 維持原配置（內部看板需要 cookie/storage 才能用）；
-    //   對 cross-origin URL 移除 allow-same-origin，避免外部頁面可以透過 parent.document 操作本站 DOM。
-    //   (Round-5 修：原本 HTML 固定 sandbox 含 allow-scripts + allow-same-origin，外部站台 = 沒 sandbox)
-    try {
-        const parsed = new URL(finalUrl, window.location.href);
-        const isSameOrigin = parsed.origin === window.location.origin;
-        iframe.setAttribute('sandbox', isSameOrigin
-            ? 'allow-scripts allow-same-origin allow-forms allow-popups allow-downloads'
-            : 'allow-scripts allow-forms allow-popups allow-downloads');
-    } catch (e) {
-        // URL 解析失敗 (例如 page-xxx 偽 URL) → 保留 default sandbox
-    }
+    // 🔴 sandbox 一律含 allow-same-origin，**不可**再依 same/cross-origin 分流（2026-08-25 修）
+    //   舊行為（MOD_0603 起）：cross-origin 時拿掉 allow-same-origin，理由寫「避免外部頁面透過
+    //   parent.document 操作本站 DOM」。**這個威脅模型是錯的** —— 跨來源 iframe 本來就被同源政策
+    //   擋在 parent.document 之外，拿掉 allow-same-origin 對該攻擊「零防護增益」，卻會把被嵌入的
+    //   頁面丟進 opaque origin（不透明來源），代價是它自己整個壞掉：
+    //     ① Windows 整合驗證（Negotiate/NTLM）不再自動帶身分 → 看板顯示「未識別」
+    //     ② 它自己的 session cookie 送不出去、收不回來 → 後端 API 一律 401
+    //     ③ localStorage / sessionStorage 直接丟 SecurityError
+    //   實測就是 UMC 內網看板（如 MSD 需求管控表）在 iframe 內抓不到 Windows 帳號、
+    //   表格空白並顯示「無法讀取需求資料」，但同一個 URL 另開分頁完全正常。
+    //   ⚠️ 這個 bug 在「儀表板與看板同主機」時會被掩蓋（那時判定為 same-origin、走對的分支），
+    //     只有 localhost 開發機或看板部署在別台時才會現形 —— 不要因為正式站看起來好好的就把它改回去。
+    //   本設定＝專案初版（026ee47）index.html 上那組固定 sandbox，是已知可運作的組合；
+    //   仍保留 sandbox 屬性本身，因為未授予 allow-top-navigation，被嵌入的頁面依然無法劫持整個分頁。
+    iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-downloads');
 
     // 載入狀態：先顯示 loading，onload 收掉、逾時則顯示失敗卡片。
     //   監聽器每次都重新掛（用 onload/onerror 賦值而非 addEventListener，天然不累積）。

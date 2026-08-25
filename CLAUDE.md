@@ -11,33 +11,21 @@
 **核心目標**：依據使用者的廠區與職務權限，結構化地呈現並管理可存取的各項效能報表與看板連結。提供極致流暢的使用者體驗（App Shell 快取、SPA 級路由切換）與嚴謹的權限隔離。
 
 ## 2. 當前最高優先級開發任務 (Current Focus)
-- **第九輪健檢 L1~L9（2026-08-24 盤點）→ 同日 L1／L3／L4 修復並實機驗證；L2 複查為誤報。細節見 `memory.md` §2 第一條與 §3 最上方。**
-  驗收：`dotnet build --no-incremental` **0 錯 0 警告**｜`dotnet test` **11/11**｜20 支模組 `node --check` **0 fail**｜三語 key **623/623/623 對齊**、`used-but-missing` 0。
-  - ~~**L1｜`#bc-name` 掛 `data-i18n`**~~ → 已修：移除該屬性，並由 `changeLanguage()` 步驟 **6b** 呼叫新的 `refreshBreadcrumb()` 重畫（位置夾在步驟 6 與 7 之間，兩邊都有硬性理由，見 `memory.md`）。`navTo` 新增第 4 參數 `subTitleKey`。
-  - ~~**L2｜`Accounts.Preferences`**~~ → **誤報**：`SaveDataAsync` 早已把 `Accounts` / `Map_Account_*` 整批排除在全量覆寫之外（第五輪 C2），不會被清空。
-  - ~~**L3｜後端中文字面值**~~ → 已修：`SaveDataAsync` 改回 `SaveDataResult` record（代碼 + 結構化略過清單 + 不翻譯的診斷 `Detail`）；22 個 DataAnnotations 改 i18n key；`readApiError` 收斂成 `api.js` 一份並支援 ModelState；補上第五輪漏掉的 6 個字典項。
-  - ~~**L4｜innerHTML 漏 `escHtml`**~~ → 已修（`account-ui.js` 4 處 + `dialogs.js` 的 `generateIconHtml`）。
-  - **仍待處理 —— L5~L8（P3）**：`#configFileName`／`#appIconPreview*` 同款 `data-i18n` 陷阱；死字典 key（其中 `chart_trend_aria` 顯示趨勢圖 SVG 缺 `role="img"`+`aria-label`；⚠️ `dyn_m_*` 是動態命中的，**不可刪**）；`TrackingController.MenuClick` 不驗證 menuId 可被灌點擊數；趨勢圖資料變空時留下舊圖。
-- ⚠️ **L9｜工作區成果仍未 commit（35 個 modified，最後 commit 仍是 `d712b28`）**，含第七輪 J1~J4 的權限提升修復與第八輪全部修改，重演 F1「成果裸奔」。
-- ~~**第八輪健檢 K1~K10 + 第七輪 J5~J11 + 第六輪 G10/G12/G13**~~ → **2026-08-24 同日全部修復並實機驗證**。
-  **至此第六～第八輪的待辦全部清空**；驗收：`dotnet build` 0 錯 0 警告｜`dotnet test` 11/11｜20 支模組 `node --check` 0 fail｜三語 key 582/582/582｜13 頁 × 深淺兩主題 **0 項未達 AA**｜`wwwroot/js` 內 `bg-light`/`bg-white`/`text-dark` **0 筆**。細節見 `memory.md` §2 前兩條。
-  以 **admin** 與 **`user`（委派 `m_ze_2`、`CanEditOthers=0`）** 兩種身分實機驗證；`RequestsController` 的狀態機以兩輪自我測試涵蓋（測完 DB 已完整還原）。
-- ⚠️ **工作區成果仍未 commit** → 已改列為上方的 **L9**（2026-08-24 第九輪複查仍成立，35 個 modified）。
-- ~~**第七輪健檢 J1~J4**~~ → **2026-08-24 同日全部修復並實機驗證**（4 個權限層級逐一模擬；細節見 `memory.md` §2）。
-  - ⚠️ 唯一未還原的副作用：`normal_user` 的 3 筆「登入預設首頁」在盤點時已被 J3 的舊程式碼刪除（FabId 未擷取，無法精確還原），需由 admin 在「帳號管理」重設。
-- 第七輪健檢 J5~J11（非阻斷、未修）：子資料夾委派無操作入口、無權限仍可拖曳排序、深色模式徽章 47 項未達 AA（`bg-white`/`bg-light`/`text-dark` 未換語意類別）、DataTables `aria-label` 無限累加、Modal 關閉不還焦點、個人頁面管理編輯鈕無可及名稱等。
-  - **J7 已部分修復（2026-08-24，使用者實機回報）**：四張表的**類型欄**徽章改語意類別（`bg-body-tertiary`/`text-body`/`bg-transparent`），並在 `components.css` 補上 `:root[data-theme="dark"] .badge.bg-light, .badge.bg-white { background-color:#334155 }` **安全網**（只覆寫背景，不動 `.text-primary` 等語意前景色）。量測深/淺兩主題全部達 AA。**非徽章的 `bg-light`/`bg-white` 容器與各檔案的 `text-dark` 語意化仍待收尾。**
-- 產出完整的使用者操作手冊 (PPT 規劃)。
-- 第六輪健檢剩餘 4 項（皆非阻斷、細節見 `memory.md` §3）：G10 `RequestsController` 回傳中文字面值、G12 `GetMenuClickStats` 未分批、G13 `Withdraw`/`Audit` 無稽核紀錄、G14 雜項。
-- ~~第四輪健檢 F12 的三項功能建議~~ → 流量統計 inline SVG 圖表已於 2026-08-24 完成（`d712b28` + 第六輪 G6~G8 修正）；統計/操作紀錄匯出與 `Description`/`Keywords` 搜尋已於 §5 決策為**不實作**。
-- ~~`sql/2026-08-16_Fix_Account_Department_RoleNamePollution.sql`~~ → 已於 2026-08-16 執行並查 DB 驗證：`Accounts` / `DailyUserVisits` 的假部門（`一般使用者`／`系統管理員`）皆為 **0 筆**。
-- ~~`sql/2026-08-16_Add_DailyUserVisits_Emp_Index.sql`~~ → 已於 2026-08-16 執行並查 `sys.indexes` 驗證：`IX_DailyUserVisits_Date_Emp (VisitDate, EmpId, EmpName)` 已存在於線上 `EQDashboardV2`。
-- **目前線上 DB 與 `DB_Table.md` 快照一致，無待執行的 SQL 腳本。**
-- ~~第四輪健檢 F3~F12 待修清單~~ → 2026-08-16 全數修復並實機驗證（細節見 `memory.md` §3）。
-- ~~工作區未 commit（六天成果裸奔）~~ → 2026-08-16 已 commit + push（`696195d`），`sql/` 6 支亦全數收斂進本 repo 並納入版控。
-- ~~`TrackingController` 點擊統計偶發 `400 (Invalid CSRF Token)`~~ → 已於 2026-08-12 由 A2 修復（根因是 `_csrfToken` 初始化時序，非金鑰輪換）；2026-08-16 實機複驗暖重整請求序列乾淨、MenuClick 只 1 筆。
 
-> **版控範圍**：唯一事實來源是本 repo（`EQDashboard.V2.Web`，remote `github.com/lousyqq/EQDashboard.V2.Web`）。外層 `EQDashboard` 只是本機容器，**不維護、不視為 submodule**（詳見 `memory.md` §3 F1/F2 下方的決策註記）。
+> 逐項細節、驗收數據與歷史脈絡一律看 `memory.md`；本節只列「現在還要做什麼」。
+
+- 🔴 **P0｜`appsettings.json`（含明碼 DB 密碼）已上傳到「公開」GitHub repo，尚未處置（2026-08-25 發現）**：commit `7467dd4`（網頁「Add files via upload」）把該檔推上 `github.com/lousyqq/EQDashboard.V2.Web`，而 `.gitignore` 忽略它正是為了防這件事；未帶認證的 GitHub API 回 200 → **repo 是公開的**。外洩 `User ID=testuser;Password=<明碼>` 與 `TestAccounts` 5 組帳密。
+  **處置順序：① 先改 `Sariel` 上 `testuser` 與那 5 組測試帳密（推上公開 repo 就必須視為已外洩，刪 commit 不等於沒外流）② 再把 repo 改私有或用 `git filter-repo`／BFG 清 blob + force push ③ `git check-ignore -v appsettings.json` 複查忽略規則有效。**
+  ⚠️ 順帶：`appsettings.Production.json` **沒有覆寫 `SimulatedAccount`**，而上傳的那份是 `"00058897"` —— 若線上跑的就是它，**所有人開站都會被當成 00058897（admin）**，請確認線上該值為 `""`。
+- ⚠️ **P1｜工作區成果仍未 commit**（承接 L9／K9／F1「成果裸奔」）：第七輪 J1~J4 的權限提升修復、第八輪 K1~K10、第九輪 L1/L3/L4，以及 2026-08-25 的 iframe sandbox 修復與三份文件重建，**全部只存在於本機工作區**。本機 `main` 另外還落後 `origin/main` 1 個 commit（即上面那個 `7467dd4`），push 前要先處理 P0。
+- ⚠️ **P1｜iframe sandbox 修復待實機確認**：2026-08-25 已改為無條件保留 `allow-same-origin`（見 §4 第 22 條），但 AI 環境連不到內網 `p58esiap12`，只驗到「sandbox 屬性正確」這一層。**待使用者在可連內網的機器上確認 MSD 需求管控表能顯示員編與資料。**
+- **P3｜第九輪健檢 L5~L8（未修，皆非阻斷）**：`#configFileName`／`#appIconPreview*` 的 `data-i18n` 陷阱｜46 個死字典 key（其中 `chart_trend_aria` 是「key 備好但趨勢圖 SVG 缺 `role="img"`+`aria-label`」，該接上而非刪掉；⚠️ `dyn_m_*` 是動態命中的，**不可刪**）｜`TrackingController.MenuClick` 不驗證 menuId 可被灌點擊數｜趨勢圖資料變空時留下舊圖。
+- 產出完整的使用者操作手冊 (PPT 規劃)。
+- **`normal_user` 的 3 筆「登入預設首頁」需 admin 在「帳號管理」重設** —— 第七輪 J3 盤點時被舊程式碼刪除，`FabId` 未擷取而無法精確還原。
+- **目前線上 DB 與 `DB_Table.md` 快照一致，無待執行的 SQL 腳本。**
+
+> **已結案（第一～第八輪待辦全數清空、第九輪僅剩 L5~L8）**：九輪健檢的規則產出都已固化在下方 §4；逐輪索引與踩坑紀錄見 `memory.md` §3／§4。
+> **版控範圍**：唯一事實來源是本 repo（`EQDashboard.V2.Web`，remote `github.com/lousyqq/EQDashboard.V2.Web`）。外層 `EQDashboard` 只是本機容器，**不維護、不視為 submodule**（詳見 `memory.md` §5）。
 
 ---
 
@@ -48,6 +36,9 @@
   - `SimulatedAccount`：指定帳號本地模擬驗證。變更時即時作廢舊 Cookie (`SignOutAsync`)。
   - `DefaultAdmins`：名單內帳號自動建帳升級為 admin，防系統鎖死。
   - `OpenAccessMode`：開啟時開放瀏覽，自動建帳綁定全廠區；關閉時嚴格限制名單。
+  - **🔴 「手動登入 + LDAP」被企業 IIS 政策封鎖，不是可行選項（2026-08-25 使用者定案）**：`Auth:AllowManualLogin` / `Auth:Ldap` 程式面完整可用（`AuthService.VerifyLdapPasswordAsync`、`AuthController.Login`），但**內網 IIS 環境不允許啟用**。**不要再把「開手動登入／LDAP」當成解法提出。**
+  - **Windows 靜默登入（不跳瀏覽器帳密視窗）只有「用戶端信任站台」一條路**：Negotiate 的 401 挑戰是協定必要步驟，伺服器端無法迴避；瀏覽器只在信任的站台才會靜默回應。全廠做法是請 IT 推 Edge/Chrome 原則 `AuthServerAllowlist`（比改「網際網路選項」實際）。⚠️ 單一標籤主機名（`http://p58esiap12`，不含點）本來就會被自動歸類為近端內部網路 —— 仍跳視窗時先查「自動偵測內部網路」是否被 GPO 關掉、區域「登入」是否被設成提示、以及實際用的是不是 FQDN／IP。
+  - ⚠️ **靜默登入與「投影機上換帳號」衝突**：Windows 整合驗證沒有帳號選擇器。可行替代見 `memory.md` §5（`runas /netonly`／GPO 分範圍／admin-only 代理檢視）。**絕不可用 `SimulatedAccount` 做這件事** —— 它是全域設定，一改就是全廠所有人都變成該帳號，且會作廢所有人的 cookie。
 - **權限隔離 (App Grid)**：無管理權限者，前端 UI 一律隱藏編輯/刪除圖示與端點。操作開啟方式全站一致。
 - **🔴 權限判定必須「三方一致」，改一處就要對齊另外兩處（2026-08-24 第七輪 J1/J2）**：同一個功能的可用性寫在三個地方 ——
   ① 側欄顯示條件（`render/sidebar.js` 的 `sysMenus[].display`）② 後端授權（`[Authorize(Roles/Policy)]` + Service 內的細粒度判斷）③ 表格/頁面的渲染條件（`render/tables.js`）。
@@ -166,7 +157,30 @@
 20. **`LogAuditAsync` 的參數順序是 `(ctx, category, action, targetType, targetId, detail)`（2026-08-24 第八輪）**：`RequestsController.Delete` 長期把 id 塞進 `targetType`、把說明文字塞進 `targetId`，操作紀錄頁的「目標」欄位因此對不上。新增呼叫時照抄 `DeleteApp` 那種寫法（`"AppItem", id, backupJson`）。
     - **破壞性操作一律要有稽核**：`ActivityLogsController.Purge` 是全站唯一沒有的一支（諷刺的是它清的正是操作紀錄本身）。⚠️ 稽核必須寫在 `PurgeOlderThanAsync` **之後**，先寫會被自己清掉。
 
-21. **用 PowerShell 寫任何 `.md` 一律加 `-Encoding utf8`（2026-08-24 第八輪 K9）**：`memory.md` 檔尾曾被 6 行 UTF-16LE 位元組污染（`>>` / `Add-Content` 的預設編碼），在 UTF-8 檔案裡顯示成 `U p d a t e d ...` 的亂碼，`git diff` 也一併被污染。已清除並改寫回 UTF-8。同理，**讀** `appsettings.json` 之類的 UTF-8 檔要用 `[System.IO.File]::ReadAllText(path, [Text.Encoding]::UTF8)`（見 `memory.md` F11 的踩坑紀錄）。
+21. **用 PowerShell 寫任何 `.md` 一律加 `-Encoding utf8`（2026-08-24 第八輪 K9）**：`memory.md` 檔尾曾被 6 行 UTF-16LE 位元組污染（`>>` / `Add-Content` 的預設編碼），在 UTF-8 檔案裡顯示成 `U p d a t e d ...` 的亂碼，`git diff` 也一併被污染。已清除並改寫回 UTF-8。同理，**讀** `appsettings.json` 之類的 UTF-8 檔要用 `[System.IO.File]::ReadAllText(path, [Text.Encoding]::UTF8)`（見 `memory.md` §4 的踩坑紀錄）。
+
+22. **🔴 `#main-iframe` 的 `sandbox` **永遠**要含 `allow-same-origin`，禁止再依 same/cross-origin 分流（2026-08-25）**：`openDynamicIframe()` 曾對 cross-origin URL 拿掉 `allow-same-origin`，理由是「避免外部頁面透過 `parent.document` 操作本站 DOM」——**這個威脅模型是錯的**：跨來源 iframe 本來就被同源政策擋在 `parent.document` 之外，拿掉它是**零防護增益**。
+    - 代價是被嵌入的頁面被丟進 **opaque origin**：① Windows 整合驗證（Negotiate/NTLM）不再帶身分 → 看板顯示「未識別」② 它自己的 session cookie 送不出去 → 後端 API 全部 401、表格空白 ③ `localStorage`/`sessionStorage` 丟 `SecurityError`。實測就是 MSD 需求管控表在 iframe 內抓不到 Windows 帳號、跳「無法讀取需求資料」，而同一個 URL **另開分頁完全正常**。
+    - **🔴 這個 bug 會被「儀表板與看板同主機」完全掩蓋**（那時走 same-origin 分支）。只有本機開發（`localhost:5242` 嵌內網看板）或看板部署在另一台時才現形。**不要因為正式站看起來好好的就把分流改回去。**
+    - 現行唯一實作（`ui/navigation.js` 的 `openDynamicIframe`）：無條件 `sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"`，與 `index.html:806` 的靜態屬性同一組。**保留 sandbox 屬性本身**——未給 `allow-top-navigation`，被嵌入頁面仍無法劫持整個分頁。
+    - Console 的 `allow-scripts + allow-same-origin ... can escape its sandboxing` 警告是**預期且無害**的，不要為了消掉它而拿掉 `allow-same-origin`。
+    - 通則：**「看板在 iframe 內壞掉、另開分頁正常」＝先查 sandbox 與 opaque origin，不要先懷疑後端或 DB。**
+    - ⚠️ 另一個同情境的坑（非本規則、但會咬人）：儀表板與看板**不同主機**時，看板的 session cookie 在 iframe 內屬第三方 cookie，`SameSite=Lax` 一樣送不出去。靠 cookie session 的看板請與儀表板部署在同一 host；走 Windows 整合驗證的不受影響。
+
+23. **🔴 第三方資產一律自 host 於 `wwwroot/lib`，且 `lib/` 是版控的一部分（2026-08-15 定案，2026-08-25 複驗）**：Bootstrap 5.3.2 / FontAwesome 6.4.0 / jQuery 3.7.0 / DataTables 1.13.6 / SheetJS 0.18.5 共 16 個檔全部在 repo 內，**`.gitignore` 刻意沒有 ASP.NET 樣板那條 `wwwroot/lib/`**，`.csproj` 也沒有排除它 → `git clone` + `dotnet publish` 就是完整的。
+    - **搬機器請用 `git clone`／`git checkout`，不要手動複製檔案** —— 漏掉 `wwwroot/lib` 的症狀是「畫面完全裸奔」：`bootstrap.min.css` 404 → 純 HTML 預設樣式、FontAwesome 圖示變空框、DataTables 表格不 render、所有 Modal 按了沒反應。**看到裸奔畫面先查 `wwwroot/lib` 在不在，不要先懷疑 CSS 被改壞。**
+    - **執行期外網相依必須維持 0**。驗收：`wwwroot` 的 `index.html` / `partials` / `appbase.js` / `css` / `js` 內**外部 `http(s)://` 資產連結 0 筆**；`all.min.css` 的 `url()` 全為 `../webfonts/*` 相對路徑、Bootstrap/DataTables 的 `url()` 全為 `data:`；無任何 Google Fonts / gstatic 參照。`Program.cs` 的 CSP（`script-src 'self'` / `style-src 'self'` / `font-src 'self' data:`）是安全網 —— 有人改回 CDN 會被自己的 CSP 擋掉，**請改回自 host 而非放寬政策**。
+    - 版本升級要「連檔案一起換」並更新 `index.html` 的版本註記；**不要加 `integrity`/`crossorigin`**（SRI 防的是第三方主機被竄改，同源檔案不適用，留著反而會因任何位元差異整支資產被擋）。
+    - 兩項「仍會連外」但**不是專案資產**的：`frame-src http: https:`（看板 iframe 的 `menu.url`，是 DB 資料）與 `img-src ... http: https:`（圖示可填外部圖檔 URL）。要治的是 DB 內容 —— 圖示請改用上傳到 `wwwroot/images/icons/` 的本地檔，不是改程式碼。
+    - ⚠️ **`AGENTS.md` 是 2026-07-19 的舊快照**，與 `CLAUDE.md` 衝突時**一律以 `CLAUDE.md` 為準**。已修掉其中「CSP 必含 CDN 白名單 + `integrity`」與 §1「全 CDN」這兩處會誘導後人把外網相依加回去的過時敘述。（該檔原為 Big5/cp950，2026-08-25 已轉為 UTF-8，見第 24 條。）
+
+24. **🔴 專案內所有 `.md` 一律 UTF-8（無 BOM）+ CRLF；用編輯器開啟時務必確認編碼（2026-08-25）**：`memory.md` 曾在 2026-08-24 22:11～23:11 之間被以錯誤編碼開啟後另存，**全檔 636 行有 526 行、合計 12,406 個字元變成 U+FFFD**，並就這樣 commit 進 `f84f210`。同期 `AGENTS.md` 整份是 Big5/cp950（位元組完好、只是編碼不同），2026-08-25 已轉為 UTF-8。
+    - **U+FFFD 是不可逆的**：它代表原始位元組在解碼當下就被丟棄，**任何編碼轉換都救不回來**，只能從 git 或逐字稿重建。第 21 條講的是「用 PowerShell 寫檔要加 `-Encoding utf8`」，這一條講的是「**用編輯器開檔也會出事**」—— 後者更難察覺，因為存檔當下沒有任何錯誤訊息。
+    - **每次 commit 前的驗收（`.md` 只要有動就跑）**：
+      `node -e "const fs=require('fs');for(const f of ['CLAUDE.md','memory.md','AGENTS.md','系統架構.md','DB_Table.md']){const t=fs.readFileSync(f,'utf8');console.log(f,'FFFD=',(t.match(/\uFFFD/g)||[]).length)}"` —— **每個檔都必須是 0**（`\uFFFD` 用跳脫寫法，避免驗收腳本本身變成偽陽性）。
+    - **真的壞掉時的救援順序**：① `git log -- <file>` 逐個 commit 算 FFFD 數，找出最後一個乾淨版本 ② 以它為底本，把之後的 `Edit` 從 Claude Code 逐字稿（`~/.claude/projects/<slug>/*.jsonl`，工具輸入是乾淨的原文）依時間序重放 ③ **每一步的 `old_string` 都必須精確命中**，那就是重建正確的證明 ④ 最後拿損毀檔逐行比對：損毀行的「非 U+FFFD、非 `?` 倖存字元」必須是重建行的**子序列**，且反向檢查「重建檔中無對應來源的行」為 0（確保沒有一行是掰出來的）。
+    - ⑤ **最後一定要對一次 GitHub**：`git fetch origin` 後比對 `origin/main` —— 本機落後時遠端可能留著更乾淨的版本（本次沒有，但 `AGENTS.md` 就是靠 `52bdc73` 那份乾淨 UTF-8 版**多救回 3 個 Big5 編不出來的字元**：`≥`、`≤`、`🔄`，只看損毀檔絕對救不回來）。**另一個 repo 內的舊版本，價值等同備份，先找過再認賠。**
+    - ⚠️ **只有 Claude Code 的工具寫入與 git 歷史救得回來；使用者自己在編輯器裡改、又還沒 commit 的內容沒有任何備份**，只能照殘存字元人工推回（本次有 4 處是這樣重建的，已在 `memory.md` §3 標注請抽查）。用 `git rev-list --all` + `git grep` 逐個 commit 確認過「本 repo 與外層 repo 從未有過該字串」之後，再認定它無法還原。
 
 ---
 
