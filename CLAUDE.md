@@ -16,7 +16,7 @@
 
 - 🔴 **P0｜`appsettings.json`（含明碼 DB 密碼）已上傳到「公開」GitHub repo，尚未處置（2026-08-25 發現）**：commit `7467dd4`（網頁「Add files via upload」）把該檔推上 `github.com/lousyqq/EQDashboard.V2.Web`，而 `.gitignore` 忽略它正是為了防這件事；未帶認證的 GitHub API 回 200 → **repo 是公開的**。外洩 `User ID=testuser;Password=<明碼>` 與 `TestAccounts` 5 組帳密。
   **處置順序：① 先改 `Sariel` 上 `testuser` 與那 5 組測試帳密（推上公開 repo 就必須視為已外洩，刪 commit 不等於沒外流）② 再把 repo 改私有或用 `git filter-repo`／BFG 清 blob + force push ③ `git check-ignore -v appsettings.json` 複查忽略規則有效。**
-  ⚠️ 順帶：`appsettings.Production.json` **沒有覆寫 `SimulatedAccount`**，而上傳的那份是 `"00058897"` —— 若線上跑的就是它，**所有人開站都會被當成 00058897（admin）**，請確認線上該值為 `""`。
+  （`SimulatedAccount = "00058897"` 是使用者刻意的測試設定，**不是本項的一部分**，見 §3。）
 - ⚠️ **P1｜工作區成果仍未 commit**（承接 L9／K9／F1「成果裸奔」）：第七輪 J1~J4 的權限提升修復、第八輪 K1~K10、第九輪 L1/L3/L4，以及 2026-08-25 的 iframe sandbox 修復與三份文件重建，**全部只存在於本機工作區**。本機 `main` 另外還落後 `origin/main` 1 個 commit（即上面那個 `7467dd4`），push 前要先處理 P0。
 - ⚠️ **P1｜iframe sandbox 修復待實機確認**：2026-08-25 已改為無條件保留 `allow-same-origin`（見 §4 第 22 條），但 AI 環境連不到內網 `p58esiap12`，只驗到「sandbox 屬性正確」這一層。**待使用者在可連內網的機器上確認 MSD 需求管控表能顯示員編與資料。**
 - **P3｜第九輪健檢 L5~L8（未修，皆非阻斷）**：`#configFileName`／`#appIconPreview*` 的 `data-i18n` 陷阱｜46 個死字典 key（其中 `chart_trend_aria` 是「key 備好但趨勢圖 SVG 缺 `role="img"`+`aria-label`」，該接上而非刪掉；⚠️ `dyn_m_*` 是動態命中的，**不可刪**）｜`TrackingController.MenuClick` 不驗證 menuId 可被灌點擊數｜趨勢圖資料變空時留下舊圖。
@@ -33,12 +33,15 @@
 - **架構**：ASP.NET Core .NET 9.0 (Kestrel/IIS) + ES Modules 前端 (Bootstrap 5/Vanilla JS，全 CDN 無 bundler)。
 - **資料庫**：MSSQL (`EQDashboardV2` @ `Sariel`)。無 EF Migrations，由 `SchemaBootstrap` 啟動時以 T-SQL 冪等修復 (補表/欄位/索引)。CRUD 靜默寫入 DB，個人版面存 `PersonalSettings`。
 - **身分驗證 (`AuthSettings`)**：Windows Negotiate 自動偵測，前端無手動帳密表單。
-  - `SimulatedAccount`：指定帳號本地模擬驗證。變更時即時作廢舊 Cookie (`SignOutAsync`)。
+  - **`SimulatedAccount`：這是使用者刻意使用的「模擬他人帳號」測試工具，不是 bug、不是誤設，任何盤點都不要再把它列為缺陷（2026-08-25 使用者明確指示）。** 指定帳號本地模擬驗證，變更時即時作廢舊 Cookie (`SignOutAsync`)。
+    - 需要知道的**事實邊界**（供選擇部署在哪個站台，不是要你去修掉它）：它是**全域**設定 → 生效期間**該站台所有訪客都會是那個帳號**，且每次變更會作廢所有人的 cookie。故適合掛在測試站（如 `EQDashboard_TEST`），正式站請留空。
+    - **Production guard 預設會擋它**（非空即拒絕啟動）→ 2026-08-25 新增顯式旗標 **`Auth:AllowSimulatedAccountInProduction`**（預設 false）：設 true 後 guard 改印一則 WRN、不擋啟動，**且只放行這一項**（`TestAccounts` / `EnableEmergencyAdmin` / 連線字串弱密碼 / LDAP placeholder 四項照擋）。`web.config` 的「設定區 B-2」已備妥註解範例。
+    - **不要因為 guard 擋了就去刪 `SimulatedAccount`**，也不要為此把整站降成 `Development` —— 用那個旗標。
   - `DefaultAdmins`：名單內帳號自動建帳升級為 admin，防系統鎖死。
   - `OpenAccessMode`：開啟時開放瀏覽，自動建帳綁定全廠區；關閉時嚴格限制名單。
   - **🔴 「手動登入 + LDAP」被企業 IIS 政策封鎖，不是可行選項（2026-08-25 使用者定案）**：`Auth:AllowManualLogin` / `Auth:Ldap` 程式面完整可用（`AuthService.VerifyLdapPasswordAsync`、`AuthController.Login`），但**內網 IIS 環境不允許啟用**。**不要再把「開手動登入／LDAP」當成解法提出。**
   - **Windows 靜默登入（不跳瀏覽器帳密視窗）只有「用戶端信任站台」一條路**：Negotiate 的 401 挑戰是協定必要步驟，伺服器端無法迴避；瀏覽器只在信任的站台才會靜默回應。全廠做法是請 IT 推 Edge/Chrome 原則 `AuthServerAllowlist`（比改「網際網路選項」實際）。⚠️ 單一標籤主機名（`http://p58esiap12`，不含點）本來就會被自動歸類為近端內部網路 —— 仍跳視窗時先查「自動偵測內部網路」是否被 GPO 關掉、區域「登入」是否被設成提示、以及實際用的是不是 FQDN／IP。
-  - ⚠️ **靜默登入與「投影機上換帳號」衝突**：Windows 整合驗證沒有帳號選擇器。可行替代見 `memory.md` §5（`runas /netonly`／GPO 分範圍／admin-only 代理檢視）。**絕不可用 `SimulatedAccount` 做這件事** —— 它是全域設定，一改就是全廠所有人都變成該帳號，且會作廢所有人的 cookie。
+  - ⚠️ **靜默登入與「投影機上換帳號」衝突**：Windows 整合驗證沒有帳號選擇器。可行替代見 `memory.md` §5（`runas /netonly`／GPO 分範圍／admin-only 代理檢視）。使用者目前是用 `SimulatedAccount` 在**測試站**做這件事（見上方說明）—— 在**正式站**才不適用（全域生效，會讓所有人變成同一個帳號）。
 - **權限隔離 (App Grid)**：無管理權限者，前端 UI 一律隱藏編輯/刪除圖示與端點。操作開啟方式全站一致。
 - **🔴 權限判定必須「三方一致」，改一處就要對齊另外兩處（2026-08-24 第七輪 J1/J2）**：同一個功能的可用性寫在三個地方 ——
   ① 側欄顯示條件（`render/sidebar.js` 的 `sysMenus[].display`）② 後端授權（`[Authorize(Roles/Policy)]` + Service 內的細粒度判斷）③ 表格/頁面的渲染條件（`render/tables.js`）。
@@ -181,6 +184,19 @@
     - **真的壞掉時的救援順序**：① `git log -- <file>` 逐個 commit 算 FFFD 數，找出最後一個乾淨版本 ② 以它為底本，把之後的 `Edit` 從 Claude Code 逐字稿（`~/.claude/projects/<slug>/*.jsonl`，工具輸入是乾淨的原文）依時間序重放 ③ **每一步的 `old_string` 都必須精確命中**，那就是重建正確的證明 ④ 最後拿損毀檔逐行比對：損毀行的「非 U+FFFD、非 `?` 倖存字元」必須是重建行的**子序列**，且反向檢查「重建檔中無對應來源的行」為 0（確保沒有一行是掰出來的）。
     - ⑤ **最後一定要對一次 GitHub**：`git fetch origin` 後比對 `origin/main` —— 本機落後時遠端可能留著更乾淨的版本（本次沒有，但 `AGENTS.md` 就是靠 `52bdc73` 那份乾淨 UTF-8 版**多救回 3 個 Big5 編不出來的字元**：`≥`、`≤`、`🔄`，只看損毀檔絕對救不回來）。**另一個 repo 內的舊版本，價值等同備份，先找過再認賠。**
     - ⚠️ **只有 Claude Code 的工具寫入與 git 歷史救得回來；使用者自己在編輯器裡改、又還沒 commit 的內容沒有任何備份**，只能照殘存字元人工推回（本次有 4 處是這樣重建的，已在 `memory.md` §3 標注請抽查）。用 `git rev-list --all` + `git grep` 逐個 commit 確認過「本 repo 與外層 repo 從未有過該字串」之後，再認定它無法還原。
+
+25. **🔴 IIS 上切換 DB（正式區／測試區）請改 `web.config` 的「設定區 A」，不要改 `appsettings.json`（2026-08-25）**：改 `appsettings.json` 有三個各自獨立、都會讓人以為「改了沒用」的坑 ——
+    - **① 不會生效**：連線字串在 `Program.cs` 的 `AddDbContextPool`／`AddSqlServer` 建 options 時就被讀走，之後**不再重讀**。`reloadOnChange` 只更新 `IConfiguration`，換不掉已建好的 `DbContextOptions` → **必須回收 App Pool（或 `iisreset`）才會換 DB**，光存檔沒有任何作用。
+    - **② 會被 publish 蓋掉**：`appsettings*.json` 是 content 檔，下次 `dotnet publish` 覆蓋部署就把手改的值洗掉，且不會有任何提示。
+    - **③ 可能整個起不來**：Production guard（`Program.cs`）對 `Password=test`／`Password=password`、`Auth:SimulatedAccount` 非空、`TestAccounts:Enabled`、`EnableEmergencyAdmin`、LDAP placeholder 一律**拒絕啟動**。而 `web.config` 預設 `stdoutLogEnabled="false"` → 只看得到一個空白的 **HTTP 500.30**。
+    - **根因是架構差異，不是設定漏了**：對照組 `C:\Gantt` 是 `string ConnStr() => app.Configuration.GetConnectionString("Gantt")` + 每個端點 `new SqlConnection(ConnStr())` **現讀現用**，配上 `reloadOnChange:true` 所以存檔就生效。本專案走 EF Core `AddDbContextPool`，**連線池的前提就是 options 固定不變**，兩者本質互斥。**不要再問「為什麼 Gantt 可以」。**
+    - **正解（建議）**：用 `web.config` `<aspNetCore><environmentVariables>` 內既有的 `ConnectionStrings__EQDashboard`（檔內「設定區 A」已備妥註解範例）。環境變數優先序高於 `appsettings.json`，而且 **ANCM 會監看 `web.config`，存檔即自動回收 App Pool** —— 一步同時解決①與②。或設在 IIS Manager → App Pool → 進階設定 → 環境變數（同樣蓋過 appsettings，且不受 publish 影響）。
+    - **若堅持要「改 `appsettings.json` 就生效」**：2026-08-25 新增 **`Hosting:RestartOnConnectionStringChange`**（預設 false，`web.config`「設定區 A-2」有註解範例）。開啟後以 `ChangeToken.OnChange` 監看設定重載，**只在連線字串真的變動時**呼叫 `StopApplication()`，IIS 下一個請求就會拉起讀到新字串的新進程。
+      - **刻意只認連線字串**：改 `Auth` 等其他設定不會重啟（否則存個檔就把所有人踢下線）。且用 `Interlocked` 擋掉「檔案監看器一次存檔觸發兩次」。
+      - ⚠️ **只有在 IIS/ANCM 這類會自動拉起新進程的宿主下才有意義**；直接 `dotnet run` 會直接結束、不會再啟動。
+      - ⚠️ **正式站維持關閉**：重啟會中斷當下所有請求，且等於讓「改個檔案」可以無聲換掉全站資料來源。
+    - **確認真的換過去了**：啟動時會寫一行 `🗄️ 使用中的資料庫：Server=… / Catalog=… / …（環境 =…）` 到 `logs/log-*.txt`（**只印 Server/Catalog/驗證方式，不印密碼**）。**看到舊的 Catalog 就代表沒有真的重啟**，別再猜。連線字串格式寫錯（少引號/分號）也會在同一處以 `LogError` 現形。
+    - ⚠️ `Password=test` 被 guard 擋是對的，測試 DB 的密碼本來就該改掉（何況它已隨 `appsettings.json` 外洩到公開 repo，見 §2 P0）。**但 `Auth:SimulatedAccount` 那一項不該擋** —— 它是使用者刻意要用的測試工具，已改由 `Auth:AllowSimulatedAccountInProduction=true` 顯式放行（見 §3），不要刪掉它、也不要把整站降成 `Development`。
 
 ---
 

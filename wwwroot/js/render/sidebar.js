@@ -614,6 +614,15 @@ export function renderSidebarMenus() {
             const role = appState.currentUser.roleLevel;
             const canManage = role === 'admin' || (role === 'user' && appState.currentUser.manageableMenus && appState.currentUser.manageableMenus.length > 0);
 
+            // 🚫 暫時隱藏「資料庫與同步」(2026-08-25 使用者要求：暫不開放使用)
+            //    ⚠️ 要恢復時**只改這一個常數**（true）即可，其餘程式碼一律未動：
+            //       `#page-config-manage` 的頁面區塊（index.html:747）、三語字典 `db_sync`、
+            //       匯入/匯出與同步的後端端點全部保留原狀。
+            //    ⚠️ 這是純 UI 隱藏、不是權限邊界。該項本來就是 admin only，而 `page-config-manage`
+            //       在全站的唯一入口就是這一列（已 grep 確認），所以隱藏後畫面上再無路徑可達。
+            //       若日後要「真的禁用」，請照 CLAUDE.md §3 的三方一致，連後端端點一起關。
+            const SHOW_DB_SYNC_PAGE = false;
+
             // ⭐️ 根據目前的版面模式決定是否顯示「個人頁面管理」與系統選單
             const sysMenus = [
                 { id: 'page-personal-manage', icon: 'fas fa-user-cog', i18nKey: 'menu_personal_manage', fallback: '個人頁面管理', display: appState.currentLayoutMode === 'personal' },
@@ -626,7 +635,7 @@ export function renderSidebarMenus() {
                 { id: 'page-apply', icon: 'fas fa-paper-plane', i18nKey: 'menu_apply', fallback: '需求申請', display: role !== 'admin' },
                 { id: 'page-activity-log', icon: 'fas fa-history', i18nKey: 'menu_activity_log', fallback: '操作紀錄', display: role === 'admin' },
                 { id: 'page-traffic-stats', icon: 'fas fa-chart-line', i18nKey: 'menu_traffic_stats', fallback: '流量與使用率', display: role === 'admin' },
-                { id: 'page-config-manage', icon: 'fas fa-database', i18nKey: 'db_sync', fallback: '資料庫與同步', display: role === 'admin' }
+                { id: 'page-config-manage', icon: 'fas fa-database', i18nKey: 'db_sync', fallback: '資料庫與同步', display: role === 'admin' && SHOW_DB_SYNC_PAGE }
             ];
             sysMenus.forEach(sm => {
                 // role/tabindex 必留：這是 <div> 不是 <button>，沒有它就完全 Tab 不到、Enter 也沒反應。

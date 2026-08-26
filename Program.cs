@@ -289,14 +289,93 @@ using (var scope = app.Services.CreateScope())
     var cfg = app.Configuration;
     var isProd = !app.Environment.IsDevelopment();
 
+    // === 啟動時記錄「實際連到哪個 DB」===
+    //   部署後要切換正式區/測試區時，唯一可靠的確認方式就是看這行 log。
+    //   ⚠️ 連線字串在 AddDbContextPool 建立 options 時就被讀走、之後不再重讀 →
+    //      改 appsettings.json **必須回收 App Pool（或 iisreset / 動 web.config）才會生效**，
+    //      光存檔不會換 DB。看到這行印出舊的 Catalog，就是沒有真的重啟。
+    //   只印 Server / Catalog / 驗證方式，**絕不印密碼**。
+    try
+    {
+        var csb = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(
+            cfg.GetConnectionString("EQDashboard") ?? "");
+        logger.LogInformation(
+            "🗄️ 使用中的資料庫：Server={Server} / Catalog={Catalog} / {AuthMode}（環境 ={Env}）",
+            string.IsNullOrWhiteSpace(csb.DataSource) ? "(未設定)" : csb.DataSource,
+            string.IsNullOrWhiteSpace(csb.InitialCatalog) ? "(未設定)" : csb.InitialCatalog,
+            csb.IntegratedSecurity ? "Windows 整合驗證" : $"SQL 帳號 {csb.UserID}",
+            app.Environment.EnvironmentName);
+    }
+    catch (Exception ex)
+    {
+        // 連線字串格式錯誤（例如少了引號或分號）在這裡就會現形，比等到第一次查詢才炸好追。
+        logger.LogError(ex, "🗄️ ConnectionStrings:EQDashboard 無法解析，請檢查格式");
+    }
+
+    // === 連線字串變更時自動重啟（預設關閉，Hosting:RestartOnConnectionStringChange=true 才啟用）===
+    //   為什麼需要這個：本專案用 AddDbContextPool，連線字串在啟動時就被凍進 DbContextOptions，
+    //   之後改 appsettings.json 只會更新 IConfiguration、**換不掉已建好的 options** → 必須換進程。
+    //   （對照組：C:\Gantt 每個端點都 new SqlConnection(ConnStr()) 現讀現用，所以它存檔就生效。）
+    //   啟用後：偵測到「連線字串真的變了」就 StopApplication()。
+    //   ⚠️ **只有在 IIS/ANCM 等會自動拉起新進程的宿主下才有意義** —— 直接 `dotnet run` 會直接結束、不會再啟動。
+    //   ⚠️ 正式站請維持關閉：重啟會中斷當下所有請求，且等於讓「改個檔案」可以無聲換掉全站資料來源。
+    if (cfg.GetValue<bool>("Hosting:RestartOnConnectionStringChange"))
+    {
+        var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
+        var lastConn = cfg.GetConnectionString("EQDashboard");
+        var restartTriggered = 0;
+
+        Microsoft.Extensions.Primitives.ChangeToken.OnChange(
+            () => cfg.GetReloadToken(),
+            () =>
+            {
+                var current = cfg.GetConnectionString("EQDashboard");
+                // 只認連線字串：其他設定（Auth 等）變動不重啟，避免存個檔就把所有人踢下線。
+                if (string.Equals(current, lastConn, StringComparison.Ordinal)) return;
+                // 檔案監看器對「一次存檔」常觸發兩次 → 用 Interlocked 確保只送出一次停止訊號。
+                if (Interlocked.Exchange(ref restartTriggered, 1) == 1) return;
+
+                lastConn = current;
+                logger.LogWarning(
+                    "🔄 偵測到 ConnectionStrings:EQDashboard 變更（新目標 Catalog={Catalog}）"
+                    + "，即將停止本進程以套用新的 DB 連線；IIS 會在下一個請求拉起新進程。",
+                    SafeCatalog(current));
+                lifetime.StopApplication();
+            });
+
+        logger.LogInformation(
+            "🔄 已啟用「連線字串變更自動重啟」(Hosting:RestartOnConnectionStringChange=true)"
+            + " —— 僅適用於 IIS 等會自動重啟的宿主，正式站請關閉。");
+    }
+
     var issues = new List<string>();
 
     if (cfg.GetValue<bool>("Auth:TestAccounts:Enabled"))
         issues.Add("Auth:TestAccounts:Enabled = true (測試帳號 admin/admin、user/user 等可直接登入)");
     if (cfg.GetValue<bool>("Auth:EnableEmergencyAdmin"))
         issues.Add("Auth:EnableEmergencyAdmin = true (admin 帳號可無密碼登入)");
-    if (!string.IsNullOrWhiteSpace(cfg["Auth:SimulatedAccount"]))
-        issues.Add($"Auth:SimulatedAccount = \"{cfg["Auth:SimulatedAccount"]}\" (非 Development 環境禁止啟用模擬帳號，請務必留空)");
+    // Auth:SimulatedAccount —— 這是「模擬他人帳號登入」的測試工具，不是誤設。
+    //   預設仍擋（正式站開著它 = 所有訪客都變成同一個帳號），但提供顯式旗標放行，
+    //   讓「掛在 IIS 上、需要模擬他人身分驗證權限」的測試站不必整站降成 Development。
+    //   ⚠️ 只放行這一項，其餘四項（TestAccounts / EnableEmergencyAdmin / 弱密碼 / LDAP placeholder）照擋。
+    var simulated = cfg["Auth:SimulatedAccount"];
+    if (!string.IsNullOrWhiteSpace(simulated))
+    {
+        if (cfg.GetValue<bool>("Auth:AllowSimulatedAccountInProduction"))
+        {
+            // 不擋啟動，但每次啟動都要留下醒目紀錄 —— 這個站台的每個訪客都會是這個帳號，
+            // 必須能從 log 一眼看出「現在是模擬狀態」，避免日後有人把它誤當成正式站的行為。
+            logger.LogWarning(
+                "⚠️ 模擬帳號已啟用：Auth:SimulatedAccount = \"{EmpId}\"（由 Auth:AllowSimulatedAccountInProduction=true 顯式放行）。"
+                + "本站台所有訪客都會被視為此帳號 —— 僅限測試站，正式站請把旗標與 SimulatedAccount 一併留空。",
+                simulated);
+        }
+        else
+        {
+            issues.Add($"Auth:SimulatedAccount = \"{simulated}\" (非 Development 環境預設禁止模擬帳號。"
+                + "若這是刻意用來模擬他人身分的測試站，請設 Auth:AllowSimulatedAccountInProduction=true 顯式放行)");
+        }
+    }
 
     // LDAP placeholder：若 LDAP 已啟用，Server 必須是真實 hostname、不能是已知 placeholder
     if (cfg.GetValue<bool>("Auth:Ldap:Enabled"))
@@ -327,8 +406,15 @@ using (var scope = app.Services.CreateScope())
         {
             logger.LogCritical("🚨 拒絕啟動：偵測到 {Count} 項不適合 Production 的設定值：\n  - {Issues}",
                 issues.Count, string.Join("\n  - ", issues));
+            // ⚠️ 例外訊息必須「自帶完整清單」，不可只寫「詳見 log」：
+            //    IIS 的 web.config 預設 stdoutLogEnabled="false"，啟動失敗時瀏覽器只會看到
+            //    一個沒有任何內容的 HTTP 500.30，維運人員完全不知道是哪一項擋住。
+            //    ANCM 會把這個例外訊息寫進 Windows 事件檢視器，帶著清單才查得下去。
             throw new InvalidOperationException(
-                "Production 環境偵測到不安全設定，已拒絕啟動。詳見 log。若確實要保留此設定，請改用 Development 環境執行。");
+                $"Production 環境偵測到 {issues.Count} 項不安全設定，已拒絕啟動：\n  - "
+                + string.Join("\n  - ", issues)
+                + "\n請修正 appsettings.json / appsettings.Production.json 後回收 App Pool；"
+                + "若確實要保留此設定，請改用 Development 環境執行。");
         }
         else
         {
@@ -573,6 +659,23 @@ app.MapControllerRoute(
     pattern: "{controller=Home}/{action=Index}/{id?}");
 
 app.Run();
+
+// === 從連線字串取出 Initial Catalog 供 log 使用 ===
+// ⚠️ 只取 Catalog，**絕不回傳含密碼的原字串**；格式錯誤時回 "(無法解析)" 而不是拋例外
+//    —— 這個函式只服務 log，不該讓一則 log 把整個啟動流程弄掛。
+static string SafeCatalog(string? connectionString)
+{
+    if (string.IsNullOrWhiteSpace(connectionString)) return "(未設定)";
+    try
+    {
+        var catalog = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(connectionString).InitialCatalog;
+        return string.IsNullOrWhiteSpace(catalog) ? "(未設定)" : catalog;
+    }
+    catch
+    {
+        return "(無法解析)";
+    }
+}
 
 // === /health/ready 來源 IP 白名單判定 ===
 // 只放行 loopback（127.0.0.1 / ::1）與私有網段（10/8、172.16/12、192.168/16），

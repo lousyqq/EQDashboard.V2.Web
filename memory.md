@@ -28,7 +28,7 @@
 - 外洩內容：`Data Source=Sariel;…;User ID=testuser;Password=<明碼>`，以及 `TestAccounts` 的 5 組帳密。
 - ⚠️ **改密碼優先於刪 commit**（推上公開 repo 就必須視為已外洩：fork／快取／爬蟲）。順序：① 改 `Sariel` 上 `testuser` 與那 5 組測試帳密 ② repo 改私有或用 `git filter-repo`／BFG 清 blob 後 force push ③ `git check-ignore -v appsettings.json` 複查忽略規則有效。
 - 📌 **AI 未動遠端任何東西**（未 push、未改 repo 設定）—— 需使用者決定後才執行。
-- ⚠️ 順帶：`appsettings.Production.json` **沒有覆寫 `SimulatedAccount`**，而上傳的那份 `appsettings.json` 是 `"00058897"`。若 IIS 上跑的就是這份，**所有人開站都會被當成 00058897（admin）**。請確認線上該值為 `""`。
+- ⚠️ 順帶：上傳的那份 `appsettings.json` 的 `SimulatedAccount` 是 `"00058897"`（`appsettings.Production.json` 沒有覆寫它）。**這是使用者刻意的測試設定，不是缺陷** —— 只要確認它掛的是測試站而非正式站即可（生效期間該站台所有訪客都會是這個帳號）。
 
 ### P1｜工作區未 commit（第九輪 L9，承接 K9／F1，仍成立）
 
@@ -51,12 +51,50 @@
 
 ### 其他
 
+- 🚫 **「資料庫與同步」側欄項目已暫時隱藏（2026-08-25 使用者要求，暫不開放使用）** —— 要恢復時**只改 `render/sidebar.js` 的 `SHOW_DB_SYNC_PAGE` 常數為 `true`**，其餘一律未動（`#page-config-manage` 頁面區塊、三語 `db_sync` 字典、匯入匯出與同步的後端端點全部保留）。
+  - 它本來就是 admin only，且 `page-config-manage` 全站唯一入口就是那一列（已 grep 確認）→ 隱藏後畫面上無路徑可達。**這是純 UI 隱藏、不是權限邊界**；若日後要「真的禁用」，得照 `CLAUDE.md` §3 三方一致把後端端點一起關。
 - **使用者操作手冊產出**：針對目前功能產出完整的使用者操作手冊（PPT 或文件規劃）。
 - **`normal_user` 的 3 筆「登入預設首頁」需 admin 重設**：第七輪 J3 盤點時被舊程式碼刪除，只擷取到 MenuId（`m_ze_3`／`m_ze_2_2`／`m_12m`），PK 需要的 `FabId` 未擷取 → **無法精確還原**。
 
 ---
 
 ## 3. 近期完成
+
+### 2026-08-25｜IIS 上改 `appsettings.json` 換不掉 DB —— 三個獨立成因
+
+- 使用者回報：發佈到 IIS 後，直接改 `appsettings.json` 的 `ConnectionStrings` 無法切換正式區／測試區 DB（截圖字串為 `…User ID=testuser;Password=test;…`）。
+- **三個坑各自獨立、任一個都足以造成「改了沒用」**：① 連線字串在 `AddDbContextPool` 建 options 時就讀走、之後不再重讀 → **不回收 App Pool 就不會換**；② `appsettings*.json` 是 content 檔，下次 `dotnet publish` 會蓋掉手改的值；③ Production guard 對 `Password=test` 與非空的 `Auth:SimulatedAccount` **拒絕啟動**，而 `stdoutLogEnabled="false"` 讓它只呈現為空白的 HTTP 500.30。
+- **本輪程式面改了兩處（`Program.cs`，`dotnet build` 0 錯 0 警告、`dotnet test` 11/11）**：
+  - 啟動時新增一行 `🗄️ 使用中的資料庫：Server=… / Catalog=… / SQL 帳號 …（環境 =…）` 寫進 `logs/log-*.txt`。**只印 Server／Catalog／驗證方式，絕不印密碼**；連線字串格式錯誤也在同一處以 `LogError` 現形（比等到第一次查詢才炸好追）。
+  - Production guard 的例外訊息改成**自帶完整問題清單**（原本只寫「詳見 log」）—— ANCM 會把它寫進 Windows 事件檢視器，維運才查得下去。
+  - **實測（`dotnet run --no-launch-profile`，Production + `Password=test` + `SimulatedAccount=00058897`）**：先印出 `Server=FakeSrv / Catalog=FakeDb_TEST`，接著 `FTL 拒絕啟動`，例外訊息完整列出 2 項。同時證實 **`ConnectionStrings__EQDashboard` 環境變數確實蓋過 `appsettings.json`**。
+- **結論寫成 `CLAUDE.md` §4 第 25 條**：切 DB 一律改 `web.config` 的「設定區 A」環境變數（ANCM 監看 `web.config`，**存檔即自動回收 App Pool**，一步解決①②），或設在 App Pool 環境變數。
+- ⚠️ **guard 的兩項要分開看**：`Password=test` 被擋是對的（該密碼還隨 `appsettings.json` 外洩到公開 repo，見 §2 P0）。**但 `SimulatedAccount` 那一項不該擋** —— 使用者 2026-08-25 明確指示：**那是他刻意用來模擬他人帳號登入做測試的工具，不是 bug，不要再列為缺陷、也不要建議他清空**。（AI 在本輪之前把它寫成 bug 兩次，已全部更正。）
+
+### 2026-08-25｜新增 `Hosting:RestartOnConnectionStringChange`：改 `appsettings.json` 即自動切換 DB
+
+- **起因**：使用者問「`C:\Gantt` 改 `appsettings.json` + Ctrl+F5 就能換 DB，為什麼本專案不行？」
+- **比對原始碼後確認是架構差異、不是設定漏了**：
+  - `C:\Gantt\Program.cs:23` 是 `string ConnStr() => app.Configuration.GetConnectionString("Gantt")`，60 幾個端點每支都 `new SqlConnection(ConnStr())` —— **現讀現用**，配上 `reloadOnChange:true` 所以存檔就生效。（Ctrl+F5 本身沒有作用，只是剛好觸發了下一個請求。）
+  - 本專案 `Program.cs:128` 是 EF Core `AddDbContextPool`，連線字串在啟動時就被凍進 `DbContextOptions`。**連線池的前提就是 options 固定不變**，與「每次請求重讀」本質互斥。
+- **作法（使用者選了「保留連線池 + 自動重啟」這條）**：新增 `Hosting:RestartOnConnectionStringChange`（預設 false）。開啟後用 `ChangeToken.OnChange(cfg.GetReloadToken(), …)` 監看，**只在連線字串真的變動時**呼叫 `IHostApplicationLifetime.StopApplication()`，IIS 下一個請求拉起新進程。
+  - **刻意只認連線字串**：改 `Auth` 等其他設定不重啟（否則存個檔就把所有人踢下線）。
+  - 用 `Interlocked.Exchange` 擋掉「檔案監看器對一次存檔觸發兩次」。
+  - 新增 `SafeCatalog()` 靜態區域函式供 log 使用：**只取 Initial Catalog、絕不回傳含密碼的原字串**，格式錯誤回 `(無法解析)` 而非拋例外（一則 log 不該弄掛啟動流程）。
+  - `web.config` 新增「**設定區 A-2**」註解說明（含「為什麼預設不生效」與兩條解法的取捨）。
+- **驗收**：`dotnet build --no-incremental` 0 錯 0 警告｜`dotnet test` 11/11｜`web.config` XML 解析通過、註解 17/17 配對｜**實機端到端測試兩種情境**（測試前後 `appsettings.json` 的 md5 完全相同，確認未污染）——
+  - ① 旗標開啟 + 改 `Initial Catalog` → 1 秒內出現 `WRN 🔄 偵測到 ConnectionStrings:EQDashboard 變更（新目標 Catalog=EQDashboardV2_SWITCHTEST）`，接著 `Application is shutting down`、進程 exit 0。
+  - ② 旗標開啟 + 只改 `Auth:SimulatedAccount` → **完全沒有觸發重啟、app 仍在執行**（證明「只認連線字串」有效）。
+- ⚠️ **只有在 IIS/ANCM 下才有意義**；`dotnet run` 會直接結束不再啟動。正式站維持關閉。
+
+### 2026-08-25｜新增 `Auth:AllowSimulatedAccountInProduction` 顯式旗標（使用者指定）
+
+- **需求**：測試站掛在 IIS 上、環境是 Production，但要保留 `SimulatedAccount` 模擬他人帳號 —— 又不想把整站降成 `Development`（那會連帶開 `/swagger`、少 HSTS）。
+- **作法**：`AuthSettings` 新增 `AllowSimulatedAccountInProduction`（預設 false）；`Program.cs` 的 guard 對 `SimulatedAccount` 改為「旗標為 true → 印 WRN 但放行；否則照擋」。**刻意只放行這一項**，`TestAccounts` / `EnableEmergencyAdmin` / 連線字串弱密碼 / LDAP placeholder 四項完全不動。
+- **放行時每次啟動都印一則 WRN**（含工號 + 「本站台所有訪客都會被視為此帳號」），避免日後有人把模擬狀態誤當成正式行為。未放行時的錯誤訊息也改成**直接告訴你旗標名稱**，不用回頭翻文件。
+- `web.config` 新增「**設定區 B-2**」註解範例（`Auth__SimulatedAccount` + `Auth__AllowSimulatedAccountInProduction`，預設註解掉）。
+- **驗收**：`dotnet build --no-incremental` 0 錯 0 警告｜`dotnet test` 11/11｜`web.config` XML 解析通過、註解 15/15 配對｜實機 `dotnet run --no-launch-profile` 跑三種情境 ——
+  ① 旗標 true → **啟動成功**且印出 WRN；② 不設旗標 → **拒絕啟動**，訊息含 `請設 Auth:AllowSimulatedAccountInProduction=true`；③ 旗標 true + `TestAccounts`/`EnableEmergencyAdmin` 也開 → **仍拒絕啟動**並只列那兩項（證明其餘檢查沒被削弱）。
 
 ### 2026-08-25｜`memory.md` 12,406 個 U+FFFD 亂碼重建、`AGENTS.md` 轉 UTF-8
 
@@ -131,7 +169,7 @@
   - ⚠️ **單一標籤主機名（`http://p58esiap12`，不含點）本來就會被自動歸類為近端內部網路** —— 若仍跳視窗，先查「自動偵測內部網路」是否被 GPO 關掉、區域的「登入」是否被設成「提示輸入使用者名稱及密碼」、以及實際用的是不是 FQDN／IP。
 - **⚠️ 靜默登入與「投影機上換帳號」互相衝突**：Windows 整合驗證**沒有帳號選擇器**，靜默後 Edge 只會送當下 Windows 工作階段的身分。而 `AllowManualLogin=false` 時 `auth.js:101` 會清掉登出旗標 → 登出後一重整又被自動登入回去。
   可行替代（**不含已被封鎖的手動登入/LDAP**）：① **`runas /netonly` 開一個獨立 Edge**（`--user-data-dir` 必加，否則被既有行程接管）② GPO 分範圍套用、把會議室/投影機那幾台排除 ③ 開發「以其他使用者身分檢視」(admin-only impersonation)。
-  ❌ **絕不可用 `SimulatedAccount` 做這件事** —— 它是全域設定，一改就是全廠所有人都變成那個帳號，且 `OnValidatePrincipal` 會作廢所有人的 cookie。
+  📌 **使用者目前就是用 `SimulatedAccount` 在測試站做這件事，這是刻意的、不是 bug（2026-08-25 明確指示，不要再列為缺陷）。** 需要知道的事實邊界：它是**全域**設定 → 生效期間該站台所有訪客都會變成那個帳號，且每次變更會作廢所有人的 cookie → **適合測試站，正式站請留空**。
 - **登入不因時間過期（企業內網政策，2026-08-16 定案）**：`Auth:SessionDays` 預設 3650 天 + `SlidingExpiration`。**存續期間的唯一事實來源是 `Program.cs` 的 `options.ExpireTimeSpan`**，`SignInAsync` 嚴禁再設 `ExpiresUtc`（歷史坑：兩處寫死 `AddHours(12)` 讓前者形同虛設）。
   ⚠️ **與 session 長度無關的登出成因（別誤判）**：清掉 `App_Data/keys`、改 `Auth:SimulatedAccount`（`OnValidatePrincipal` 會 `SignOutAsync`）、使用者自己按登出。前兩者設多長的 `SessionDays` 都救不了。
 
