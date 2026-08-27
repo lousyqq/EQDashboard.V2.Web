@@ -20,7 +20,7 @@
 - ⚠️ **P1｜工作區成果仍未 commit**（承接 L9／K9／F1「成果裸奔」）：第七輪 J1~J4 的權限提升修復、第八輪 K1~K10、第九輪 L1/L3/L4，以及 2026-08-25 的 iframe sandbox 修復與三份文件重建，**全部只存在於本機工作區**。本機 `main` 另外還落後 `origin/main` 1 個 commit（即上面那個 `7467dd4`），push 前要先處理 P0。
 - ⚠️ **P1｜iframe sandbox 修復待實機確認**：2026-08-25 已改為無條件保留 `allow-same-origin`（見 §4 第 22 條），但 AI 環境連不到內網 `p58esiap12`，只驗到「sandbox 屬性正確」這一層。**待使用者在可連內網的機器上確認 MSD 需求管控表能顯示員編與資料。**
 - **P3｜第九輪健檢 L5~L8（未修，皆非阻斷）**：`#configFileName`／`#appIconPreview*` 的 `data-i18n` 陷阱｜46 個死字典 key（其中 `chart_trend_aria` 是「key 備好但趨勢圖 SVG 缺 `role="img"`+`aria-label`」，該接上而非刪掉；⚠️ `dyn_m_*` 是動態命中的，**不可刪**）｜`TrackingController.MenuClick` 不驗證 menuId 可被灌點擊數｜趨勢圖資料變空時留下舊圖。
-- 產出完整的使用者操作手冊 (PPT 規劃)。
+- ✅ **使用者操作手冊已產出（2026-08-27）**：`使用者操作手冊.html`（單檔、零外部相依、15 章 61 節）。**日後改程式碼務必依 §5 第 4 條同步更新它。** 剩下的 PPT 版簡報尚未製作。
 - **`normal_user` 的 3 筆「登入預設首頁」需 admin 在「帳號管理」重設** —— 第七輪 J3 盤點時被舊程式碼刪除，`FabId` 未擷取而無法精確還原。
 - **目前線上 DB 與 `DB_Table.md` 快照一致，無待執行的 SQL 腳本。**
 
@@ -37,6 +37,7 @@
     - 需要知道的**事實邊界**（供選擇部署在哪個站台，不是要你去修掉它）：它是**全域**設定 → 生效期間**該站台所有訪客都會是那個帳號**，且每次變更會作廢所有人的 cookie。故適合掛在測試站（如 `EQDashboard_TEST`），正式站請留空。
     - **Production guard 預設會擋它**（非空即拒絕啟動）→ 2026-08-25 新增顯式旗標 **`Auth:AllowSimulatedAccountInProduction`**（預設 false）：設 true 後 guard 改印一則 WRN、不擋啟動，**且只放行這一項**（`TestAccounts` / `EnableEmergencyAdmin` / 連線字串弱密碼 / LDAP placeholder 四項照擋）。`web.config` 的「設定區 B-2」已備妥註解範例。
     - **不要因為 guard 擋了就去刪 `SimulatedAccount`**，也不要為此把整站降成 `Development` —— 用那個旗標。
+    - **📌 IIS 上「切成模擬 / 切回自動偵測」的實際操作步驟、驗收方式與踩坑，全部集中在 §4 第 26 條** —— `appsettings.Production.json` 已把 `Auth:SimulatedAccount` 釘成 `""`，唯一開關是 `web.config` 的「設定區 B-2」。**不要在別處各自寫一套切換方式，也不要為了切回自動偵測去改 `appsettings.json`。**
   - `DefaultAdmins`：名單內帳號自動建帳升級為 admin，防系統鎖死。
   - `OpenAccessMode`：開啟時開放瀏覽，自動建帳綁定全廠區；關閉時嚴格限制名單。
   - **🔴 「手動登入 + LDAP」被企業 IIS 政策封鎖，不是可行選項（2026-08-25 使用者定案）**：`Auth:AllowManualLogin` / `Auth:Ldap` 程式面完整可用（`AuthService.VerifyLdapPasswordAsync`、`AuthController.Login`），但**內網 IIS 環境不允許啟用**。**不要再把「開手動登入／LDAP」當成解法提出。**
@@ -198,6 +199,28 @@
     - **確認真的換過去了**：啟動時會寫一行 `🗄️ 使用中的資料庫：Server=… / Catalog=… / …（環境 =…）` 到 `logs/log-*.txt`（**只印 Server/Catalog/驗證方式，不印密碼**）。**看到舊的 Catalog 就代表沒有真的重啟**，別再猜。連線字串格式寫錯（少引號/分號）也會在同一處以 `LogError` 現形。
     - ⚠️ `Password=test` 被 guard 擋是對的，測試 DB 的密碼本來就該改掉（何況它已隨 `appsettings.json` 外洩到公開 repo，見 §2 P0）。**但 `Auth:SimulatedAccount` 那一項不該擋** —— 它是使用者刻意要用的測試工具，已改由 `Auth:AllowSimulatedAccountInProduction=true` 顯式放行（見 §3），不要刪掉它、也不要把整站降成 `Development`。
 
+26. **📌 IIS 上切換「模擬他人帳號 ⇄ Windows 自動偵測」的標準操作（2026-08-27 定案，唯一開關在 `web.config`）**
+    設定優先序是 `appsettings.json` → `appsettings.{Env}.json` → **環境變數（最高）**。`appsettings.Production.json` 已把 `Auth:SimulatedAccount` 釘成 `""`，所以 **Production 的預設恆為「不模擬」，切換完全由 `web.config` 的「設定區 B-2」決定**。
+
+    **① 切成模擬他人帳號**（例：要看 `00058896` 的畫面與權限）——「設定區 B-2」取消註解、填工號，兩條都要有：
+    ```xml
+    <environmentVariable name="Auth__SimulatedAccount"                    value="00058896" />
+    <environmentVariable name="Auth__AllowSimulatedAccountInProduction"   value="true" />
+    ```
+
+    **② 切回 Windows 自動偵測** —— 把上面兩條**整段註解掉**（或刪掉），存檔。
+
+    - **兩者都不必手動 `iisreset`**：ANCM 監看 `web.config`，存檔即自動回收 App Pool。
+    - **驗收看 `logs\log-*.txt`**：出現 `⚠️ 模擬帳號已啟用：Auth:SimulatedAccount = "…"` ＝ 模擬中；**沒有這行** ＝ 已回到 Windows 自動偵測。**看到的工號不是你剛填的，就代表進程沒真的重啟**，別再猜（同第 25 條「看 Catalog 判斷有沒有重啟」的手法）。
+    - **前端不用做任何事**：`SimulatedAccount` 一變動，`OnValidatePrincipal` 會 `SignOutAsync` 作廢所有 cookie，`api.js` 的 401 會靜默重新自動登入（見 §3），使用者只會看到一個 toast。
+    - **🔴 這件事之所以需要一條規則，是因為「切回去」曾經是個陷阱**：`appsettings.Production.json` 補上 `"SimulatedAccount": ""` **之前**，把 B-2 註解掉會讓設定**往下退回 `appsettings.json` 的 `"00058897"`**，同時旗標也回到預設 `false` → **guard 再次拒絕啟動，畫面是空白的 HTTP 500.30**。
+      - **通則：任何「靠註解掉環境變數來關掉某功能」的操作，都要先確認 `appsettings*.json` 的底值是安全的**，否則關掉的瞬間會退回一個你沒預期的值。
+      - **不要為了切回自動偵測去改 `appsettings.json`** —— 那是 Development 用的值，而且 `dotnet publish` 會蓋回去（同第 25 條②）。
+      - 現場臨時切回、又不確定環境時，寧可把 `Auth__SimulatedAccount` 的 `value` 清成 `""` 並**保留旗標 `true`**，也不要整段註解掉：萬一空字串沒吃到，站台至少還會啟動、從 log 的 WRN 一眼看得出來，而不是給你一片查不出原因的 500.30。
+    - ⚠️ **模擬是全域的**：生效期間該站台**所有訪客**都會是那個帳號 → **只能掛測試站**（如 `EQDashboard_TEST`），正式站兩條都必須留空 / 註解。
+    - ⚠️ **被模擬的工號若不在 `Accounts` 表、又不在 `DefaultAdmins`、且 `OpenAccessMode=false`**，會看到「無權限」畫面（`AuthController.WhoAmI`）—— 那是權限判定正常運作，**不是模擬失敗**，先去「帳號管理」把人建起來。
+    - ⚠️ **改完仍 500.30 時先看 guard 列了哪幾項**：`Password=test` 那項是獨立的（`appsettings.json` 的連線字串），與模擬帳號無關，正式部署本來就要改走「設定區 A」的 `ConnectionStrings__EQDashboard`。**不要把弱密碼那項誤判成「模擬帳號沒關掉」。** `web.config` 預設 `stdoutLogEnabled="false"`，看不到原因時暫時改 `true`。
+
 ---
 
 ## 5. 每輪對話文件同步規範 (Mandatory Protocol)
@@ -208,4 +231,24 @@
    - 於方案根目錄 `sql\` **往下新增**增量的 `.sql` 腳本檔案。
    - **絕對禁止修改目前既有的 DB 資料與舊有腳本，只能透過往下新增 SQL 指令來進行架構修改。**
    - 於 `DB_Table.md` 末端的 Changelog **只增不刪**追加當日日期與新增的 `.sql` 檔名。
-4. **回覆通知**：對話末尾註明 `*已自動更新 CLAUDE.md 與 memory.md*`。
+4. **🔴 同步 `使用者操作手冊.html`（2026-08-27 使用者指示）**：這是給**第一次使用的人**看的完整操作手冊（單檔 HTML、無外部相依、可離線開啟）。
+   **凡是改到「使用者或管理員實際看得到／操作得到的東西」，就必須在同一輪把手冊對應章節一起改掉**，不可只改程式碼。
+   - **判斷法**：問自己「這個改動會讓手冊裡某一句話變成錯的嗎？」會 → 就要改。手冊寫錯比沒有手冊更糟。
+   - **觸發對照表**（左邊動了 → 右邊必改）：
+
+     | 你動的東西 | 手冊要更新的章節 |
+     | --- | --- |
+     | `AuthSettings` 旗標、`web.config` 設定區 A/B/B-2/C/D、`Program.cs` 啟動守衛 | §3 登入運作、§4 模擬帳號切換、§5 本機 LDAP、§5.5 守衛清單、§15.1 旗標速查 |
+     | `render/sidebar.js` 的 `sysMenus[].display`（哪個角色看得到哪一頁） | §2.4 系統設定頁權限對照表 |
+     | `index.html` / `partials/modals.html` 的管理頁欄位、按鈕、流程 | §2 畫面導覽、§6 內容管理、§7.4 帳號設定逐欄說明 |
+     | `MenuAuthService` / `AccountService` / `getMenuPermissions` 的權限判定 | §7.1 三層模型、§7.6 排錯 SOP、§8 委派管理者 |
+     | `RequestsController` 的狀態機規則 | §9.3 狀態轉換表 |
+     | 開啟方式選項、iframe sandbox 行為 | §6.1 開啟方式五種、§6.1 iframe 排錯紅框 |
+     | `SHOW_DB_SYNC_PAGE`、Excel 匯入匯出的欄位 mapping | §11 設定檔管理 |
+     | 部署步驟、連線字串切換、IIS 設定 | §12 部署與維運、§14 上線檢查清單 |
+     | API 端點新增／改名／權限變更 | §15.2 API 端點表 |
+     | 目錄結構、模組職責（同時要改 `系統架構.md`） | §1.2 技術架構總覽的目錄樹 |
+   - **手冊本身的技術限制（改的時候不要踩）**：① 單檔、**零外部相依**（CSS/JS 全內嵌，不可加 CDN）② `code` 標籤**不可**設 `white-space:nowrap`（長設定鍵會撐破表格、窄畫面被裁掉讀不到）③ 複製鈕要掛在 `.prewrap` 包層上，**不可**掛在 `pre` 上（`pre` 是捲動容器，絕對定位子元素會以「捲動內容寬」為基準，把整份文件撐出水平捲軸）④ 行動版側欄用 `left` 位移做 off-canvas，不要改回 `transform`。
+   - **驗收**：改完在瀏覽器開一次，桌機與 375px 都必須 `documentElement.scrollWidth === clientWidth`（零水平溢出），且 console 無錯誤。
+   - 目錄與章節錨點是 **JS 依 `h2[id]`/`h3[id]` 自動生成**的，新增章節只要給 `id` 就會自動進目錄，不必手動維護 TOC。
+5. **回覆通知**：對話末尾註明 `*已自動更新 CLAUDE.md 與 memory.md*`。

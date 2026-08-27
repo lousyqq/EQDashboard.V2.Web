@@ -1,0 +1,1182 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EQ Performance Dashboard — 使用者操作手冊</title>
+<style>
+:root{
+  --bg:#f6f7f9; --surface:#ffffff; --surface-2:#eef1f5; --border:#dde2e9;
+  --text:#1c2430; --text-dim:#5b6879; --accent:#2563eb; --accent-soft:#e8efff;
+  --ok:#0f8a5f; --ok-soft:#e4f5ee; --warn:#a86300; --warn-soft:#fdf2df;
+  --danger:#c02626; --danger-soft:#fdeaea; --code-bg:#1d232c; --code-fg:#e6edf3;
+  --mono:ui-monospace,SFMono-Regular,"Cascadia Mono",Consolas,"Noto Sans Mono",monospace;
+  --sans:"Segoe UI",-apple-system,"Noto Sans TC","Microsoft JhengHei",sans-serif;
+}
+html[data-theme="dark"]{
+  --bg:#12161c; --surface:#1a1f27; --surface-2:#222933; --border:#2f3742;
+  --text:#e4e9ef; --text-dim:#98a4b3; --accent:#6ea8fe; --accent-soft:#1c2c47;
+  --ok:#4ade80; --ok-soft:#16301f; --warn:#f0b429; --warn-soft:#33280d;
+  --danger:#f87171; --danger-soft:#3a1b1b; --code-bg:#0d1117; --code-fg:#e6edf3;
+}
+@media (prefers-color-scheme:dark){
+  html:not([data-theme="light"]){
+    --bg:#12161c; --surface:#1a1f27; --surface-2:#222933; --border:#2f3742;
+    --text:#e4e9ef; --text-dim:#98a4b3; --accent:#6ea8fe; --accent-soft:#1c2c47;
+    --ok:#4ade80; --ok-soft:#16301f; --warn:#f0b429; --warn-soft:#33280d;
+    --danger:#f87171; --danger-soft:#3a1b1b; --code-bg:#0d1117; --code-fg:#e6edf3;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.75;font-size:15.5px}
+a{color:var(--accent)}
+.layout{display:flex;align-items:flex-start;max-width:1500px;margin:0 auto}
+
+/* ---------- 側邊目錄 ---------- */
+#toc{position:sticky;top:0;flex:0 0 300px;height:100vh;overflow-y:auto;background:var(--surface);
+     border-right:1px solid var(--border);padding:18px 14px 60px}
+#toc .brand{font-weight:800;font-size:1.02rem;letter-spacing:.2px;margin-bottom:2px}
+#toc .brand small{display:block;font-weight:500;font-size:.74rem;color:var(--text-dim);letter-spacing:0}
+#tocFilter{width:100%;margin:12px 0 10px;padding:7px 10px;border:1px solid var(--border);border-radius:7px;
+     background:var(--surface-2);color:var(--text);font-size:.84rem;font-family:inherit}
+#toc a{display:block;padding:4px 9px;border-radius:6px;color:var(--text-dim);text-decoration:none;font-size:.845rem}
+#toc a:hover{background:var(--surface-2);color:var(--text)}
+#toc a.lv1{font-weight:700;color:var(--text);margin-top:9px;font-size:.88rem}
+#toc a.lv2{padding-left:20px}
+#toc a.active{background:var(--accent-soft);color:var(--accent);font-weight:700}
+#toc a.hide{display:none}
+
+/* ---------- 內容 ---------- */
+main{flex:1 1 auto;min-width:0;padding:34px 46px 140px;max-width:1050px}
+h1{font-size:1.95rem;line-height:1.35;margin:0 0 6px}
+h2{font-size:1.35rem;margin:54px 0 14px;padding-bottom:8px;border-bottom:2px solid var(--border);scroll-margin-top:16px}
+h3{font-size:1.08rem;margin:30px 0 10px;scroll-margin-top:16px;color:var(--text)}
+h4{font-size:.96rem;margin:20px 0 8px;color:var(--text-dim);text-transform:none;letter-spacing:.2px}
+p{margin:10px 0}
+ul,ol{margin:10px 0;padding-left:24px}
+li{margin:5px 0}
+/* 不可用 white-space:nowrap：長設定鍵（如 Auth__AllowSimulatedAccountInProduction）
+   會撐破表格儲存格，窄畫面下被裁掉而讀不到。改成需要時才斷行。 */
+code{font-family:var(--mono);font-size:.855em;background:var(--surface-2);border:1px solid var(--border);
+     padding:1px 5px;border-radius:4px;overflow-wrap:break-word;word-break:break-word}
+pre{background:var(--code-bg);color:var(--code-fg);padding:14px 16px;border-radius:9px;overflow-x:auto;
+    font-family:var(--mono);font-size:.83rem;line-height:1.6;border:1px solid var(--border);margin:0}
+pre code{background:none;border:0;padding:0;white-space:pre;color:inherit;font-size:1em}
+/* 複製鈕掛在 wrapper 上，不可掛在 pre 上：pre 是捲動容器，其絕對定位子元素會以
+   「捲動內容寬」為基準 → 按鈕跑到 700px 外，把整份文件撐出水平捲軸。 */
+.prewrap{position:relative;margin:14px 0}
+.copy{position:absolute;top:8px;right:8px;z-index:2;background:#ffffff1a;color:#cfd8e3;border:1px solid #ffffff2e;
+      border-radius:6px;font-size:.7rem;padding:3px 9px;cursor:pointer;font-family:var(--sans)}
+.copy:hover{background:#ffffff2e;color:#fff}
+
+table{width:100%;border-collapse:collapse;margin:14px 0;font-size:.87rem;display:block;overflow-x:auto}
+th,td{border:1px solid var(--border);padding:8px 11px;text-align:left;vertical-align:top}
+th{background:var(--surface-2);font-weight:700;white-space:nowrap}
+tbody tr:nth-child(even){background:var(--surface)}
+
+.box{border:1px solid var(--border);border-left-width:4px;border-radius:9px;padding:12px 16px;margin:16px 0;background:var(--surface)}
+.box .bt{font-weight:800;font-size:.85rem;letter-spacing:.4px;display:block;margin-bottom:4px}
+.box p:first-of-type{margin-top:0}.box p:last-child,.box ul:last-child,.box ol:last-child{margin-bottom:0}
+.note{border-left-color:var(--accent);background:var(--accent-soft)} .note .bt{color:var(--accent)}
+.tip{border-left-color:var(--ok);background:var(--ok-soft)} .tip .bt{color:var(--ok)}
+.warn{border-left-color:var(--warn);background:var(--warn-soft)} .warn .bt{color:var(--warn)}
+.danger{border-left-color:var(--danger);background:var(--danger-soft)} .danger .bt{color:var(--danger)}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:16px 20px;margin:16px 0}
+.steps{counter-reset:s;list-style:none;padding-left:0}
+.steps>li{counter-increment:s;position:relative;padding-left:40px;margin:14px 0}
+.steps>li::before{content:counter(s);position:absolute;left:0;top:1px;width:26px;height:26px;border-radius:50%;
+  background:var(--accent);color:#fff;font-weight:800;font-size:.8rem;display:flex;align-items:center;justify-content:center}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin:16px 0}
+.pill{display:inline-block;padding:1px 9px;border-radius:99px;font-size:.74rem;font-weight:700;border:1px solid;white-space:nowrap}
+.p-admin{color:var(--danger);border-color:var(--danger);background:var(--danger-soft)}
+.p-deleg{color:var(--warn);border-color:var(--warn);background:var(--warn-soft)}
+.p-all{color:var(--ok);border-color:var(--ok);background:var(--ok-soft)}
+.p-dev{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+.kbd{font-family:var(--mono);font-size:.78rem;border:1px solid var(--border);border-bottom-width:2px;
+     border-radius:5px;padding:1px 6px;background:var(--surface-2)}
+.lead{font-size:1.02rem;color:var(--text-dim);margin:14px 0 24px}
+.meta{font-size:.8rem;color:var(--text-dim);border:1px dashed var(--border);border-radius:8px;padding:10px 14px;background:var(--surface)}
+hr{border:0;border-top:1px solid var(--border);margin:40px 0}
+.flow{font-family:var(--mono);font-size:.82rem;background:var(--surface-2);border:1px solid var(--border);
+      border-radius:9px;padding:14px 16px;overflow-x:auto;white-space:pre;line-height:1.65}
+#themeBtn{position:fixed;right:20px;bottom:20px;z-index:30;border:1px solid var(--border);background:var(--surface);
+   color:var(--text);border-radius:99px;padding:9px 16px;cursor:pointer;font-size:.82rem;font-weight:700;
+   box-shadow:0 3px 14px #0003;font-family:inherit}
+#tocToggle{display:none}
+@media(max-width:980px){
+  /* off-canvas 用 left 位移而非 transform：transform 在部分靜態快照環境不會套用，
+     會讓側欄留在畫面上、把整份文件撐出水平捲軸。overflow-x:clip 是第二道保險。 */
+  html,body{overflow-x:clip}
+  #toc{position:fixed;left:-300px;top:0;z-index:40;transition:left .2s;width:290px;flex-basis:290px}
+  #toc.open{left:0;box-shadow:0 0 40px #0006}
+  main{padding:70px 18px 120px}
+  #tocToggle{display:block;position:fixed;left:14px;top:12px;z-index:41;border:1px solid var(--border);
+     background:var(--surface);color:var(--text);border-radius:8px;padding:7px 13px;font-weight:700;cursor:pointer;font-family:inherit}
+}
+</style>
+</head>
+<body>
+
+<button id="tocToggle" onclick="document.getElementById('toc').classList.toggle('open')">☰ 目錄</button>
+<button id="themeBtn" onclick="toggleTheme()">◐ 深／淺色</button>
+
+<div class="layout">
+<nav id="toc">
+  <div class="brand">EQ Dashboard 操作手冊<small>UMC EQ Performance Dashboard V2</small></div>
+  <input id="tocFilter" type="search" placeholder="篩選目錄關鍵字…" oninput="filterToc(this.value)">
+  <div id="tocLinks"></div>
+</nav>
+
+<main>
+
+<h1>EQ Performance Dashboard<br>使用者操作手冊</h1>
+<p class="lead">從「第一次打開這個網站」到「上線後怎麼調整每一項內容與權限」的完整說明。<br>
+不需要事先讀過任何其他文件，看完這一份就能操作。</p>
+
+<div class="meta">
+<b>適用版本</b>：EQDashboard.V2.Web（ASP.NET Core 9.0 + 純 ES Modules 前端）<br>
+<b>本手冊建立日期</b>：2026-08-27　|　<b>資料來源</b>：實際程式碼、<code>CLAUDE.md</code>、<code>系統架構.md</code>、<code>DB_Table.md</code>、<code>web.config</code>、<code>Program.cs</code><br>
+<b>閱讀標記</b>：<span class="pill p-all">所有人</span> 一般使用者可做
+<span class="pill p-deleg">委派管理者</span> 需被授權
+<span class="pill p-admin">Admin</span> 僅系統管理員
+<span class="pill p-dev">部署／IT</span> 需要主機或 IIS 權限
+</div>
+
+<div class="box danger">
+<span class="bt">⛔ 開始之前：正式站三個絕對不能開的開關</span>
+<code>Auth:TestAccounts:Enabled</code>、<code>Auth:EnableEmergencyAdmin</code>、<code>Auth:SimulatedAccount</code>
+在正式站必須是 <code>false</code> / <code>false</code> / 空字串。程式在非 Development 環境會主動偵測並<b>拒絕啟動</b>（見 <a href="#sec-guard">§5.7 啟動守衛</a>）。
+</div>
+
+<!-- ============================================================ -->
+<h2 id="sec-1">1. 這套系統是什麼</h2>
+
+<p>EQ Performance Dashboard 是一個<b>入口／看板聚合平台</b>。它自己不產生報表，而是把散落在廠內各處的效能報表、看板、工具網頁，
+依照每個人的<b>廠區</b>與<b>職務權限</b>整理成一份「他該看到的目錄」，再用統一的介面（內嵌、分頁、全螢幕）打開。</p>
+
+<div class="grid">
+<div class="card"><b>它解決什麼問題</b><ul>
+<li>報表網址四散、沒人記得住</li>
+<li>不同廠區、不同部門該看的東西不同</li>
+<li>誰看過什麼、誰在用哪張看板，沒有紀錄</li>
+</ul></div>
+<div class="card"><b>它提供什麼</b><ul>
+<li>依權限自動生成的多層選單</li>
+<li>個人化版面（自訂順序與捷徑）</li>
+<li>三語介面（繁中／English／日本語）</li>
+<li>操作稽核與使用率統計</li>
+</ul></div>
+</div>
+
+<h3 id="sec-1-1">1.1 五個必懂名詞</h3>
+<table>
+<thead><tr><th>名詞</th><th>在畫面上叫什麼</th><th>意義</th></tr></thead>
+<tbody>
+<tr><td><b>廠區 (Fab)</b></td><td>導覽列最左的「廠區:」下拉</td><td>12A / 12i / 12M 等。切換廠區＝整組選單換一套。每個廠區<b>只能綁定一個權限群組</b>。</td></tr>
+<tr><td><b>權限群組 (Role)</b></td><td>「權限管理」頁</td><td>一組「允許存取的看板清單」。帳號透過群組取得可視範圍，不是逐張看板設定。</td></tr>
+<tr><td><b>看板 (Menu)</b></td><td>側欄／上方導覽的每一個項目</td><td>兩種型態：<b>選單群組</b>（資料夾，可裝子項目）與 <b>獨立看板</b>（一個網址）。</td></tr>
+<tr><td><b>應用集合 (App Grid)</b></td><td>一格一格圖示的頁面</td><td>一種特殊看板，點進去是一堆 APP 磚，適合放常用小工具。</td></tr>
+<tr><td><b>委派管理者</b></td><td>帳號設定 →「啟用委派管理」</td><td>不是 admin，但被指定可以管理「某幾個資料夾底下」的內容。<a href="#sec-8">見 §8</a>。</td></tr>
+</tbody>
+</table>
+
+<h3 id="sec-1-2">1.2 技術架構總覽 <span class="pill p-dev">部署／IT</span></h3>
+<table>
+<thead><tr><th>層</th><th>用什麼</th><th>要知道的重點</th></tr></thead>
+<tbody>
+<tr><td>後端</td><td>ASP.NET Core 9.0 MVC（Kestrel / IIS in-process）</td><td>薄 Controller，業務邏輯全在 <code>Services/</code></td></tr>
+<tr><td>資料庫</td><td>MSSQL <code>EQDashboardV2</code>（EF Core 9 + 原生 ADO.NET）</td><td><b>沒有 EF Migrations</b>；啟動時由 <code>SchemaBootstrap</code> 用冪等 T-SQL 補表／補欄位／補索引</td></tr>
+<tr><td>前端</td><td>純 ES Modules（Vanilla JS）+ Bootstrap 5.3 + jQuery + DataTables</td><td><b>沒有 bundler</b>。唯一入口 <code>wwwroot/js/main.js</code>，其餘 20 支模組由 import 圖帶入</td></tr>
+<tr><td>第三方資源</td><td>全部自 host 於 <code>wwwroot/lib</code></td><td>執行期<b>零外網相依</b>。搬機器請 <code>git clone</code>，手動複製漏掉 <code>lib/</code> 會整個畫面裸奔</td></tr>
+<tr><td>身分驗證</td><td>Windows Negotiate 自動偵測 + Cookie</td><td>登入存續 <code>SessionDays</code> 預設 3650 天（滑動式），實務上等同不過期</td></tr>
+</tbody>
+</table>
+
+<h4>目錄結構</h4>
+<pre><code>EQDashboard.V2.Web/
+├─ Program.cs                 進入點：DI、Middleware、啟動守衛、DB 連線 log
+├─ appsettings.json           開發預設值（連線字串、Auth 設定）
+├─ appsettings.Production.json  正式環境覆寫（最嚴格設定）
+├─ web.config                 IIS 部署設定（環境變數：設定區 A / B / B-2 / C / D）
+├─ Controllers/               路由與 API 端點
+├─ Services/                  核心邏輯（MenuService、AccountService、MenuAuthService…）
+├─ Models/  Data/  Middleware/
+├─ sql/                       增量 schema 腳本（只增不改）
+├─ logs/                      log-*.txt（啟動與運行紀錄，排錯第一站）
+└─ wwwroot/
+   ├─ index.html              唯一 HTML 進入點
+   ├─ partials/modals.html    所有彈出視窗集中定義
+   ├─ lib/                    Bootstrap / FontAwesome / jQuery / DataTables / SheetJS
+   ├─ css/                    variables, navbar, sidebar, components, responsive
+   ├─ images/icons/           圖示實體檔（DB 只存路徑）
+   └─ js/
+      ├─ main.js store.js api.js config.js auth.js
+      ├─ ui/       layout.js navigation.js dialogs.js
+      ├─ render/   sidebar.js tables.js account-ui.js sidebar-item.js
+      └─ admin/    menu-manage.js role-manage.js account-manage.js
+                   fab-manage.js misc-manage.js activity-log.js traffic-stats.js</code></pre>
+
+<h4>資料流</h4>
+<div class="flow">瀏覽器 ──▶ api.js（自動補 CSRF Token / X-Requested-With）
+        ──▶ Controller（只做路由與驗證）
+        ──▶ Service（業務邏輯）
+        ──▶ MSSQL（EF Core 或 ADO.NET）
+        ◀── 寫入後自動清快取 + 換 ETag
+        ◀── 前端 clearAppCache() 清 LocalStorage → 重新 fetchInitialDataFromDB() → 重繪</div>
+
+<h4>資料表（共 20 張）</h4>
+<table>
+<thead><tr><th>類別</th><th>表</th><th>用途</th></tr></thead>
+<tbody>
+<tr><td>實體</td><td><code>Accounts</code> <code>Menus</code> <code>Fabs</code> <code>Roles</code> <code>Apps</code> <code>Requests</code> <code>PersonalSettings</code></td><td>帳號、看板、廠區、權限群組、APP 磚、申請單、個人版面</td></tr>
+<tr><td>結構</td><td><code>Map_Menu_Structure</code></td><td>看板的父子關係（一個子節點可掛在多個父節點下）</td></tr>
+<tr><td>授權</td><td><code>Map_Fab_Role</code> <code>Map_Role_Menu</code> <code>Map_Account_Role</code></td><td>廠區↔群組、群組↔看板、帳號↔群組</td></tr>
+<tr><td>覆寫</td><td><code>Map_Account_ExtraMenu</code> <code>Map_Account_DenyMenu</code> <code>Map_Account_DefaultPage</code> <code>Map_Account_ManageMenu</code></td><td>個別額外開放／個別封鎖／預設首頁／委派管理目錄</td></tr>
+<tr><td>看板 ACL</td><td><code>Map_Menu_AllowAccount</code> <code>Map_Menu_DenyAccount</code></td><td>單張看板的白名單／黑名單</td></tr>
+<tr><td>稽核統計</td><td><code>UserActivityLogs</code> <code>DailyUserVisits</code> <code>DailyMenuClicks</code></td><td>操作紀錄、每日造訪、看板點擊</td></tr>
+</tbody>
+</table>
+
+<div class="warn box"><span class="bt">⚠ 改 DB 結構的鐵則</span>
+只能<b>往下新增</b> <code>sql/</code> 內的增量腳本，禁止修改既有腳本與既有資料；同時更新 <code>DB_Table.md</code> 上方的結構快照與末端 Changelog。</div>
+
+<!-- ============================================================ -->
+<h2 id="sec-2">2. 第一次打開：畫面導覽 <span class="pill p-all">所有人</span></h2>
+
+<p>整站只有一個 HTML 頁面，所有切換都是前端換頁（SPA 級），所以不會有整頁重新載入的白閃。</p>
+
+<h3 id="sec-2-1">2.1 頂部導覽列（左半）</h3>
+<table>
+<thead><tr><th>元件</th><th>作用</th></tr></thead>
+<tbody>
+<tr><td><b>☰ 漢堡鈕</b></td><td>展開／收合左側選單</td></tr>
+<tr><td><b>UMC EQ Dashboard</b></td><td>點一下＝回到你的「登入預設首頁」</td></tr>
+<tr><td><b>麵包屑</b>（衛星圖示右側）</td><td>顯示目前位置。切換語言時會一起翻譯</td></tr>
+<tr><td><b>第二排：模組列</b></td><td>你的最上層看板（root）。點一下切換模組，左側欄跟著換成該模組的子項目</td></tr>
+<tr><td><b>意見箱</b></td><td>直接跳到「需求申請」頁，等同 <a href="#sec-9">§9</a> 的送單入口</td></tr>
+</tbody>
+</table>
+
+<h3 id="sec-2-2">2.2 頂部導覽列（右半工具區）</h3>
+<table>
+<thead><tr><th>按鈕</th><th>作用</th><th>記憶方式</th></tr></thead>
+<tbody>
+<tr><td><b>廠區:</b> 下拉</td><td>切換廠區，整組選單換一套</td><td>依帳號可存取的廠區顯示</td></tr>
+<tr><td><b>系統／自訂</b> 滑塊</td><td>系統版面＝管理員配好的目錄；自訂版面＝你自己排的順序與顯示開關</td><td>存 DB（<code>PersonalSettings</code>）</td></tr>
+<tr><td><b>🌙 主題</b></td><td>深／淺色切換</td><td><code>localStorage</code>；首次造訪跟隨作業系統</td></tr>
+<tr><td><b>🌐 語言</b></td><td>繁體中文 / 日本語 / English</td><td><code>umc_lang_preference</code>。<b>優先於</b>廠區預設語言</td></tr>
+<tr><td><b>📌 圖釘</b></td><td>切換「側欄固定顯示」與「自動隱藏」</td><td>—</td></tr>
+<tr><td><b>🕘 最近瀏覽</b></td><td>側邊滑出最近開過的看板</td><td>—</td></tr>
+<tr><td><b>⚙ 系統設定</b></td><td><b>進入所有管理頁的唯一入口</b>（見 §2.4）</td><td>—</td></tr>
+<tr><td><b>使用者頭像</b></td><td>顯示姓名／部門／累積登入次數／本次登入時間</td><td>—</td></tr>
+</tbody>
+</table>
+
+<h3 id="sec-2-3">2.3 沉浸／全螢幕模式</h3>
+<p>當看板的開啟方式設為「內部嵌入（全螢幕／沉浸模式）」時，導覽列與側欄會自動收起，只剩看板本身。</p>
+<ul>
+<li>把滑鼠移到<b>畫面最上緣</b>→ 導覽列浮現；移到<b>最左緣</b>→ 側欄浮現。</li>
+<li>左上角出現 <span class="kbd">FOCUS</span> 標記，旁邊兩顆鈕：<b>↻</b> 重新載入看板、<b>退出</b> 回到一般模式。</li>
+</ul>
+
+<h3 id="sec-2-4">2.4 系統設定選單有哪些頁（＝權限決定看得到幾項）</h3>
+<p>點右上角 <b>⚙</b> 後，左側欄會換成系統設定清單。你看得到哪幾項完全由角色決定：</p>
+<table>
+<thead><tr><th>頁面</th><th>誰看得到</th><th>做什麼</th><th>本手冊章節</th></tr></thead>
+<tbody>
+<tr><td>個人頁面管理</td><td><span class="pill p-all">所有人</span>（需切到「自訂」版面）</td><td>排自己的選單順序、隱藏不用的項目</td><td><a href="#sec-6-5">§6.5</a></td></tr>
+<tr><td>看板網頁管理</td><td><span class="pill p-deleg">委派管理者</span> <span class="pill p-admin">Admin</span></td><td>新增／編輯一張看板網頁本身</td><td><a href="#sec-6-1">§6.1</a></td></tr>
+<tr><td>選單配置管理</td><td><span class="pill p-deleg">委派管理者</span> <span class="pill p-admin">Admin</span></td><td>組主選單、建資料夾、拖曳排列樹狀結構</td><td><a href="#sec-6-2">§6.2</a></td></tr>
+<tr><td>廠區管理</td><td><span class="pill p-admin">Admin</span></td><td>新增廠區、設定廠區預設語言與綁定群組</td><td><a href="#sec-6-4">§6.4</a></td></tr>
+<tr><td>權限管理</td><td><span class="pill p-admin">Admin</span></td><td>建立權限群組、勾選群組能看哪些看板</td><td><a href="#sec-7-2">§7.2</a></td></tr>
+<tr><td>帳號管理</td><td><span class="pill p-admin">Admin</span> 或 <span class="pill p-deleg">委派管理者</span></td><td>建帳號、指派群組、設預設首頁、做委派</td><td><a href="#sec-7-4">§7.4</a></td></tr>
+<tr><td>申請審核管理</td><td><span class="pill p-admin">Admin</span></td><td>審核與回覆使用者送出的申請單</td><td><a href="#sec-9">§9</a></td></tr>
+<tr><td>需求申請</td><td>非 admin 皆可</td><td>送出權限開通／新增看板／異常回報</td><td><a href="#sec-9">§9</a></td></tr>
+<tr><td>操作紀錄</td><td><span class="pill p-admin">Admin</span></td><td>稽核誰在什麼時候做了什麼</td><td><a href="#sec-10-1">§10.1</a></td></tr>
+<tr><td>流量與使用率</td><td><span class="pill p-admin">Admin</span></td><td>DAU／MAU／部門活躍率／看板點擊率</td><td><a href="#sec-10-2">§10.2</a></td></tr>
+<tr><td>設定檔管理（Excel 匯出入）</td><td><span class="pill p-admin">Admin</span>，<b>目前預設隱藏</b></td><td>整庫 Excel 備份與覆蓋還原</td><td><a href="#sec-11">§11</a></td></tr>
+</tbody>
+</table>
+
+<div class="note box"><span class="bt">ℹ 「設定檔管理」為什麼看不到</span>
+它被程式旗標關掉了：<code>wwwroot/js/render/sidebar.js</code> 第 624 行 <code>const SHOW_DB_SYNC_PAGE = false;</code>。
+要啟用請改成 <code>true</code>。原因與風險見 <a href="#sec-11">§11</a>。</div>
+
+<!-- ============================================================ -->
+<h2 id="sec-3">3. 登入是怎麼運作的 <span class="pill p-all">所有人</span></h2>
+
+<p>系統有三條可能的身分來源，實際用哪一條由設定決定：</p>
+
+<div class="flow">① Windows 自動偵測（Negotiate）  ← 正式站唯一使用的方式
+② 模擬他人帳號（SimulatedAccount）← 測試站專用，全站生效
+③ 手動帳密 + LDAP / 測試帳號      ← 程式支援，但正式環境政策禁用</div>
+
+<h3 id="sec-3-1">3.1 正常情況下你會看到什麼</h3>
+<ol class="steps">
+<li>打開網址 → 出現「正在偵測桌機登入者…」</li>
+<li>偵測成功 → <b>直接進入主畫面</b>，完全不需要輸入帳密</li>
+<li>偵測失敗 → 停在登入框，可按「重試偵測」</li>
+</ol>
+
+<div class="warn box"><span class="bt">⚠ 瀏覽器跳出「輸入網路密碼」對話框怎麼辦</span>
+<p>這不是系統壞掉，是<b>瀏覽器不信任這個站台</b>，所以不肯自動送出 Windows 身分。Negotiate 的 401 挑戰是協定必要步驟，伺服器端無法迴避。</p>
+<ul>
+<li><b>正解（全廠做法）</b>：請 IT 用 GPO 推 Edge/Chrome 原則 <code>AuthServerAllowlist</code>，把站台主機名加進去。這比叫每個人改「網際網路選項」實際得多。</li>
+<li><b>單機臨時解</b>：Edge → 設定 → 隱私權與安全性 → 安全性 → 近端內部網路 → 加入 <code>http://主機名</code>，並勾「自動以目前的使用者名稱及密碼登入」。</li>
+<li><b>先檢查這三件事</b>：① 用的是<b>單一標籤主機名</b>（如 <code>http://p58esiap12</code>，不含點）還是 FQDN／IP？前者本來就會被自動歸類為近端內部網路，仍跳視窗代表 ② 「自動偵測內部網路」被 GPO 關掉，或 ③ 該區域的「登入」被設成提示。</li>
+</ul></div>
+
+<h3 id="sec-3-2">3.2 登入多久會過期</h3>
+<ul>
+<li><code>Auth:SessionDays</code> 預設 <b>3650 天</b> + 滑動式展延 → 實務上<b>不會過期</b>，隔夜或放長假回來都不用重登入。</li>
+<li>遇到 401 時前端會<b>先靜默重新自動登入</b>，成功的話只出現一個右下角提示、留在原頁，不會彈視窗。</li>
+<li><b>唯一會讓所有人一起被登出的動作</b>：刪掉 <code>App_Data/keys</code>（DataProtection 金鑰，Cookie 是用它加密的）。部署或搬機器<b>務必保留該目錄</b>。</li>
+</ul>
+
+<h3 id="sec-3-3">3.3 我登入了卻看到「無權限」</h3>
+<p>代表身分驗證成功、但授權失敗。依序檢查：</p>
+<ol>
+<li>這個工號在「帳號管理」裡建立了嗎？</li>
+<li>它有沒有勾選任何<b>可視群組版面</b>（Role）？沒有 Role＝看不到任何看板。</li>
+<li>它的 Role 有沒有被綁到目前這個廠區？（廠區管理 → 套用的權限群組）</li>
+<li><code>Auth:OpenAccessMode</code> 是否為 <code>false</code>？若為 <code>true</code>，未建檔的人會自動建帳並綁全廠區；若為 <code>false</code>，嚴格限制名單。</li>
+</ol>
+
+<!-- ============================================================ -->
+<h2 id="sec-4">4. 切換自動偵測 ⇄ 模擬他人帳號 <span class="pill p-dev">部署／IT</span></h2>
+
+<p><b>模擬帳號</b>是刻意提供的測試工具：指定一個工號後，<b>這個站台的所有訪客都會被當成那個人</b>，用來驗證「某人看到的畫面與權限到底長什麼樣」。</p>
+
+<div class="danger box"><span class="bt">⛔ 使用前提</span>
+因為是<b>全域生效</b>（所有訪客共用同一個身分），而且每次變更都會作廢<b>所有人</b>的 Cookie，
+所以<b>只能掛在測試站</b>（例如 <code>EQDashboard_TEST</code>）。正式站必須留空。</div>
+
+<h3 id="sec-4-1">4.1 先理解設定優先序</h3>
+<div class="flow">appsettings.json  →  appsettings.{環境}.json  →  環境變數（最高，蓋過前兩者）
+（開發預設值）        （Production 覆寫）          （web.config / App Pool）</div>
+<p><code>appsettings.Production.json</code> 已經把 <code>Auth:SimulatedAccount</code> <b>釘成空字串</b>，
+所以 Production 的預設恆為「不模擬」，切換完全由 <code>web.config</code> 的「設定區 B-2」決定。</p>
+
+<h3 id="sec-4-2">4.2 切成模擬他人帳號</h3>
+<ol class="steps">
+<li>打開站台目錄下的 <code>web.config</code>，找到 <b>「設定區 B-2：模擬他人帳號」</b>。</li>
+<li>把註解拿掉，填入要模擬的工號。<b>兩條都要有</b>：
+<pre><code>&lt;environmentVariable name="Auth__SimulatedAccount"                  value="00058896" /&gt;
+&lt;environmentVariable name="Auth__AllowSimulatedAccountInProduction" value="true" /&gt;</code></pre></li>
+<li><b>存檔即可，不需要 iisreset。</b> ANCM 會監看 <code>web.config</code>，存檔就自動回收 App Pool。</li>
+<li>驗收：打開 <code>logs\log-*.txt</code>，看到這行代表生效 ——
+<pre><code>⚠️ 模擬帳號已啟用：Auth:SimulatedAccount = "00058896"</code></pre></li>
+<li>使用者端不用做任何事：模擬帳號一變更，所有 Cookie 立刻作廢，前端會靜默重新登入，只會看到一個提示。</li>
+</ol>
+
+<h3 id="sec-4-3">4.3 切回 Windows 自動偵測</h3>
+<ol class="steps">
+<li>把 §4.2 那兩條環境變數<b>整段註解掉</b>（或刪除）。</li>
+<li>存檔，一樣自動回收。</li>
+<li>驗收：<code>logs\log-*.txt</code> <b>不再出現</b>「模擬帳號已啟用」那一行＝已回到自動偵測。</li>
+</ol>
+
+<div class="danger box"><span class="bt">⛔ 這裡踩過一個坑，值得記住</span>
+<p>在 <code>appsettings.Production.json</code> 補上 <code>"SimulatedAccount": ""</code> <b>之前</b>，把 B-2 註解掉會讓設定
+<b>往下退回 <code>appsettings.json</code> 的 <code>"00058897"</code></b>，同時放行旗標也退回預設 <code>false</code>
+→ 啟動守衛再次拒絕啟動，畫面是一片空白的 <b>HTTP 500.30</b>。</p>
+<p><b>通則</b>：任何「靠註解掉環境變數來關掉某功能」的操作，都要先確認 <code>appsettings*.json</code> 的底值是安全的，
+否則關掉的瞬間會退回一個你沒預期的值。</p>
+<p><b>現場臨時切回、又不確定環境時</b>：寧可把 <code>Auth__SimulatedAccount</code> 的 <code>value</code> 清成 <code>""</code> 並
+<b>保留旗標 <code>true</code></b>，也不要整段註解掉 —— 萬一空字串沒吃到，站台至少還會啟動、log 一眼看得出來，
+而不是給你一片查不出原因的 500.30。</p></div>
+
+<div class="warn box"><span class="bt">⚠ 三個常見誤判</span>
+<ul>
+<li><b>看到的工號不是你剛填的</b> → 進程沒有真的重啟，不是設定寫錯。</li>
+<li><b>模擬後看到「無權限」畫面</b> → 那是權限判定正常運作。被模擬的工號不在 <code>Accounts</code> 表、也不在 <code>DefaultAdmins</code>、且 <code>OpenAccessMode=false</code> 就會這樣。請先去「帳號管理」把人建起來。</li>
+<li><b>改完仍 500.30</b> → 先看守衛列出哪幾項。<code>Password=test</code> 那項是<b>獨立的</b>（連線字串問題），跟模擬帳號無關，別誤判成「模擬帳號沒關掉」。看不到原因時暫時把 <code>web.config</code> 的 <code>stdoutLogEnabled</code> 改 <code>true</code>。</li>
+</ul></div>
+
+<div class="note box"><span class="bt">ℹ 不要用別的方式切換</span>
+不要為了切回自動偵測去改 <code>appsettings.json</code>（那是 Development 用的值，而且下次 <code>dotnet publish</code> 會蓋回去），
+也不要為了讓模擬帳號通過守衛而把整站降成 <code>Development</code>（那會一併放行測試帳號等所有高風險設定）。</div>
+
+<!-- ============================================================ -->
+<h2 id="sec-5">5. 本機開發：切換成 LDAP／手動帳密登入 <span class="pill p-dev">部署／IT</span></h2>
+
+<div class="danger box"><span class="bt">⛔ 先講結論：這條路只能在本機用</span>
+<p>「手動登入 + LDAP」在程式面完整可用（<code>AuthService.VerifyLdapPasswordAsync</code>、<code>AuthController.Login</code>），
+但<b>企業內網 IIS 政策不允許啟用</b>（2026-08-25 定案）。所以：</p>
+<ul>
+<li><b>可以</b>：在本機 <code>localhost</code> 開發／驗證 LDAP 邏輯。</li>
+<li><b>不可以</b>：把它當成正式站的登入方案，或作為「投影機上換帳號」的解法。</li>
+</ul></div>
+
+<h3 id="sec-5-1">5.1 本機環境長什麼樣</h3>
+<ul>
+<li>啟動設定在 <code>Properties/launchSettings.json</code>：<code>ASPNETCORE_ENVIRONMENT=Development</code>，網址 <code>http://localhost:5242</code>（https 為 <code>https://localhost:7033</code>）。</li>
+<li>Development 環境<b>不會</b>觸發啟動守衛拒絕啟動，只會印警告 → 本機可以自由開測試帳號與 LDAP。</li>
+</ul>
+
+<h3 id="sec-5-2">5.2 開啟 LDAP 登入的步驟</h3>
+<ol class="steps">
+<li>編輯 <code>appsettings.Development.json</code>（這個檔目前只有 Logging 設定，把 <code>Auth</code> 段整段加進去）：
+<pre><code>{
+  "Logging": {
+    "LogLevel": { "Default": "Information", "Microsoft.AspNetCore": "Warning" }
+  },
+  "Auth": {
+    "AllowManualLogin": true,
+    "TestAccounts": { "Enabled": false },
+    "Ldap": {
+      "Enabled": true,
+      "Server": "實際的 AD 伺服器位址",
+      "Port": 389,
+      "UseSsl": false,
+      "BindDomain": "UMC",
+      "SearchBase": "DC=umc,DC=com",
+      "UserPrincipalSuffix": "@umc.com"
+    }
+  }
+}</code></pre></li>
+<li>重新啟動（<code>dotnet run</code> 或 Visual Studio F5）。設定檔是啟動時讀取的。</li>
+<li>驗收：瀏覽器打開 <code>http://localhost:5242/api/Auth/Config</code>，回傳的 JSON 內 <code>allowManualLogin</code> 應為 <code>true</code>。</li>
+<li>測試登入：<code>POST /api/Auth/Login</code>，body 為 <code>{"empId":"工號","password":"密碼"}</code>。</li>
+</ol>
+
+<div class="warn box"><span class="bt">⚠ 目前介面上<b>沒有</b>帳密輸入框</span>
+<p><code>wwwroot/index.html</code> 的登入框只保留了「Windows 自動偵測」那一塊（<code>#pane-windows</code>）。
+<code>auth.js</code> 的 <code>doLogin()</code> 仍在，但它要找的 <code>#empId</code>、<code>#empPwd</code>、<code>#manual-login-error</code>
+三個元素<b>已不存在於 HTML</b>。</p>
+<p>所以把 <code>AllowManualLogin</code> 打開後，<b>畫面上不會自動長出登入表單</b>。要在本機用介面測 LDAP，兩條路：</p>
+<ol>
+<li><b>推薦</b>：直接打 API（如上一步），用 Postman / <code>curl</code> / 瀏覽器 devtools 驗證 LDAP bind 是否成功。</li>
+<li>或自行在 <code>index.html</code> 的 <code>#login-overlay</code> 內補回一段表單，欄位 id 必須是 <code>empId</code> / <code>empPwd</code> / <code>manual-login-error</code>，送出時呼叫 <code>doLogin()</code>。</li>
+</ol></div>
+
+<h3 id="sec-5-3">5.3 驗證優先序（後端 <code>Login</code> 端點的實際順序）</h3>
+<ol>
+<li><code>AllowManualLogin=false</code> → 直接擋掉，回 <code>err_manual_login_disabled</code>。</li>
+<li><b>TestAccounts 白名單</b>：工號＋密碼比對成功 → 來源標記 <code>test</code>。</li>
+<li><b>EnableEmergencyAdmin</b>：工號為 <code>admin</code> 且旗標開啟 → <b>不檢查密碼</b>直接放行（純救援通道，極危險）。</li>
+<li><b>LDAP bind</b>：以上都不符 → 連 AD 驗證。密碼錯誤（LDAP error 49）回 <code>err_auth_failed</code>。</li>
+</ol>
+<p>另外：<code>POST /api/Auth/Login</code> 有速率限制，<b>每個 IP 每 60 秒最多 10 次</b>，用來擋暴力破解。</p>
+
+<h3 id="sec-5-4">5.4 相關旗標一覽</h3>
+<table>
+<thead><tr><th>設定鍵</th><th>環境變數寫法</th><th>預設</th><th>意義</th></tr></thead>
+<tbody>
+<tr><td><code>Auth:AllowManualLogin</code></td><td><code>Auth__AllowManualLogin</code></td><td>false</td><td>是否允許手動帳密登入入口</td></tr>
+<tr><td><code>Auth:Ldap:Enabled</code></td><td><code>Auth__Ldap__Enabled</code></td><td>false</td><td>手動登入時是否走 LDAP 驗證</td></tr>
+<tr><td><code>Auth:Ldap:Server</code></td><td><code>Auth__Ldap__Server</code></td><td>placeholder</td><td>AD 伺服器位址。<b>啟用 LDAP 時不可是 placeholder</b>，否則守衛擋啟動</td></tr>
+<tr><td><code>Auth:TestAccounts:Enabled</code></td><td><code>Auth__TestAccounts__Enabled</code></td><td>正式站 false</td><td>白名單測試帳號可否登入</td></tr>
+<tr><td><code>Auth:EnableEmergencyAdmin</code></td><td><code>Auth__EnableEmergencyAdmin</code></td><td>false</td><td>admin 免密碼救援通道</td></tr>
+<tr><td><code>Auth:OpenAccessMode</code></td><td><code>Auth__OpenAccessMode</code></td><td>true</td><td>true＝未建檔者自動建帳並綁全廠區；false＝嚴格名單制</td></tr>
+<tr><td><code>Auth:DefaultAdmins</code></td><td>—</td><td>陣列</td><td>名單內的工號自動建帳並升為 admin，防止系統被鎖死</td></tr>
+<tr><td><code>Auth:WindowsDomainStripPrefix</code></td><td><code>Auth__WindowsDomainStripPrefix</code></td><td>UMC</td><td>從 <code>UMC\41856</code> 剝掉網域前綴取得工號</td></tr>
+<tr><td><code>Auth:SessionDays</code></td><td><code>Auth__SessionDays</code></td><td>3650</td><td>登入存續天數（滑動式）</td></tr>
+</tbody>
+</table>
+
+<h3 id="sec-guard">5.5 啟動守衛：非 Development 環境會擋哪些設定</h3>
+<p>在 Production（或任何非 Development）環境，<code>Program.cs</code> 啟動時會逐項檢查，<b>命中任一項就拒絕啟動</b>：</p>
+<table>
+<thead><tr><th>#</th><th>檢查項目</th><th>可否放行</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>Auth:TestAccounts:Enabled = true</code></td><td>❌ 無法放行</td></tr>
+<tr><td>2</td><td><code>Auth:EnableEmergencyAdmin = true</code></td><td>❌ 無法放行</td></tr>
+<tr><td>3</td><td><code>Auth:SimulatedAccount</code> 非空</td><td>✅ 設 <code>Auth:AllowSimulatedAccountInProduction=true</code> 顯式放行（只放行這一項）</td></tr>
+<tr><td>4</td><td><code>Auth:Ldap:Enabled=true</code> 但 Server 是 placeholder</td><td>❌ 請填實際位址</td></tr>
+<tr><td>5</td><td>連線字串含 <code>Password=test</code> / <code>Password=password</code></td><td>❌ 請改用環境變數注入</td></tr>
+</tbody>
+</table>
+<div class="note box"><span class="bt">ℹ 被擋住時你會看到什麼</span>
+瀏覽器只會拿到一片空白的 <b>HTTP 500.30</b>（因為 <code>web.config</code> 預設 <code>stdoutLogEnabled="false"</code>）。
+完整清單會寫進 <b>Windows 事件檢視器</b>，也會寫進 <code>logs\log-*.txt</code>：
+<code>🚨 拒絕啟動：偵測到 N 項不適合 Production 的設定值</code>。</div>
+
+<!-- ============================================================ -->
+<h2 id="sec-6">6. 調整網頁內容：看板、選單、廠區、個人版面</h2>
+
+<div class="note box"><span class="bt">ℹ 先分清楚兩個管理頁的差別（最容易搞混的地方）</span>
+<ul>
+<li><b>看板網頁管理</b>＝管理「一張網頁本身」：它叫什麼、網址是什麼、怎麼開。<b>像是建立素材。</b></li>
+<li><b>選單配置管理</b>＝管理「這些網頁怎麼組成目錄樹」：哪些放在哪個資料夾、順序如何。<b>像是排版。</b></li>
+</ul>
+兩者都在同一張 <code>Menus</code> 表，只是切入角度不同。</div>
+
+<h3 id="sec-6-1">6.1 看板網頁管理：新增一張看板 <span class="pill p-deleg">委派管理者</span> <span class="pill p-admin">Admin</span></h3>
+<ol class="steps">
+<li><b>⚙ 系統設定 → 看板網頁管理 → 右上「新增網頁」</b></li>
+<li>選<b>看板類型</b>：
+  <ul>
+    <li><b>網頁連結</b>：最常用。指向一個 URL。</li>
+    <li><b>應用集合</b>：點進去是一頁圖示磚（APP Grid），內容另外在該頁面內維護（見 §6.3）。</li>
+  </ul></li>
+<li>填<b>系統名稱</b>（內部識別用，建議英數）與<b>前台顯示名稱</b>（使用者看到的字）。</li>
+<li>選<b>圖示</b>：可挑內建 FontAwesome 圖示，或上傳自訂圖檔。</li>
+<li>填<b>網址／路由</b>：可以是完整 URL，也可以是站內 page-id。</li>
+<li>選<b>開啟方式</b>（五選一，見下表）。</li>
+<li><span class="pill p-admin">Admin</span> 需要的話展開<b>存取控制</b>設白／黑名單（見 <a href="#sec-7-5">§7.5</a>）。</li>
+<li>按<b>儲存</b>。新增的項目會被<b>暫時置頂</b>在表格第一頁最上方，方便你確認 —— 這只是本次瀏覽的暫時排序，重整就回歸正常順序。</li>
+</ol>
+
+<h4>開啟方式五種怎麼選</h4>
+<table>
+<thead><tr><th>選項</th><th>行為</th><th>什麼時候用</th></tr></thead>
+<tbody>
+<tr><td><b>內部嵌入 (Iframe)</b></td><td>在本站畫面內嵌入，保留導覽列與側欄</td><td>預設選擇，體驗最連貫</td></tr>
+<tr><td><b>內部嵌入（全螢幕／沉浸模式）</b></td><td>嵌入但隱藏導覽列與側欄，滑到邊緣才浮現</td><td>大型看板、監控牆</td></tr>
+<tr><td><b>新分頁 (Blank)</b></td><td>開新分頁</td><td>目標網站<b>禁止被嵌入</b>時</td></tr>
+<tr><td><b>新視窗開啟（全螢幕）</b></td><td>開一個全螢幕新視窗</td><td>投影／展示</td></tr>
+<tr><td><b>新視窗開啟（彈出小視窗）</b></td><td>開一個小的彈出視窗</td><td>輔助工具、查詢小頁</td></tr>
+</tbody>
+</table>
+
+<div class="warn box"><span class="bt">⚠ 嵌入後畫面一片空白 / 顯示「未識別」/ 表格抓不到資料</span>
+<p>這是最常被誤判成「後端壞掉」的問題。<b>判斷方法：把同一個網址單獨開一個分頁</b>。</p>
+<ul>
+<li><b>另開分頁正常、嵌在裡面壞掉</b> → 幾乎都是 iframe 隔離造成的，不是後端也不是 DB。</li>
+<li><b>目標網站設了 X-Frame-Options / CSP frame-ancestors</b> → 它本來就拒絕被嵌入。<b>解法：把開啟方式改成「新分頁」或「新視窗開啟」。</b></li>
+<li><b>儀表板與看板不在同一台主機</b> → 看板的 session cookie 在 iframe 內屬第三方 cookie，<code>SameSite=Lax</code> 送不出去，後端 API 會全部 401、表格空白。<b>解法：靠 cookie session 的看板請與本系統部署在同一 host；走 Windows 整合驗證的不受影響。</b></li>
+</ul>
+<p>另外，開發人員請注意：<code>#main-iframe</code> 的 <code>sandbox</code> 屬性<b>永遠</b>要含 <code>allow-same-origin</code>，
+拿掉它會讓被嵌入頁面被丟進 opaque origin（Windows 驗證帶不出身分、cookie 送不出去、storage 直接丟錯）。
+Console 那句 <code>allow-scripts + allow-same-origin ... can escape its sandboxing</code> 警告是<b>預期且無害</b>的。</p></div>
+
+<h3 id="sec-6-2">6.2 選單配置管理：組出目錄樹 <span class="pill p-deleg">委派管理者</span> <span class="pill p-admin">Admin</span></h3>
+
+<h4>新增一個主選單</h4>
+<ol class="steps">
+<li><b>⚙ 系統設定 → 選單配置管理 → 右上「新增主選單配置」</b></li>
+<li>選<b>選單類型</b>：
+  <ul>
+    <li><b>選單群組</b>（資料夾）：可以裝多個子看板，會在下方展開樹狀編輯器。</li>
+    <li><b>獨立看板</b>：單一網址，會顯示「連結網址」與「開啟方式」欄位。</li>
+  </ul></li>
+<li>填<b>系統名稱</b>與<b>前台顯示名稱</b>。</li>
+<li>若是<b>選單群組</b>，在「底下包含的看板與群組配置」區塊用兩顆按鈕組內容：
+  <ul>
+    <li><b>加入現有看板</b>：把 §6.1 建好的網頁掛進來。</li>
+    <li><b>建立子群組</b>：在資料夾裡再開一層資料夾。</li>
+  </ul>
+  <b>拖曳左側的把手圖示可以重新排序</b>，也可以拖進／拖出子資料夾。</li>
+<li>按<b>儲存選單結構</b>。</li>
+</ol>
+
+<h4>調整既有結構</h4>
+<ul>
+<li>清單每一列的<b>編輯</b>圖示 → 開啟同一個編輯器，可改名稱、改結構。</li>
+<li>清單的<b>啟用／停用開關</b> → 停用後該看板對所有人隱藏，但資料保留（不是刪除）。</li>
+<li>直接<b>在表格列上拖曳</b>可調整同層順序。</li>
+</ul>
+
+<div class="tip box"><span class="bt">✔ 排序的事實來源</span>
+系統目錄的順序事實來源是<b>「權限管理」與「選單配置管理」的拖曳結果</b>；
+每個人在「個人頁面管理」的拖曳只影響他自己，不會動到全域順序。</div>
+
+<div class="warn box"><span class="bt">⚠ 儲存失敗、卻只出現一句「儲存失敗」</span>
+批次存檔的後端規則是「<b>任一筆不合格就整批拒絕</b>」。如果送出的內容裡混進了一列你沒有權限編輯的節點，
+你<b>所有合法的變更都會一起失敗</b>。委派管理者遇到這情況時，系統會先幫你濾掉無權編輯的既有節點並跳提示；
+若仍失敗，請確認你動到的是不是自己管轄範圍外的項目。</div>
+
+<h3 id="sec-6-3">6.3 應用集合（App Grid）：管理圖示磚 <span class="pill p-deleg">委派管理者</span> <span class="pill p-admin">Admin</span></h3>
+<ol class="steps">
+<li>先在 §6.1 建立一張類型為<b>「應用集合」</b>的看板。</li>
+<li>從選單點進那張看板，會看到磚牆版面。</li>
+<li>有管理權限時，畫面上會出現新增／編輯／刪除圖示（沒有權限的人<b>完全看不到這些圖示</b>）。</li>
+<li>新增 APP 時填：<b>APP 名稱</b>、<b>連結網址</b>、<b>開啟方式</b>（同 §6.1 五種）、<b>APP 圖示</b>（可上傳圖檔，會自動壓縮）。</li>
+</ol>
+
+<h3 id="sec-6-4">6.4 廠區管理 <span class="pill p-admin">Admin</span></h3>
+<ol class="steps">
+<li><b>⚙ 系統設定 → 廠區管理 → 右上「新增廠區」</b></li>
+<li>填欄位：
+<table>
+<thead><tr><th>欄位</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><b>廠區 ID</b></td><td>內部識別碼，例如 <code>12A</code>。建立後不建議更改。</td></tr>
+<tr><td><b>顯示名稱</b></td><td>導覽列下拉裡看到的字。</td></tr>
+<tr><td><b>預設語言</b></td><td>繁中／English／日本語。<b>只在使用者「還沒自己選過語言」時才套用</b>；使用者一旦手動切換過，個人偏好永遠優先。</td></tr>
+<tr><td><b>套用權限群組</b></td><td><b>單選 —— 一個廠區只能綁一個群組。</b>這決定了「在這個廠區底下，這組人看得到哪些看板」。</td></tr>
+</tbody>
+</table></li>
+<li>儲存。</li>
+</ol>
+
+<h3 id="sec-6-5">6.5 個人頁面管理：每個人自己的版面 <span class="pill p-all">所有人</span></h3>
+<p>這裡的設定<b>完全只對你自己的帳號生效</b>，不會影響任何其他人。</p>
+<ol class="steps">
+<li>把導覽列的<b>系統／自訂</b>滑塊切到 <b>自訂</b>。</li>
+<li><b>⚙ 系統設定 → 個人頁面管理</b>。</li>
+<li><b>顯示開關</b>：切換後<b>立即</b>同步到左側選單（不需存檔）。</li>
+<li><b>拖曳排序</b>：按住清單列上下拖曳。調整後右上會出現黃色的<b>「儲存變更」</b>鈕與待存筆數。</li>
+<li>按<b>儲存變更</b>才會真正寫入 DB 並更新上方導覽列；按<b>放棄</b>則丟棄這次拖曳。</li>
+<li>想重來 → <b>還原預設版面</b>，回到管理員配置的原始樣子。</li>
+<li>單列的<b>編輯</b>可以設定該項目的<b>個人化圖示</b>與<b>開啟偏好</b>（覆寫管理員設定的開啟方式）。</li>
+</ol>
+
+<!-- ============================================================ -->
+<h2 id="sec-7">7. 權限控制（核心章節）</h2>
+
+<h3 id="sec-7-1">7.1 權限模型：一張圖看懂</h3>
+<p>「某個人能看到哪些看板」是由<b>三層</b>疊出來的，不是單一設定：</p>
+
+<div class="flow">第 1 層　群組給的範圍
+        帳號 ──▶ 可視群組版面(Role) ──▶ 該 Role 允許的看板清單
+                                     （Map_Account_Role → Map_Role_Menu）
+
+第 2 層　帳號個別覆寫（綁定廠區）
+        ＋ 額外開放看板   (Map_Account_ExtraMenu)
+        －  個別封鎖看板   (Map_Account_DenyMenu)
+
+第 3 層　看板自己的門禁（ACL，Admin 專用）
+        ＋ 白名單放行     (Map_Menu_AllowAccount)   ← 強制加回，蓋過第 2 層的封鎖
+        －  黑名單封鎖     (Map_Menu_DenyAccount)   ← 最終否決，誰都救不回來
+
+最後　沿著父子結構向下展開：父節點看得到 → 子節點自動繼承（遇到 ACL 封鎖就停住不展開）</div>
+
+<h4>兩個一定要知道的特例</h4>
+<ul>
+<li><b>admin 一律全部可見</b>，完全不套用上面的計算。</li>
+<li><code>Auth:OpenAccessMode = true</code> 時<b>所有人都全部可見</b>。想讓權限真的生效，這個旗標必須是 <code>false</code>。</li>
+</ul>
+
+<h4>「可存取的廠區」怎麼算</h4>
+<p>＝ 這個帳號的 Role 集合 ∩ 各廠區綁定的 Role。有交集的廠區才會出現在廠區下拉裡。</p>
+
+<div class="note box"><span class="bt">ℹ 額外開放／個別封鎖是「綁廠區」的</span>
+這兩項在設定時<b>必須先選廠區</b>，代表「這個人<b>在這個廠區</b>額外開放／封鎖哪些看板」。<br>
+後端在決定「資料要不要送給前端」時採<b>寬鬆策略</b>：只要在<b>任一個</b>可存取廠區被開放，資料就會送；
+只有當該看板在<b>所有</b>可存取廠區都被封鎖，才會整個消失。實際顯示則由前端依當前廠區再收斂一次。</div>
+
+<h3 id="sec-7-2">7.2 權限管理：建立權限群組 <span class="pill p-admin">Admin</span></h3>
+<ol class="steps">
+<li><b>⚙ 系統設定 → 權限管理 → 右上「新增群組」</b></li>
+<li>填<b>群組名稱</b>（例如「12A 工程師」「MSD 主管」）。</li>
+<li>在<b>「允許存取的選單」</b>勾選這個群組能看到的看板。<b>可以拖曳排序</b> —— 這個順序就是使用者側欄的顯示順序。</li>
+<li>儲存。</li>
+</ol>
+<div class="tip box"><span class="bt">✔ 設計建議</span>
+勾<b>資料夾</b>就等於勾了整個子樹（子節點會自動繼承），不需要逐一勾每張看板。
+只有要「開放資料夾但排除其中某一張」時，才需要用 §7.4 的個別封鎖或 §7.5 的黑名單。</div>
+
+<h3 id="sec-7-3">7.3 把群組綁到廠區 <span class="pill p-admin">Admin</span></h3>
+<p>建好群組後<b>必須綁到廠區</b>，否則沒有任何人會在畫面上看到效果。</p>
+<ol class="steps">
+<li><b>⚙ 系統設定 → 廠區管理 → 編輯目標廠區</b></li>
+<li>在<b>「套用權限群組」</b>選一個群組（<b>單選</b>）。</li>
+<li>儲存。</li>
+</ol>
+
+<h3 id="sec-7-4">7.4 帳號管理：把權限給人 <span class="pill p-admin">Admin</span> <span class="pill p-deleg">委派管理者</span></h3>
+<p><b>⚙ 系統設定 → 帳號管理</b>。這是全站唯一的伺服器端分頁表格（為了因應十萬級帳號量），搜尋與翻頁都是即時打 API。</p>
+
+<h4>帳號設定視窗逐欄說明</h4>
+<table>
+<thead><tr><th>欄位</th><th>誰能改</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><b>工號</b> *</td><td>新增時填</td><td>唯一識別，對應 Windows 登入帳號</td></tr>
+<tr><td><b>姓名</b> *</td><td>Admin / 委派</td><td>顯示用</td></tr>
+<tr><td><b>部門</b></td><td>Admin / 委派</td><td>「流量與使用率 → 各部門活躍比率」會依這欄分組</td></tr>
+<tr><td><b>管理層級</b></td><td><span class="pill p-admin">僅 Admin</span></td><td><code>User</code>（無全域設定權限）或 <code>Admin</code>（最高權限）</td></tr>
+<tr><td><b>各廠區登入預設首頁</b></td><td>Admin / 委派</td><td>每個廠區各指定一個落點。未設定時系統自動抓第一個可開啟的看板</td></tr>
+<tr><td><b>啟用委派管理</b></td><td><span class="pill p-admin">僅 Admin</span> 授出上限受限</td><td>User 專屬。開啟後展開下方兩項，見 <a href="#sec-8">§8</a></td></tr>
+<tr><td>└ <b>允許變更他人內容</b></td><td>同上</td><td>未勾＝只能編輯自己建立的看板</td></tr>
+<tr><td>└ <b>管理目錄</b></td><td>同上</td><td>勾選這個人可以管理哪些資料夾（含整個子樹）</td></tr>
+<tr><td><b>可視群組版面</b></td><td>Admin / 委派（受上限）</td><td>指派 Role。<b>這是最主要的權限來源</b></td></tr>
+<tr><td colspan="3"><b>進階個別權限調整</b>（折疊區，需先展開）</td></tr>
+<tr><td>└ <b>廠區選擇器</b></td><td>—</td><td>下面兩項綁定的廠區，<b>要先選</b></td></tr>
+<tr><td>└ <b>額外開放看板</b></td><td>Admin / 委派（受上限）</td><td>在 Role 之外<b>加上</b>這些</td></tr>
+<tr><td>└ <b>個別封鎖看板</b></td><td>同上</td><td>從 Role 給的範圍<b>扣掉</b>這些</td></tr>
+<tr><td>└ <b>實際可見預覽</b></td><td>—</td><td><b>即時計算</b>結果。存檔前先看這裡確認</td></tr>
+</tbody>
+</table>
+
+<div class="tip box"><span class="bt">✔ 存檔前一定要看「實際可見的看板預覽」</span>
+它會把三層規則算完的結果直接列出來。與其存完再叫使用者回報「我看不到 X」，不如在這裡先確認。</div>
+
+<div class="danger box"><span class="bt">⛔ 設定「登入預設首頁」時的陷阱</span>
+<p>本站有不少「群組佔位節點」—— 它們是<b>獨立看板類型但網址是空的</b>，純粹用來當目錄分類。
+如果把這種節點設成某人的預設首頁，那個人<b>每次登入都會停在「XXX 內容建置中」</b>的空白頁。</p>
+<p>更麻煩的是連鎖污染：死頁一樣會記錄一次點擊，實測曾讓某張看板的「點擊率」累積到 397 次的假數據。
+<b>看到某個看板點擊數異常高，先確認它是不是誰的預設首頁。</b></p>
+<p>挑選器已經會過濾掉打不開的節點，但<b>請確認你選的落點真的能開</b>（是資料夾、或有網址、或是應用集合）。</p></div>
+
+<h3 id="sec-7-5">7.5 單張看板的白名單／黑名單 <span class="pill p-admin">Admin</span></h3>
+<p>在<b>看板網頁管理</b>或<b>選單配置管理</b>的編輯視窗裡，展開 <b>「存取控制（白名單／黑名單）」</b>（僅 admin 看得到這一段）。</p>
+<table>
+<thead><tr><th>欄位</th><th>行為</th></tr></thead>
+<tbody>
+<tr><td><b>白名單</b></td><td>一旦填了任何工號，<b>只有名單上的人</b>看得到這張看板，其他人一律擋掉（即使 Role 有給）。<b>白名單放行會蓋過帳號層級的個別封鎖。</b></td></tr>
+<tr><td><b>黑名單</b></td><td>名單上的人一律看不到，優先級最高，Role 與額外開放都救不回來。</td></tr>
+</tbody>
+</table>
+<ul>
+<li><b>格式</b>：每行填一個工號，留空＝不卡控。</li>
+<li><b>對資料夾設定時，整個子樹一起卡控</b>（被擋的人連底下的子看板都看不到，也不會向下展開）。</li>
+</ul>
+
+<h3 id="sec-7-6">7.6 排錯 SOP：「某人看不到某張看板」</h3>
+<p>依序檢查，八成在前三步就找到：</p>
+<ol class="steps">
+<li><b>這張看板是不是被「停用」了？</b>（選單配置管理的開關）→ 停用對所有人隱藏。</li>
+<li><b>他現在站在哪個廠區？</b> 權限是分廠區的。請他先切到正確廠區再看。</li>
+<li><b>他的 Role 有沒有包含這張看板？</b>（權限管理 → 該 Role 的允許清單）</li>
+<li><b>那個 Role 有沒有綁到他所在的廠區？</b>（廠區管理 → 套用的權限群組）</li>
+<li><b>帳號層級有沒有把它個別封鎖？</b>（帳號管理 → 進階個別權限調整 → 個別封鎖，記得先選對廠區）</li>
+<li><b>看板本身有沒有白名單？</b> 有白名單但他不在名單上＝視同封鎖。</li>
+<li><b>看板本身有沒有黑名單？</b> 在黑名單上＝最終否決。</li>
+<li>都沒問題 → 打開帳號設定的<b>「實際可見的看板預覽」</b>對答案；再不行請他<b>登出重整</b>（權限異動後快取會換 ETag，通常會自動更新）。</li>
+</ol>
+
+<!-- ============================================================ -->
+<h2 id="sec-8">8. 怎麼指派委派管理者 <span class="pill p-admin">Admin</span></h2>
+
+<h3 id="sec-8-1">8.1 委派管理者是什麼</h3>
+<p>「委派管理者」＝ <b>管理層級仍是 User</b>，但被授權可以管理<b>某幾個資料夾底下</b>的看板內容。
+典型情境：把「12A 的看板目錄」交給 12A 的窗口自己維護，不必給他 admin。</p>
+
+<div class="flow">Admin              可以管全部，包含帳號層級、Role、廠區、ACL
+   │
+   └─ 委派管理者     只能管「被指定的資料夾 + 其子樹」的看板內容
+        │            另外可進入帳號管理（但受主從關係限制，見 §8.3）
+        └─ 一般 User  只能看，不能管理</div>
+
+<h3 id="sec-8-2">8.2 指派步驟</h3>
+<ol class="steps">
+<li><b>⚙ 系統設定 → 帳號管理</b>，找到目標帳號並按<b>編輯</b>。</li>
+<li>確認<b>管理層級 = User</b>（委派是 User 專屬功能；選 Admin 的話這一段會隱藏）。</li>
+<li>打開<b>「啟用委派管理」</b>開關 → 下方展開細項。</li>
+<li>決定要不要勾<b>「允許變更他人內容」</b>：
+  <ul>
+    <li><b>不勾</b>：他只能編輯<b>自己建立</b>的看板。適合「讓他自己加東西，但不要動別人的」。</li>
+    <li><b>勾選</b>：他可以編輯管轄範圍內<b>任何人</b>建立的看板。這也是「委派整個資料夾子樹」生效的必要條件。</li>
+  </ul></li>
+<li>在<b>「管理目錄」</b>清單勾選他能管理的資料夾。<b>勾一個資料夾＝連同底下整個子樹一起委派。</b></li>
+<li>儲存。他下次進入系統，側欄就會出現「看板網頁管理」與「選單配置管理」。</li>
+</ol>
+
+<h3 id="sec-8-3">8.3 委派者的權限邊界（重要）</h3>
+
+<h4>一個看板可以被他寫入的四個條件（滿足其一即可）</h4>
+<ol>
+<li>他是 admin（不適用於委派者）</li>
+<li>這張看板<b>是他自己建的</b>（不需要「允許變更他人內容」）</li>
+<li>這張看板<b>本身就在他的管理目錄清單裡</b>（直接委派）</li>
+<li>這張看板的<b>任一祖先</b>在管理目錄清單裡，<b>且</b>他有「允許變更他人內容」</li>
+</ol>
+
+<h4>主從關係：委派者不能授出他自己沒有的東西</h4>
+<div class="card">
+<p>當委派管理者去編輯<b>別人的帳號</b>時，系統會強制套用兩個方向的限制：</p>
+<ul>
+<li><b>① 不可授出自己沒有的</b>：只被委派 A 廠區的人，把別人升成委派管理者時，最多也只能授到 A 廠區。
+  <ul><li>Role 的上界＝他自己擁有的 Role</li><li>看板的上界＝他自己能管理的範圍</li></ul></li>
+<li><b>② 不可拔掉自己範圍外的既有授權</b>：帳號存檔是「先刪後寫」全量覆寫。
+如果只擋①，委派者送出一份「看不到 role_3」的表單就會把 admin 給的 role_3 <b>靜默刪掉</b>（降權攻擊）。
+所以範圍外的既有設定會被<b>原封保留</b>。</li>
+</ul>
+</div>
+
+<h4>委派者絕對不能做的事（Admin only）</h4>
+<ul>
+<li>更改任何人的<b>管理層級</b>與<b>允許變更他人內容</b> —— 提交值會被<b>忽略並寫回 DB 現值</b>（不會報錯，表單本來就不該送這兩欄）。</li>
+<li><b>新增／刪除</b>帳號。</li>
+<li>編輯任何 <b>admin 帳號</b>。</li>
+<li><b>匯出</b>帳號清單。</li>
+<li>設定看板的<b>白名單／黑名單</b>（整段 ACL 區塊對非 admin 隱藏）。</li>
+<li>廠區管理、權限管理、操作紀錄、流量統計、申請審核。</li>
+</ul>
+
+<div class="note box"><span class="bt">ℹ 挑選器上「灰掉但看得到」的選項是刻意的</span>
+在帳號設定裡，超出委派者範圍、但<b>目標帳號已經擁有</b>的項目會以<b>鎖定（disabled）</b>呈現，而不是隱藏起來。
+這樣委派者才知道「這個人還有這些權限，只是我不能動」，不會誤以為那些權限不存在。<br>
+另外請注意：前端挑選器<b>不是安全邊界</b>，真正的把關在後端 —— 就算繞過畫面直接打 API 也一樣擋得住。</div>
+
+<h3 id="sec-8-4">8.4 只被委派「子資料夾」的人怎麼進去管？</h3>
+<p>如果某人只被委派了深層的某個子資料夾，他在「選單配置管理」的列表上<b>只會看到最上層那一列祖先</b>，
+而那一列他是沒有編輯權的。這時該列會出現一個明確標示為<b>「管理子項目」</b>的入口 —— 從那裡進去就能編輯自己被委派的子樹。</p>
+<p>（這個入口刻意<b>不叫「編輯」</b>，避免誤導成可以修改該列本身。）</p>
+
+<h3 id="sec-8-5">8.5 常見誤解</h3>
+<table>
+<thead><tr><th>誤解</th><th>實際情況</th></tr></thead>
+<tbody>
+<tr><td>「委派管理者＝小一號的 admin」</td><td>❌ 他<b>只能管內容</b>，碰不到 Role、廠區、ACL、稽核。</td></tr>
+<tr><td>「勾了管理目錄他就什麼都能改」</td><td>❌ 若沒勾「允許變更他人內容」，他只能改<b>自己建的</b>。</td></tr>
+<tr><td>「委派者看得到帳號管理，就能改所有人」</td><td>❌ 受主從關係限制，且完全碰不到 admin 帳號與管理層級欄位。</td></tr>
+<tr><td>「畫面上沒有按鈕就代表安全」</td><td>❌ 畫面只是體驗；後端有獨立的授權判定，兩邊都有做。</td></tr>
+</tbody>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="sec-9">9. 需求申請與審核</h2>
+
+<h3 id="sec-9-1">9.1 送出申請 <span class="pill p-all">所有人（非 admin）</span></h3>
+<ol class="steps">
+<li>點導覽列的<b>意見箱</b>，或 <b>⚙ 系統設定 → 需求申請 → 新增申請</b>。</li>
+<li>選<b>申請類別</b>：權限開通／新增看板／系統異常／其他建議。</li>
+<li>選<b>指定廠區</b>（或「全域」）。</li>
+<li>填<b>申請原因與需求細節</b>，越具體越快處理。</li>
+<li>送出後可在同一頁看到處理狀態與管理員回覆。</li>
+</ol>
+
+<h3 id="sec-9-2">9.2 審核與回覆 <span class="pill p-admin">Admin</span></h3>
+<ol class="steps">
+<li><b>⚙ 系統設定 → 申請審核管理</b>。</li>
+<li>點該筆的<b>回覆</b>，視窗上半部是唯讀的申請內容。</li>
+<li>更改<b>處理狀態</b>並填<b>回覆意見／處理進度</b>。</li>
+<li>儲存。申請人在自己的「需求申請」頁就會看到。</li>
+</ol>
+
+<h3 id="sec-9-3">9.3 狀態機規則（前後端一致，直接打 API 也擋得住）</h3>
+<table>
+<thead><tr><th>目前狀態</th><th>申請人可做</th></tr></thead>
+<tbody>
+<tr><td><b>待審核 pending</b></td><td>可<b>撤回</b>（需填撤回原因）</td></tr>
+<tr><td><b>已撤回 withdrawn</b></td><td>可<b>刪除</b>、可<b>重新送出</b></td></tr>
+<tr><td><b>已駁回 rejected</b></td><td>可<b>重新送出</b></td></tr>
+<tr><td><b>處理中 processing</b></td><td>🔒 鎖定，不可異動</td></tr>
+<tr><td><b>已完成 resolved</b></td><td>🔒 鎖定，不可異動</td></tr>
+</tbody>
+</table>
+<p>違反規則會回 <b>409</b> 並顯示原因。重新送出時會<b>同時清掉舊的回覆與撤回原因</b>，不會出現「待審核徽章 + 上一輪回覆」的矛盾畫面。</p>
+
+<!-- ============================================================ -->
+<h2 id="sec-10">10. 稽核與使用率 <span class="pill p-admin">Admin</span></h2>
+
+<h3 id="sec-10-1">10.1 操作紀錄</h3>
+<p><b>⚙ 系統設定 → 操作紀錄</b>。記錄誰在什麼時候、從哪個 IP、對哪個目標做了什麼。</p>
+<ul>
+<li>上方有篩選條件，右上有 <b>重新整理</b> 與 <b>清除 90 天前</b>。</li>
+<li>寫入是<b>非同步</b>的（背景批次），所以不會拖慢使用者的操作；剛做完的動作可能要按一下重新整理才看得到。</li>
+<li><b>清除動作本身也會被記錄</b>（寫在清除之後，才不會把自己清掉）。</li>
+</ul>
+
+<h3 id="sec-10-2">10.2 流量與使用率</h3>
+<p><b>⚙ 系統設定 → 流量與使用率</b>。右上可切換統計範圍：最近 7 / 30 / 60 / 90 天。</p>
+<h4>四張 KPI 卡</h4>
+<table>
+<thead><tr><th>指標</th><th>意義</th></tr></thead>
+<tbody>
+<tr><td><b>今日活躍人數 (DAU)</b></td><td>今天有登入的<b>不重複人數</b></td></tr>
+<tr><td><b>本月活躍人數 (MAU)</b></td><td>本月有登入的不重複人數</td></tr>
+<tr><td><b>全站帳號總數</b></td><td>已開通的帳號數</td></tr>
+<tr><td><b>近期平均活躍率</b></td><td>DAU ÷ 總人數的近期平均</td></tr>
+</tbody>
+</table>
+<h4>五個分頁</h4>
+<ol>
+<li><b>每日趨勢</b> — 每日 DAU、總造訪人次與趨勢圖</li>
+<li><b>月份統計</b> — 近 12 個月</li>
+<li><b>各部門活躍比率</b> — 依帳號的「部門」欄分組，所以<b>部門欄沒填，統計就不準</b></li>
+<li><b>每日造訪明細</b> — 逐筆</li>
+<li><b>看板點擊率</b> — 哪些看板真的有人在用</li>
+</ol>
+<div class="warn box"><span class="bt">⚠ 看到某張看板點擊數異常高</span>
+先確認它是不是被設成某些人的<b>登入預設首頁</b>。每次登入的自動落地也會計一次點擊；
+若那個落點還是打不開的佔位節點，數字會虛高得非常離譜（見 <a href="#sec-7-4">§7.4</a> 的紅框）。</div>
+
+<!-- ============================================================ -->
+<h2 id="sec-11">11. 設定檔管理：Excel 匯出／匯入 <span class="pill p-admin">Admin</span></h2>
+
+<div class="danger box"><span class="bt">⛔ 匯入是「整庫覆蓋」，不是「合併」</span>
+匯入流程是 <code>DELETE FROM</code> 後依 Excel 內容重建。<b>Excel 裡沒帶到的欄位會被寫成 NULL</b>。
+請務必<b>先匯出一份現況當備份</b>，並且只用剛匯出的檔案格式來改，不要自己另外做一個 Excel 上傳。</div>
+
+<h3>使用方式</h3>
+<ol class="steps">
+<li>此頁目前<b>預設隱藏</b>。要顯示，把 <code>wwwroot/js/render/sidebar.js</code> 第 624 行的
+<code>const SHOW_DB_SYNC_PAGE = false;</code> 改成 <code>true</code>。</li>
+<li><b>匯出</b>：按「匯出 Excel」→ 產生 <code>EQDashboard_Setting.xlsx</code>，作為離線備份。</li>
+<li><b>匯入</b>：選擇檔案 → 按「匯入並覆蓋」。</li>
+</ol>
+
+<div class="note box"><span class="bt">ℹ 給開發者：新增 DB 欄位時要同步三條路徑</span>
+每加一個欄位，都必須同時補：① <code>api.js</code> 的 <code>getDatabasePayload()</code>
+② <code>api.js</code> 的 <code>fetchInitialDataFromDB()</code> mapper
+③ <code>misc-manage.js</code> 的 Excel 匯出 + 匯入 mapping。<br>
+少補任何一處，使用者按一次「匯入並覆蓋」就會<b>靜默清空</b>該欄位。</div>
+
+<!-- ============================================================ -->
+<h2 id="sec-12">12. 部署與維運 <span class="pill p-dev">部署／IT</span></h2>
+
+<h3 id="sec-12-1">12.1 部署到 IIS</h3>
+<ol class="steps">
+<li>確認 <code>appsettings.Production.json</code> 或 <code>web.config</code> 內的連線字串是正式 DB。</li>
+<li><code>dotnet publish -c Release -o publish</code></li>
+<li>把 <code>publish/</code> 整包放到 IIS 目錄（例如 <code>C:\inetpub\wwwroot\EQDashboard_TEST</code>）。</li>
+<li>IIS Manager → 對該目錄右鍵 → <b>轉換為應用程式</b>。</li>
+<li>App Pool 的 .NET CLR 版本設為 <b>「無受控碼 (No Managed Code)」</b>。</li>
+<li>IIS Manager → 選此 App → <b>Authentication</b> 面板：
+  <ul>
+    <li>✓ Anonymous Authentication = <b>Enabled</b></li>
+    <li>✓ Windows Authentication = <b>Enabled</b></li>
+    <li>✗ Basic Authentication = Disabled</li>
+    <li>Windows Authentication 的 Providers 順序：<b>Negotiate</b> → <b>NTLM</b></li>
+  </ul></li>
+<li>依 <code>web.config</code> 的「設定區 B」決定登入模式（預設 B1＝純 Windows 自動偵測）。</li>
+<li><code>iisreset</code>。</li>
+</ol>
+<div class="warn box"><span class="bt">⚠ 為什麼 <code>web.config</code> 裡沒有 <code>&lt;security&gt;&lt;authentication&gt;</code> 區段</span>
+這是<b>刻意</b>的。多數企業 IIS 把該區段鎖在 server level（<code>overrideModeDefault="Deny"</code>），
+在 app 層級寫會直接觸發 <b>HTTP 500.19</b>。請一律改用 IIS Manager 面板設定。<br>
+若真的被鎖死無法在面板改，請 IIS 管理員執行解鎖：
+<code>appcmd unlock config -section:system.webServer/security/authentication/windowsAuthentication</code></div>
+
+<h3 id="sec-12-2">12.2 HTTP 站台一定要設 <code>Hosting__RequireHttps=false</code></h3>
+<p><code>web.config</code> 內：</p>
+<pre><code>&lt;environmentVariable name="Hosting__RequireHttps" value="false" /&gt;</code></pre>
+<p><b>漏設的症狀非常有迷惑性</b>：Cookie 會帶 <code>Secure</code> flag，瀏覽器在 HTTP 下不會送回 →
+每個請求都被視為未登入 → 看起來就是「登入後立刻被踢回登入頁」。IIS 上了 HTTPS 之後再改成 <code>true</code>。</p>
+
+<h3 id="sec-12-3">12.3 切換資料庫（正式區／測試區）</h3>
+<div class="danger box"><span class="bt">⛔ 不要靠改 <code>appsettings.json</code> 來切 DB</span>
+<p>有三個各自獨立、都會讓你以為「改了沒用」的坑：</p>
+<ol>
+<li><b>不會生效</b>：連線字串在啟動建立 <code>DbContextOptions</code> 時就被讀走，之後不再重讀。
+<b>必須回收 App Pool（或 iisreset）才會換 DB</b>，光存檔沒有任何作用。（瀏覽器按 Ctrl+F5 只清瀏覽器快取，對伺服器完全沒用。）</li>
+<li><b>會被 publish 蓋掉</b>：<code>appsettings*.json</code> 是 content 檔，下次覆蓋部署就把手改的值洗掉，且沒有任何提示。</li>
+<li><b>可能整個起不來</b>：撞到啟動守衛（例如 <code>Password=test</code>）→ 空白的 HTTP 500.30。</li>
+</ol></div>
+
+<h4>正解：用 <code>web.config</code> 的「設定區 A」</h4>
+<pre><code>&lt;environmentVariable name="ConnectionStrings__EQDashboard"
+     value="Data Source=...;Initial Catalog=EQDashboardV2;Integrated Security=True;TrustServerCertificate=True;" /&gt;</code></pre>
+<p>環境變數優先序高於 <code>appsettings.json</code>，而且 <b>ANCM 會監看 <code>web.config</code>，存檔即自動回收 App Pool</b> —— 一步同時解決坑①與坑②。
+（或設在 IIS Manager → App Pool → 進階設定 → 環境變數，同樣蓋過 appsettings 且不受 publish 影響。）</p>
+
+<h4>替代方案：讓「改 appsettings.json」也能自動生效</h4>
+<pre><code>&lt;environmentVariable name="Hosting__RestartOnConnectionStringChange" value="true" /&gt;</code></pre>
+<ul>
+<li>偵測到<b>連線字串真的變動</b>時，主動停止本進程，IIS 在下一個請求拉起讀到新字串的新進程。</li>
+<li><b>刻意只認連線字串</b>：改 <code>Auth</code> 等其他設定<b>不會</b>重啟（否則存個檔就把所有人踢下線）。</li>
+<li>⚠️ 只有在 IIS/ANCM 這類會自動拉起新進程的宿主下才有意義；直接 <code>dotnet run</code> 會直接結束、不會再啟動。</li>
+<li>⚠️ <b>正式站請維持關閉</b>：重啟會中斷當下所有請求，且等於讓「改個檔案」可以無聲換掉全站資料來源。</li>
+</ul>
+
+<h4>怎麼確認真的換過去了</h4>
+<p>看 <code>logs\log-*.txt</code>，每次啟動都會印一行（<b>只印 Server / Catalog / 驗證方式，絕不印密碼</b>）：</p>
+<pre><code>🗄️ 使用中的資料庫：Server=… / Catalog=… / …（環境 =…）</code></pre>
+<p><b>看到舊的 Catalog 就代表沒有真的重啟</b>，不用再猜。連線字串格式寫錯（少引號／分號）也會在同一處以錯誤現形。</p>
+
+<h3 id="sec-12-4">12.4 搬機器 / 備份時的三個必留項目</h3>
+<table>
+<thead><tr><th>項目</th><th>漏掉的症狀</th></tr></thead>
+<tbody>
+<tr><td><code>App_Data/keys</code></td><td>DataProtection 金鑰。刪掉＝<b>所有人一起被登出</b>（Cookie 是用它加密的）</td></tr>
+<tr><td><code>wwwroot/lib</code></td><td>第三方資源。漏掉＝<b>畫面完全裸奔</b>：純 HTML 樣式、圖示變空框、表格不 render、Modal 按了沒反應</td></tr>
+<tr><td><code>wwwroot/images/icons</code></td><td>自訂圖示實體檔（DB 只存路徑），漏掉＝圖示破圖</td></tr>
+</tbody>
+</table>
+<div class="tip box"><span class="bt">✔ 搬機器請用 <code>git clone</code> / <code>git checkout</code>，不要手動複製檔案</span>
+<code>wwwroot/lib</code> 是版控的一部分（<code>.gitignore</code> 刻意<b>沒有</b> ASP.NET 樣板那條 <code>wwwroot/lib/</code>），
+所以 <code>git clone</code> + <code>dotnet publish</code> 就是完整的。<br>
+<b>看到裸奔畫面先查 <code>wwwroot/lib</code> 在不在，不要先懷疑 CSS 被改壞。</b></div>
+
+<h3 id="sec-12-5">12.5 執行期不可有外網相依</h3>
+<p>Bootstrap 5.3.2 / FontAwesome 6.4.0 / jQuery 3.7.0 / DataTables 1.13.6 / SheetJS 0.18.5 全部自 host。
+<code>Program.cs</code> 的 CSP（<code>script-src 'self'</code> / <code>style-src 'self'</code>）是安全網 ——
+<b>有人改回 CDN 會被自己的 CSP 擋掉。請改回自 host，而不是放寬政策。</b></p>
+<p>兩項「仍會連外」但<b>不是專案資產</b>的例外：<code>frame-src</code>（看板 iframe 的網址，是 DB 資料）與
+<code>img-src</code>（圖示可填外部圖檔 URL）。要治的是 DB 內容 —— 圖示請改用上傳到 <code>wwwroot/images/icons/</code> 的本地檔。</p>
+
+<!-- ============================================================ -->
+<h2 id="sec-13">13. 疑難排解速查表</h2>
+<table>
+<thead><tr><th>症狀</th><th>最可能原因</th><th>怎麼處理</th></tr></thead>
+<tbody>
+<tr><td>空白的 <b>HTTP 500.30</b></td><td>啟動守衛擋下，或連線字串錯誤</td><td>看 <code>logs\log-*.txt</code> 與 Windows 事件檢視器；必要時暫時把 <code>stdoutLogEnabled</code> 改 <code>true</code>。<a href="#sec-guard">§5.5</a></td></tr>
+<tr><td><b>HTTP 500.19</b></td><td><code>web.config</code> 寫了被 server level 鎖住的區段</td><td>把 <code>&lt;security&gt;&lt;authentication&gt;</code> 拿掉，改在 IIS Manager 面板設。<a href="#sec-12-1">§12.1</a></td></tr>
+<tr><td>畫面<b>完全裸奔</b>（無樣式、圖示空框、按鈕沒反應）</td><td><code>wwwroot/lib</code> 沒跟著部署</td><td>補上該目錄；改用 git 取得而非手動複製。<a href="#sec-12-4">§12.4</a></td></tr>
+<tr><td>整站停在<b>初始遮罩</b>，console 只有一行紅字</td><td>某支 JS 模組語法錯誤 → 整張 import 圖不執行</td><td>看 console 的檔名與行號。ES module 只要有<b>任何一支</b>解析失敗，<code>main.js</code> 就不會啟動</td></tr>
+<tr><td>登入後<b>立刻被踢回登入頁</b></td><td>HTTP 站台但 <code>Hosting__RequireHttps=true</code></td><td>改成 <code>false</code>。<a href="#sec-12-2">§12.2</a></td></tr>
+<tr><td>瀏覽器<b>跳帳密對話框</b></td><td>站台不在瀏覽器的近端內部網路／信任清單</td><td>GPO 推 <code>AuthServerAllowlist</code>。<a href="#sec-3-1">§3.1</a></td></tr>
+<tr><td><b>所有人突然一起被登出</b></td><td><code>App_Data/keys</code> 被清掉，或 <code>SimulatedAccount</code> 剛被更動</td><td>確認金鑰目錄還在；模擬帳號變更會作廢所有 Cookie（正常行為）</td></tr>
+<tr><td>iframe <b>一片空白</b> / 顯示「未識別」</td><td>目標網站禁止嵌入，或跨主機 cookie 送不出去</td><td>先用「另開分頁」測試；必要時改開啟方式。<a href="#sec-6-1">§6.1</a></td></tr>
+<tr><td>改了 <code>appsettings.json</code> <b>但 DB 沒換</b></td><td>連線字串啟動時就被凍住</td><td>改用 <code>web.config</code> 設定區 A；看 log 的 Catalog 確認。<a href="#sec-12-3">§12.3</a></td></tr>
+<tr><td>切了模擬帳號但<b>看到的是別的工號</b></td><td>進程沒有真的重啟</td><td>看 log 的「模擬帳號已啟用」那一行。<a href="#sec-4-2">§4.2</a></td></tr>
+<tr><td>模擬後看到<b>「無權限」</b></td><td>被模擬的工號沒建檔</td><td>去帳號管理建立。<a href="#sec-3-3">§3.3</a></td></tr>
+<tr><td>某人<b>看不到某張看板</b></td><td>權限三層之一擋住</td><td>照 <a href="#sec-7-6">§7.6 排錯 SOP</a> 逐步查</td></tr>
+<tr><td>選單存檔失敗、只有一句「儲存失敗」</td><td>payload 混進無編輯權的列 → 整批拒絕</td><td>確認動到的是不是管轄範圍外的項目。<a href="#sec-6-2">§6.2</a></td></tr>
+<tr><td>某張看板<b>點擊數異常高</b></td><td>它被設成某些人的預設首頁</td><td>檢查帳號管理的預設首頁設定。<a href="#sec-7-4">§7.4</a></td></tr>
+<tr><td>新增後<b>找不到剛建的資料</b></td><td>新資料排序在最後</td><td>系統會自動把它暫時置頂在第一頁；重整後回歸正常排序（刻意設計）</td></tr>
+<tr><td>切換語言後<b>某段文字消失</b></td><td><code>data-i18n</code> 巢狀，或掛在 JS 動態填值的元素上</td><td>開發面問題：key 要下移到包住裸文字的 <code>&lt;span&gt;</code>；動態元素改用 <code>t('key','中文')</code></td></tr>
+</tbody>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="sec-14">14. 正式上線前檢查清單 <span class="pill p-dev">部署／IT</span></h2>
+<div class="card">
+<h4>安全設定</h4>
+<ul>
+<li>☐ <code>Auth:TestAccounts:Enabled</code> = <b>false</b></li>
+<li>☐ <code>Auth:EnableEmergencyAdmin</code> = <b>false</b></li>
+<li>☐ <code>Auth:SimulatedAccount</code> = <b>空字串</b>（且 <code>AllowSimulatedAccountInProduction</code> 不開）</li>
+<li>☐ <code>Auth:AllowManualLogin</code> = <b>false</b>（企業政策）</li>
+<li>☐ 連線字串<b>不含弱密碼</b>，改用環境變數注入</li>
+<li>☐ <code>Auth:OpenAccessMode</code> 依實際需求設定（要讓權限真的生效必須是 <code>false</code>）</li>
+<li>☐ <code>ASPNETCORE_ENVIRONMENT=Production</code>（讓啟動守衛生效）</li>
+</ul>
+<h4>部署完整性</h4>
+<ul>
+<li>☐ <code>App_Data/keys</code> 已保留</li>
+<li>☐ <code>wwwroot/lib</code> 與 <code>wwwroot/images/icons</code> 都在</li>
+<li>☐ IIS Authentication：Anonymous + Windows 都 Enabled，Providers 為 Negotiate → NTLM</li>
+<li>☐ App Pool = 無受控碼</li>
+<li>☐ <code>Hosting__RequireHttps</code> 與站台實際協定一致</li>
+</ul>
+<h4>啟動驗收</h4>
+<ul>
+<li>☐ <code>logs\log-*.txt</code> 有 <code>🗄️ 使用中的資料庫</code> 且 Catalog 正確</li>
+<li>☐ <code>logs\log-*.txt</code> <b>沒有</b> <code>⚠️ 模擬帳號已啟用</code></li>
+<li>☐ <code>logs\log-*.txt</code> <b>沒有</b> <code>🚨 拒絕啟動</code></li>
+<li>☐ 用一般使用者帳號實際登入，確認看得到該看的、看不到不該看的</li>
+</ul>
+</div>
+
+<div class="danger box"><span class="bt">⛔ 已知未結案的安全事項</span>
+<p>依 <code>CLAUDE.md</code> §2 記載，<code>appsettings.json</code>（含明碼 DB 密碼與 5 組測試帳密）曾被上傳到<b>公開</b> GitHub repo。
+處置順序為：<b>① 先更改 DB 帳號與那 5 組測試帳密</b>（推上公開 repo 就必須視為已外洩，刪 commit 不等於沒外流）
+<b>② 再把 repo 改私有或清除歷史 blob</b> <b>③ 複查 <code>.gitignore</code> 忽略規則有效</b>。
+在完成①之前，不要把該 DB 帳號用於任何正式環境。</p></div>
+
+<!-- ============================================================ -->
+<h2 id="sec-15">15. 附錄</h2>
+
+<h3 id="sec-15-1">15.1 設定旗標速查</h3>
+<table>
+<thead><tr><th>設定鍵</th><th>環境變數</th><th>開發預設</th><th>正式建議</th></tr></thead>
+<tbody>
+<tr><td><code>ConnectionStrings:EQDashboard</code></td><td><code>ConnectionStrings__EQDashboard</code></td><td>本機測試庫</td><td>環境變數注入</td></tr>
+<tr><td><code>Hosting:RequireHttps</code></td><td><code>Hosting__RequireHttps</code></td><td>—</td><td>依站台協定</td></tr>
+<tr><td><code>Hosting:RestartOnConnectionStringChange</code></td><td><code>Hosting__RestartOnConnectionStringChange</code></td><td>false</td><td><b>false</b></td></tr>
+<tr><td><code>Auth:SessionDays</code></td><td><code>Auth__SessionDays</code></td><td>3650</td><td>3650</td></tr>
+<tr><td><code>Auth:WindowsDomainStripPrefix</code></td><td><code>Auth__WindowsDomainStripPrefix</code></td><td>UMC</td><td>依 AD 網域</td></tr>
+<tr><td><code>Auth:OpenAccessMode</code></td><td><code>Auth__OpenAccessMode</code></td><td>true</td><td>依需求</td></tr>
+<tr><td><code>Auth:SimulatedAccount</code></td><td><code>Auth__SimulatedAccount</code></td><td>工號</td><td><b>空字串</b></td></tr>
+<tr><td><code>Auth:AllowSimulatedAccountInProduction</code></td><td><code>Auth__AllowSimulatedAccountInProduction</code></td><td>false</td><td><b>false</b>（測試站才 true）</td></tr>
+<tr><td><code>Auth:AllowManualLogin</code></td><td><code>Auth__AllowManualLogin</code></td><td>false</td><td><b>false</b></td></tr>
+<tr><td><code>Auth:TestAccounts:Enabled</code></td><td><code>Auth__TestAccounts__Enabled</code></td><td>true</td><td><b>false</b></td></tr>
+<tr><td><code>Auth:EnableEmergencyAdmin</code></td><td><code>Auth__EnableEmergencyAdmin</code></td><td>false</td><td><b>false</b></td></tr>
+<tr><td><code>Auth:Ldap:Enabled</code></td><td><code>Auth__Ldap__Enabled</code></td><td>false</td><td><b>false</b></td></tr>
+<tr><td><code>Auth:DefaultAdmins</code></td><td>—</td><td>陣列</td><td>保留至少一個有效工號</td></tr>
+</tbody>
+</table>
+
+<h3 id="sec-15-2">15.2 主要 API 端點</h3>
+<table>
+<thead><tr><th>端點</th><th>用途</th></tr></thead>
+<tbody>
+<tr><td><code>GET /api/Auth/Config</code></td><td>前端取得登入設定（<code>allowManualLogin</code>、<code>openAccessMode</code>…）</td></tr>
+<tr><td><code>GET /api/Auth/WhoAmI</code></td><td>Windows / 模擬帳號身分偵測</td></tr>
+<tr><td><code>GET /api/Auth/MyProfile</code></td><td>複驗身分是否仍有效（401 處理用）</td></tr>
+<tr><td><code>POST /api/Auth/Login</code></td><td>手動帳密 / LDAP 登入（每 IP 60 秒限 10 次）</td></tr>
+<tr><td><code>POST /api/Auth/Logout</code></td><td>登出</td></tr>
+<tr><td><code>GET /api/Accounts?page=…</code></td><td>帳號清單（全站唯一伺服器端分頁）</td></tr>
+<tr><td><code>GET /api/Accounts/export</code></td><td>匯出帳號（admin only）</td></tr>
+<tr><td><code>POST /api/Menus/batch</code></td><td>看板批次存檔（任一筆越權即整批拒絕）</td></tr>
+<tr><td><code>/api/Settings/SaveData</code></td><td>整庫全量覆寫（Excel 匯入用）</td></tr>
+<tr><td><code>/api/Requests/*</code></td><td>申請單 CRUD 與狀態轉換</td></tr>
+<tr><td><code>/api/ActivityLogs/*</code></td><td>操作紀錄查詢與清除</td></tr>
+<tr><td><code>/api/Analytics/*</code></td><td>流量與使用率統計</td></tr>
+<tr><td><code>/api/Tracking/MenuClick</code></td><td>看板點擊統計</td></tr>
+</tbody>
+</table>
+
+<h3 id="sec-15-3">15.3 相關文件</h3>
+<table>
+<thead><tr><th>檔案</th><th>內容</th></tr></thead>
+<tbody>
+<tr><td><code>CLAUDE.md</code></td><td>專案規範、開發鐵則、每一輪健檢的結論。<b>與其他文件衝突時以此為準</b></td></tr>
+<tr><td><code>memory.md</code></td><td>逐輪進度、決策脈絡與踩坑紀錄</td></tr>
+<tr><td><code>系統架構.md</code></td><td>目錄樹與模組職責</td></tr>
+<tr><td><code>DB_Table.md</code></td><td>資料表結構快照、索引清單、Schema Changelog</td></tr>
+<tr><td><code>sql/</code></td><td>增量 schema 腳本（只增不改）</td></tr>
+<tr><td><code>AGENTS.md</code></td><td>2026-07-19 的舊快照，<b>與 <code>CLAUDE.md</code> 衝突時一律以 <code>CLAUDE.md</code> 為準</b></td></tr>
+</tbody>
+</table>
+
+<hr>
+<p style="color:var(--text-dim);font-size:.85rem">
+本手冊依 2026-08-27 當下的程式碼與設定撰寫。系統若有異動（特別是登入旗標、權限模型、<code>web.config</code> 設定區），請一併更新本文件。
+</p>
+
+</main>
+</div>
+
+<script>
+/* ---------- 主題 ---------- */
+function toggleTheme(){
+  var r=document.documentElement;
+  var cur=r.getAttribute('data-theme');
+  if(!cur){ cur = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark':'light'; }
+  var next = cur==='dark' ? 'light':'dark';
+  r.setAttribute('data-theme',next);
+  try{ localStorage.setItem('manual_theme',next); }catch(e){}
+}
+try{ var mt=localStorage.getItem('manual_theme'); if(mt) document.documentElement.setAttribute('data-theme',mt); }catch(e){}
+
+/* ---------- 自動生成目錄 ---------- */
+(function(){
+  var box=document.getElementById('tocLinks');
+  var hs=document.querySelectorAll('main h2[id], main h3[id]');
+  var html='';
+  hs.forEach(function(h){
+    var lv = h.tagName==='H2' ? 'lv1':'lv2';
+    var txt = h.textContent.replace(/\s*(所有人|委派管理者|Admin|部署／IT)\s*/g,'').trim();
+    html += '<a class="'+lv+'" href="#'+h.id+'">'+txt+'</a>';
+  });
+  box.innerHTML=html;
+
+  var links=[].slice.call(box.querySelectorAll('a'));
+  links.forEach(function(a){
+    a.addEventListener('click',function(){
+      var t=document.getElementById('toc');
+      if(window.innerWidth<=980) t.classList.remove('open');
+    });
+  });
+
+  /* 捲動高亮 */
+  var obs=new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if(!e.isIntersecting) return;
+      links.forEach(function(a){ a.classList.remove('active'); });
+      var cur=box.querySelector('a[href="#'+e.target.id+'"]');
+      if(cur){ cur.classList.add('active');
+        var r=cur.getBoundingClientRect(), br=box.parentElement.getBoundingClientRect();
+        if(r.top<br.top||r.bottom>br.bottom) cur.scrollIntoView({block:'nearest'});
+      }
+    });
+  },{rootMargin:'0px 0px -75% 0px'});
+  hs.forEach(function(h){ obs.observe(h); });
+})();
+
+/* ---------- 目錄篩選 ---------- */
+function filterToc(q){
+  q=(q||'').trim().toLowerCase();
+  var links=document.querySelectorAll('#tocLinks a');
+  links.forEach(function(a){
+    a.classList.toggle('hide', q && a.textContent.toLowerCase().indexOf(q)===-1);
+  });
+}
+
+/* ---------- 程式碼複製鈕 ---------- */
+document.querySelectorAll('pre').forEach(function(pre){
+  var wrap=document.createElement('div');
+  wrap.className='prewrap';
+  pre.parentNode.insertBefore(wrap,pre);
+  wrap.appendChild(pre);
+
+  var b=document.createElement('button');
+  b.className='copy'; b.textContent='複製';
+  b.onclick=function(){
+    var t=pre.querySelector('code')?pre.querySelector('code').innerText:pre.innerText;
+    navigator.clipboard.writeText(t).then(function(){
+      b.textContent='已複製'; setTimeout(function(){b.textContent='複製';},1400);
+    });
+  };
+  wrap.appendChild(b);
+});
+</script>
+</body>
+</html>

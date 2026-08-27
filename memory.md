@@ -96,6 +96,17 @@
 - **驗收**：`dotnet build --no-incremental` 0 錯 0 警告｜`dotnet test` 11/11｜`web.config` XML 解析通過、註解 15/15 配對｜實機 `dotnet run --no-launch-profile` 跑三種情境 ——
   ① 旗標 true → **啟動成功**且印出 WRN；② 不設旗標 → **拒絕啟動**，訊息含 `請設 Auth:AllowSimulatedAccountInProduction=true`；③ 旗標 true + `TestAccounts`/`EnableEmergencyAdmin` 也開 → **仍拒絕啟動**並只列那兩項（證明其餘檢查沒被削弱）。
 
+### 2026-08-27｜`appsettings.Production.json` 補 `"SimulatedAccount": ""`（封死「關掉模擬反而 500.30」的退路）
+
+- **起因**：使用者問「之後想改回自動取得 Windows 帳號要怎麼改」。查證後發現**照直覺把 `web.config` 設定區 B-2 註解掉會再次 500.30** —— 環境變數消失後設定往下退回 `appsettings.json` 的 `"SimulatedAccount": "00058897"`，而 `AllowSimulatedAccountInProduction` 同時回到預設 `false`，guard 照擋。`appsettings.Production.json` 原本**沒有**覆寫這個 key。
+- **作法**：在 `appsettings.Production.json` 的 `Auth` 區塊加 `"SimulatedAccount": ""` + `"// SimulatedAccount"` 說明。Production 的預設恆為「不模擬」，開關單純由 `web.config` 環境變數決定（優先序最高）；Development 仍保有 `00058897`，且因為是 repo 內檔案，`dotnet publish` 不會像手改 `appsettings.json` 那樣被洗掉。
+- **驗收（`dotnet run --no-launch-profile`，Production）**：
+  - ① 不設任何環境變數 → guard 只列 **1 項**（連線字串弱密碼），`Auth:SimulatedAccount` **不再被列出** ← 證明覆寫生效。（同一情境在本次修改前是 2 項，見 §2026-08-25 的實測紀錄。）
+  - ② `Auth__SimulatedAccount=00058896`、不給旗標 → 回到 **2 項**，訊息含「請設 `Auth:AllowSimulatedAccountInProduction=true` 顯式放行」← 證明 `web.config` 的覆寫路徑完全沒被削弱。
+  - JSON 兩檔 `JSON.parse` 通過、無 BOM、`U+FFFD` = 0。
+- **文件落點**：完整的「切成模擬 ⇄ 切回自動偵測」SOP（兩段 XML、驗收看 log、四則注意事項）已寫成 **`CLAUDE.md` §4 第 26 條**，§3 的 `SimulatedAccount` 條目只留一行指標。**唯一開關是 `web.config` 設定區 B-2，不要在別處再寫一套。**
+- ⚠️ 連線字串弱密碼（`Password=test`）仍在 `appsettings.json`，Production 下必然擋啟動 —— 這是**對的**（且它已隨公開 repo 外洩，見 §2 P0）。IIS 上請走 `web.config` 設定區 A 的 `ConnectionStrings__EQDashboard`。**排查 500.30 時要看清楚 guard 列的是哪幾項，不要把弱密碼那項誤判成模擬帳號沒關掉。**
+
 ### 2026-08-25｜`memory.md` 12,406 個 U+FFFD 亂碼重建、`AGENTS.md` 轉 UTF-8
 
 - **`AGENTS.md`：不是亂碼，是編碼**。整份是合法 Big5/cp950（位元組完好、零遺失），以 `GetEncoding(950)` 解碼後改存 **UTF-8 無 BOM**。
