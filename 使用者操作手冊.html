@@ -930,34 +930,67 @@ Console 那句 <code>allow-scripts + allow-same-origin ... can escape its sandbo
 每個請求都被視為未登入 → 看起來就是「登入後立刻被踢回登入頁」。IIS 上了 HTTPS 之後再改成 <code>true</code>。</p>
 
 <h3 id="sec-12-3">12.3 切換資料庫（正式區／測試區）</h3>
-<div class="danger box"><span class="bt">⛔ 不要靠改 <code>appsettings.json</code> 來切 DB</span>
-<p>有三個各自獨立、都會讓你以為「改了沒用」的坑：</p>
-<ol>
-<li><b>不會生效</b>：連線字串在啟動建立 <code>DbContextOptions</code> 時就被讀走，之後不再重讀。
-<b>必須回收 App Pool（或 iisreset）才會換 DB</b>，光存檔沒有任何作用。（瀏覽器按 Ctrl+F5 只清瀏覽器快取，對伺服器完全沒用。）</li>
-<li><b>會被 publish 蓋掉</b>：<code>appsettings*.json</code> 是 content 檔，下次覆蓋部署就把手改的值洗掉，且沒有任何提示。</li>
-<li><b>可能整個起不來</b>：撞到啟動守衛（例如 <code>Password=test</code>）→ 空白的 HTTP 500.30。</li>
-</ol></div>
 
-<h4>正解：用 <code>web.config</code> 的「設定區 A」</h4>
-<pre><code>&lt;environmentVariable name="ConnectionStrings__EQDashboard"
-     value="Data Source=...;Initial Catalog=EQDashboardV2;Integrated Security=True;TrustServerCertificate=True;" /&gt;</code></pre>
-<p>環境變數優先序高於 <code>appsettings.json</code>，而且 <b>ANCM 會監看 <code>web.config</code>，存檔即自動回收 App Pool</b> —— 一步同時解決坑①與坑②。
-（或設在 IIS Manager → App Pool → 進階設定 → 環境變數，同樣蓋過 appsettings 且不受 publish 影響。）</p>
+<div class="tip box"><span class="bt">✔ 直接改 <code>appsettings.json</code> 就會生效（2026-08-31 起）</span>
+<p>在 IIS 上，把 <code>ConnectionStrings:EQDashboard</code> 改成新的 <code>Initial Catalog</code>（或整條換掉）→ <b>存檔</b> → 下一個請求就會連到新的 DB。
+<b>不需要 iisreset，也不需要手動回收 App Pool。</b></p>
+</div>
 
-<h4>替代方案：讓「改 appsettings.json」也能自動生效</h4>
-<pre><code>&lt;environmentVariable name="Hosting__RestartOnConnectionStringChange" value="true" /&gt;</code></pre>
+<h4>怎麼做</h4>
+<ol class="steps">
+<li>編輯 IIS 站台目錄下的 <code>appsettings.json</code>（<b>不是原始碼資料夾那一份</b>）。</li>
+<li>改 <code>ConnectionStrings.EQDashboard</code>，存檔。</li>
+<li>打開 <code>logs\log-*.txt</code>，會看到這兩行：
+<pre><code>🔄 偵測到 ConnectionStrings:EQDashboard 變更（新目標 Catalog=EQDashboardV2_TEST，來源 appsettings.json），即將停止本進程…
+🗄️ 使用中的資料庫：Server=… / Catalog=EQDashboardV2_TEST / … ｜設定來源：appsettings.json</code></pre></li>
+<li>重新整理網頁即可。</li>
+</ol>
+
+<h4>它背後做了什麼（以及為什麼是這樣做）</h4>
+<p>系統用的是 EF Core 連線池，<b>連線字串在啟動建立 options 時就被凍住、之後不再重讀</b> —— 連線池的前提就是 options 固定不變，所以「維持連線池」與「現讀現用」本質上互斥。
+因此偵測到連線字串變動時，程式的作法是<b>讓進程停下來，由 IIS 在下一個請求拉起新進程</b>。</p>
+<p>選擇換進程而不是「就地換連線」是刻意的：換進程才會一併<b>重跑 SchemaBootstrap</b>（新 DB 可能缺表）、<b>清掉快取與 ETag</b>（否則會拿舊 DB 的資料回應最多 60 秒）、並重印 DB banner。</p>
+
+<h4>內建的三道保護</h4>
+<table>
+<thead><tr><th>情況</th><th>行為</th></tr></thead>
+<tbody>
+<tr><td>只改了空白、或把 <code>Initial Catalog</code> 挪個位置</td><td><b>不會</b>重啟（比對前會正規化，純排版編輯不算變更）</td></tr>
+<tr><td>連線字串被清空或改壞</td><td><b>不會</b>重啟，只記一則錯誤；站台維持用舊連線服務（重啟只會撞上啟動守衛變成空白 500.30，更難救）</td></tr>
+<tr><td>改的是 <code>Auth</code> 等其他設定</td><td><b>不會</b>重啟（否則存個檔就把所有人踢下線）</td></tr>
+</tbody>
+</table>
+
+<h4>預設值與關閉方式</h4>
 <ul>
-<li>偵測到<b>連線字串真的變動</b>時，主動停止本進程，IIS 在下一個請求拉起讀到新字串的新進程。</li>
-<li><b>刻意只認連線字串</b>：改 <code>Auth</code> 等其他設定<b>不會</b>重啟（否則存個檔就把所有人踢下線）。</li>
-<li>⚠️ 只有在 IIS/ANCM 這類會自動拉起新進程的宿主下才有意義；直接 <code>dotnet run</code> 會直接結束、不會再啟動。</li>
-<li>⚠️ <b>正式站請維持關閉</b>：重啟會中斷當下所有請求，且等於讓「改個檔案」可以無聲換掉全站資料來源。</li>
+<li><b>IIS / ANCM</b>（會自動拉起新進程）→ 預設 <b>開啟</b>。</li>
+<li><b><code>dotnet run</code> / 自架 Kestrel</b> → 預設 <b>關閉</b>（否則存個檔站台就直接結束、不會再起來）。</li>
+<li>要<b>強制關掉</b>（例如正式站不希望「改個檔案」就能無聲換掉全站資料來源），在 <code>web.config</code> 明確指定，這會優先於自動判斷：
+<pre><code>&lt;environmentVariable name="Hosting__RestartOnConnectionStringChange" value="false" /&gt;</code></pre></li>
 </ul>
 
-<h4>怎麼確認真的換過去了</h4>
-<p>看 <code>logs\log-*.txt</code>，每次啟動都會印一行（<b>只印 Server / Catalog / 驗證方式，絕不印密碼</b>）：</p>
-<pre><code>🗄️ 使用中的資料庫：Server=… / Catalog=… / …（環境 =…）</code></pre>
-<p><b>看到舊的 Catalog 就代表沒有真的重啟</b>，不用再猜。連線字串格式寫錯（少引號／分號）也會在同一處以錯誤現形。</p>
+<h4>仍然存在的一個坑：publish 會蓋掉</h4>
+<div class="warn box"><span class="bt">⚠ 要長期固定用某個 DB，還是寫在 <code>web.config</code>「設定區 A」</span>
+<p><code>appsettings*.json</code> 是 content 檔，<b>下次 <code>dotnet publish</code> 覆蓋部署就會把手改的值洗掉</b>，而且不會有任何提示。
+臨時切換用改檔案很方便；但如果這個站台<b>長期</b>就是要接測試庫，請改成環境變數，它不受 publish 影響：</p>
+<pre><code>&lt;environmentVariable name="ConnectionStrings__EQDashboard"
+     value="Data Source=...;Initial Catalog=EQDashboardV2_TEST;Integrated Security=True;TrustServerCertificate=True;" /&gt;</code></pre>
+<p>（或設在 IIS Manager → App Pool → 進階設定 → 環境變數。<code>web.config</code> 一存檔 ANCM 也會自動回收。）</p></div>
+
+<h4 id="sec-12-3-diag">改了卻沒換過去？先看「設定來源」</h4>
+<p>每次啟動都會印一行（<b>只印 Server / Catalog / 驗證方式 / 來源，絕不印密碼</b>）：</p>
+<pre><code>🗄️ 使用中的資料庫：Server=… / Catalog=… / …（環境 =…）｜設定來源：appsettings.json</code></pre>
+<p><b>最後那個「設定來源」就是答案。</b>「我改了 <code>appsettings.json</code> 卻沒換 DB」幾乎都是這兩個原因，而且從值本身完全看不出來：</p>
+<table>
+<thead><tr><th>你看到的來源</th><th>代表什麼</th></tr></thead>
+<tbody>
+<tr><td><code>appsettings.json</code></td><td>正常。改這個檔就對了</td></tr>
+<tr><td><code>appsettings.Production.json</code></td><td>你改的 <code>appsettings.json</code> <b>被它蓋掉了</b> —— 要改的是這一份</td></tr>
+<tr><td><code>環境變數 ConnectionStrings__EQDashboard…</code></td><td>被 <code>web.config</code> 設定區 A 或 App Pool 環境變數蓋掉 —— 改那裡</td></tr>
+</tbody>
+</table>
+<p>如果來源顯示 <code>appsettings.json</code>、Catalog 卻還是舊的，那就是<b>改到了原始碼資料夾</b>而不是 IIS 站台目錄下的那一份。</p>
+<p>連線字串格式寫錯（少引號／分號）也會在同一處以錯誤現形。<b>這行 banner 排在連線 DB 之前印</b>，所以就算切到一個完全連不通的 DB，你仍然看得到它試圖連哪裡。</p>
 
 <h3 id="sec-12-4">12.4 搬機器 / 備份時的三個必留項目</h3>
 <table>
@@ -993,7 +1026,7 @@ Console 那句 <code>allow-scripts + allow-same-origin ... can escape its sandbo
 <tr><td>瀏覽器<b>跳帳密對話框</b></td><td>站台不在瀏覽器的近端內部網路／信任清單</td><td>GPO 推 <code>AuthServerAllowlist</code>。<a href="#sec-3-1">§3.1</a></td></tr>
 <tr><td><b>所有人突然一起被登出</b></td><td><code>App_Data/keys</code> 被清掉，或 <code>SimulatedAccount</code> 剛被更動</td><td>確認金鑰目錄還在；模擬帳號變更會作廢所有 Cookie（正常行為）</td></tr>
 <tr><td>iframe <b>一片空白</b> / 顯示「未識別」</td><td>目標網站禁止嵌入，或跨主機 cookie 送不出去</td><td>先用「另開分頁」測試；必要時改開啟方式。<a href="#sec-6-1">§6.1</a></td></tr>
-<tr><td>改了 <code>appsettings.json</code> <b>但 DB 沒換</b></td><td>連線字串啟動時就被凍住</td><td>改用 <code>web.config</code> 設定區 A；看 log 的 Catalog 確認。<a href="#sec-12-3">§12.3</a></td></tr>
+<tr><td>改了 <code>appsettings.json</code> <b>但 DB 沒換</b></td><td>該值被更高優先序的來源蓋掉，或改到了原始碼資料夾那一份</td><td>看 log 那行的<b>「設定來源」</b>欄位，它直接告訴你該改哪個檔。<a href="#sec-12-3-diag">§12.3 診斷</a></td></tr>
 <tr><td>切了模擬帳號但<b>看到的是別的工號</b></td><td>進程沒有真的重啟</td><td>看 log 的「模擬帳號已啟用」那一行。<a href="#sec-4-2">§4.2</a></td></tr>
 <tr><td>模擬後看到<b>「無權限」</b></td><td>被模擬的工號沒建檔</td><td>去帳號管理建立。<a href="#sec-3-3">§3.3</a></td></tr>
 <tr><td>某人<b>看不到某張看板</b></td><td>權限三層之一擋住</td><td>照 <a href="#sec-7-6">§7.6 排錯 SOP</a> 逐步查</td></tr>
@@ -1049,7 +1082,7 @@ Console 那句 <code>allow-scripts + allow-same-origin ... can escape its sandbo
 <tbody>
 <tr><td><code>ConnectionStrings:EQDashboard</code></td><td><code>ConnectionStrings__EQDashboard</code></td><td>本機測試庫</td><td>環境變數注入</td></tr>
 <tr><td><code>Hosting:RequireHttps</code></td><td><code>Hosting__RequireHttps</code></td><td>—</td><td>依站台協定</td></tr>
-<tr><td><code>Hosting:RestartOnConnectionStringChange</code></td><td><code>Hosting__RestartOnConnectionStringChange</code></td><td>false</td><td><b>false</b></td></tr>
+<tr><td><code>Hosting:RestartOnConnectionStringChange</code></td><td><code>Hosting__RestartOnConnectionStringChange</code></td><td>IIS 下自動開啟<br>（<code>dotnet run</code> 下關閉）</td><td>不設＝維持自動；不想讓改檔就換 DB 才設 <b>false</b>（<a href="#sec-12-3">§12.3</a>）</td></tr>
 <tr><td><code>Auth:SessionDays</code></td><td><code>Auth__SessionDays</code></td><td>3650</td><td>3650</td></tr>
 <tr><td><code>Auth:WindowsDomainStripPrefix</code></td><td><code>Auth__WindowsDomainStripPrefix</code></td><td>UMC</td><td>依 AD 網域</td></tr>
 <tr><td><code>Auth:OpenAccessMode</code></td><td><code>Auth__OpenAccessMode</code></td><td>true</td><td>依需求</td></tr>

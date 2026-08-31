@@ -259,6 +259,37 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 
+// === 啟動時記錄「實際連到哪個 DB」＋「這個值是誰給的」===
+//   ⚠️ 這段**必須排在 SchemaBootstrap 之前**：bootstrap 是啟動時第一個真正連 DB 的動作，
+//      連不上就直接拋例外中止進程。若 banner 排在它後面，「切到一個打不通的 DB」這個
+//      最需要診斷的情境反而什麼都印不出來（IIS 上只剩一個空白的 500.30）。
+//   部署後要切換正式區/測試區時，唯一可靠的確認方式就是看這行 log。
+//   {Source} 是關鍵診斷：設定有優先序（appsettings.json → appsettings.{Env}.json → 環境變數），
+//   「我明明改了 appsettings.json 卻沒有換 DB」最常見的成因就是**它根本不是生效的來源**
+//   （被 appsettings.Production.json 或 web.config 的 ConnectionStrings__EQDashboard 蓋掉），
+//   或是改到了「原始碼資料夾」而不是 IIS 站台目錄下的那一份。印出來就不必再猜。
+//   只印 Server / Catalog / 驗證方式 / 來源，**絕不印密碼**。
+{
+    var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
+    try
+    {
+        var csb = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(
+            app.Configuration.GetConnectionString("EQDashboard") ?? "");
+        startupLogger.LogInformation(
+            "🗄️ 使用中的資料庫：Server={Server} / Catalog={Catalog} / {AuthMode}（環境 ={Env}）｜設定來源：{Source}",
+            string.IsNullOrWhiteSpace(csb.DataSource) ? "(未設定)" : csb.DataSource,
+            string.IsNullOrWhiteSpace(csb.InitialCatalog) ? "(未設定)" : csb.InitialCatalog,
+            csb.IntegratedSecurity ? "Windows 整合驗證" : $"SQL 帳號 {csb.UserID}",
+            app.Environment.EnvironmentName,
+            DescribeConnectionStringSource(app.Configuration));
+    }
+    catch (Exception ex)
+    {
+        // 連線字串格式錯誤（例如少了引號或分號）在這裡就會現形，比等到第一次查詢才炸好追。
+        startupLogger.LogError(ex, "🗄️ ConnectionStrings:EQDashboard 無法解析，請檢查格式");
+    }
+}
+
 // === Schema bootstrap (idempotent；每次啟動跑一次) ===
 // 自動建立缺失的覆寫表 + 種入 TestAccounts 中尚未存在的工號
 using (var scope = app.Services.CreateScope())
@@ -289,63 +320,78 @@ using (var scope = app.Services.CreateScope())
     var cfg = app.Configuration;
     var isProd = !app.Environment.IsDevelopment();
 
-    // === 啟動時記錄「實際連到哪個 DB」===
-    //   部署後要切換正式區/測試區時，唯一可靠的確認方式就是看這行 log。
-    //   ⚠️ 連線字串在 AddDbContextPool 建立 options 時就被讀走、之後不再重讀 →
-    //      改 appsettings.json **必須回收 App Pool（或 iisreset / 動 web.config）才會生效**，
-    //      光存檔不會換 DB。看到這行印出舊的 Catalog，就是沒有真的重啟。
-    //   只印 Server / Catalog / 驗證方式，**絕不印密碼**。
-    try
-    {
-        var csb = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(
-            cfg.GetConnectionString("EQDashboard") ?? "");
-        logger.LogInformation(
-            "🗄️ 使用中的資料庫：Server={Server} / Catalog={Catalog} / {AuthMode}（環境 ={Env}）",
-            string.IsNullOrWhiteSpace(csb.DataSource) ? "(未設定)" : csb.DataSource,
-            string.IsNullOrWhiteSpace(csb.InitialCatalog) ? "(未設定)" : csb.InitialCatalog,
-            csb.IntegratedSecurity ? "Windows 整合驗證" : $"SQL 帳號 {csb.UserID}",
-            app.Environment.EnvironmentName);
-    }
-    catch (Exception ex)
-    {
-        // 連線字串格式錯誤（例如少了引號或分號）在這裡就會現形，比等到第一次查詢才炸好追。
-        logger.LogError(ex, "🗄️ ConnectionStrings:EQDashboard 無法解析，請檢查格式");
-    }
+    // （「🗄️ 使用中的資料庫」banner 已移到 SchemaBootstrap 之前印，見上方 app.Build() 後那一段）
 
-    // === 連線字串變更時自動重啟（預設關閉，Hosting:RestartOnConnectionStringChange=true 才啟用）===
+    // === 連線字串變更時自動套用（IIS/ANCM 下**預設開啟**，2026-08-31 改）===
     //   為什麼需要這個：本專案用 AddDbContextPool，連線字串在啟動時就被凍進 DbContextOptions，
     //   之後改 appsettings.json 只會更新 IConfiguration、**換不掉已建好的 options** → 必須換進程。
-    //   （對照組：C:\Gantt 每個端點都 new SqlConnection(ConnStr()) 現讀現用，所以它存檔就生效。）
-    //   啟用後：偵測到「連線字串真的變了」就 StopApplication()。
-    //   ⚠️ **只有在 IIS/ANCM 等會自動拉起新進程的宿主下才有意義** —— 直接 `dotnet run` 會直接結束、不會再啟動。
-    //   ⚠️ 正式站請維持關閉：重啟會中斷當下所有請求，且等於讓「改個檔案」可以無聲換掉全站資料來源。
-    if (cfg.GetValue<bool>("Hosting:RestartOnConnectionStringChange"))
+    //   （對照組：C:\Gantt 每個端點都 new SqlConnection(ConnStr()) 現讀現用，所以它存檔就生效。
+    //     本專案要維持 pooling 就不可能現讀現用 —— 連線池的前提正是 options 固定不變。）
+    //
+    //   偵測到「連線字串真的變了」→ StopApplication()，IIS 在下一個請求拉起讀到新字串的新進程。
+    //   **刻意選「換進程」而不是「就地換連線」**：換進程才會一併重跑 SchemaBootstrap（新 DB 可能缺表）、
+    //   清掉 SettingsService 的快取與 ETag（否則會拿舊 DB 的資料回應最多 60 秒）、重印 DB banner。
+    //   就地換連線這三件事都要各自補，任何一處漏掉都是「資料看起來是舊的」這種最難查的 bug。
+    //
+    //   預設值改成「依宿主自動判斷」：
+    //     · IIS/ANCM（會自動拉起新進程）→ 預設 **開**，這才是使用者期望的「改檔就生效」。
+    //     · dotnet run / 自架 Kestrel     → 預設 **關**，否則存個檔站台就直接結束、不會再起來。
+    //     · 明確設 Hosting:RestartOnConnectionStringChange 一律以該值為準（可強制關掉）。
+    //   ⚠️ 只認連線字串：改 Auth 等其他設定不會重啟，避免存個檔就把所有人踢下線。
+    var underAncm = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASPNETCORE_IIS_PHYSICAL_PATH"));
+    var restartConfigured = cfg.GetValue<bool?>("Hosting:RestartOnConnectionStringChange");
+    var restartOnConnChange = restartConfigured ?? underAncm;
+
+    if (restartOnConnChange)
     {
         var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
-        var lastConn = cfg.GetConnectionString("EQDashboard");
+        var lastConn = NormalizeConnectionString(cfg.GetConnectionString("EQDashboard"));
         var restartTriggered = 0;
 
         Microsoft.Extensions.Primitives.ChangeToken.OnChange(
             () => cfg.GetReloadToken(),
             () =>
             {
-                var current = cfg.GetConnectionString("EQDashboard");
-                // 只認連線字串：其他設定（Auth 等）變動不重啟，避免存個檔就把所有人踢下線。
+                var raw = cfg.GetConnectionString("EQDashboard");
+                // 正規化後再比：SqlConnectionStringBuilder 會統一鍵的大小寫與順序，
+                // 只是把 "Initial Catalog" 挪個位置、多打一個空白，不該害整站重啟一次。
+                var current = NormalizeConnectionString(raw);
                 if (string.Equals(current, lastConn, StringComparison.Ordinal)) return;
+
+                // 被清空／改壞時不要重啟 —— 重啟只會撞上啟動守衛變成空白的 500.30，
+                // 讓站台維持在「還能用舊連線服務」的狀態，並把原因寫進 log 比較好救。
+                if (string.IsNullOrWhiteSpace(current))
+                {
+                    logger.LogError(
+                        "🔄 偵測到 ConnectionStrings:EQDashboard 被清空或無法解析，"
+                        + "已忽略本次變更、不重啟（仍使用啟動時的連線）。請修正後再存檔一次。");
+                    return;
+                }
+
                 // 檔案監看器對「一次存檔」常觸發兩次 → 用 Interlocked 確保只送出一次停止訊號。
                 if (Interlocked.Exchange(ref restartTriggered, 1) == 1) return;
 
                 lastConn = current;
                 logger.LogWarning(
-                    "🔄 偵測到 ConnectionStrings:EQDashboard 變更（新目標 Catalog={Catalog}）"
+                    "🔄 偵測到 ConnectionStrings:EQDashboard 變更（新目標 Catalog={Catalog}，來源 {Source}）"
                     + "，即將停止本進程以套用新的 DB 連線；IIS 會在下一個請求拉起新進程。",
-                    SafeCatalog(current));
+                    SafeCatalog(raw), DescribeConnectionStringSource(cfg));
                 lifetime.StopApplication();
             });
 
         logger.LogInformation(
-            "🔄 已啟用「連線字串變更自動重啟」(Hosting:RestartOnConnectionStringChange=true)"
-            + " —— 僅適用於 IIS 等會自動重啟的宿主，正式站請關閉。");
+            "🔄 連線字串變更自動套用：**已啟用**（{How}）。改 appsettings.json 的 ConnectionStrings "
+            + "存檔後會自動換進程、連到新的 DB，不需要手動回收 App Pool。",
+            restartConfigured is null ? "偵測到 IIS/ANCM 宿主，預設開啟" : "由 Hosting:RestartOnConnectionStringChange 明確指定");
+    }
+    else
+    {
+        logger.LogInformation(
+            "🔄 連線字串變更自動套用：已停用（{Why}）。改 appsettings.json 的 ConnectionStrings "
+            + "後必須自行重啟進程才會生效。",
+            restartConfigured is null
+                ? "非 IIS/ANCM 宿主，停止進程後不會自動拉起"
+                : "由 Hosting:RestartOnConnectionStringChange=false 明確關閉");
     }
 
     var issues = new List<string>();
@@ -675,6 +721,56 @@ static string SafeCatalog(string? connectionString)
     {
         return "(無法解析)";
     }
+}
+
+// === 連線字串的「正規化」——只給變更偵測比對用 ===
+// SqlConnectionStringBuilder 會統一鍵的大小寫、順序與空白，避免「只是把 Initial Catalog 挪個位置」
+// 這種純排版編輯被誤判成換 DB 而白白重啟一次。
+// ⚠️ 回傳值**含密碼**，只可留在記憶體內比對，**絕對不可寫進 log**（要印請用 SafeCatalog）。
+static string NormalizeConnectionString(string? connectionString)
+{
+    if (string.IsNullOrWhiteSpace(connectionString)) return "";
+    try
+    {
+        return new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(connectionString).ConnectionString;
+    }
+    catch
+    {
+        // 解析不了就退回原字串比對：至少「有沒有被改過」還是判斷得出來
+        return connectionString.Trim();
+    }
+}
+
+// === 指出 ConnectionStrings:EQDashboard 實際是被哪個設定來源提供的 ===
+// 「我改了 appsettings.json 卻沒有換 DB」最常見的兩個成因都不是程式問題：
+//   ① 值被更高優先序的來源蓋掉（appsettings.{Env}.json 或環境變數 ConnectionStrings__EQDashboard）
+//   ② 改到了原始碼資料夾，而不是 IIS 站台目錄下那一份
+// 兩者都無法從「值本身」看出來，只能靠 provider 反推 → 印在啟動 banner 上，省掉每次的猜測。
+// ⚠️ 只回傳來源描述（檔名／來源類型），**不回傳任何值**。
+static string DescribeConnectionStringSource(IConfiguration cfg)
+{
+    const string key = "ConnectionStrings:EQDashboard";
+    if (cfg is not IConfigurationRoot root) return "(無法判斷)";
+
+    // Providers 依註冊順序排列，後者優先序較高 → 由後往前找，第一個命中的就是實際生效的來源
+    var providers = root.Providers.ToList();
+    for (var i = providers.Count - 1; i >= 0; i--)
+    {
+        var p = providers[i];
+        if (!p.TryGet(key, out _)) continue;
+
+        return p switch
+        {
+            Microsoft.Extensions.Configuration.Json.JsonConfigurationProvider json
+                => $"{json.Source.Path}",
+            Microsoft.Extensions.Configuration.EnvironmentVariables.EnvironmentVariablesConfigurationProvider
+                => "環境變數 ConnectionStrings__EQDashboard（web.config 設定區 A 或 App Pool 環境變數）",
+            Microsoft.Extensions.Configuration.CommandLine.CommandLineConfigurationProvider
+                => "命令列參數",
+            _ => p.GetType().Name
+        };
+    }
+    return "(沒有任何來源提供這個鍵，值為 null)";
 }
 
 // === /health/ready 來源 IP 白名單判定 ===

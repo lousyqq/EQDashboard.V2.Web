@@ -186,8 +186,23 @@
     - ⑤ **最後一定要對一次 GitHub**：`git fetch origin` 後比對 `origin/main` —— 本機落後時遠端可能留著更乾淨的版本（本次沒有，但 `AGENTS.md` 就是靠 `52bdc73` 那份乾淨 UTF-8 版**多救回 3 個 Big5 編不出來的字元**：`≥`、`≤`、`🔄`，只看損毀檔絕對救不回來）。**另一個 repo 內的舊版本，價值等同備份，先找過再認賠。**
     - ⚠️ **只有 Claude Code 的工具寫入與 git 歷史救得回來；使用者自己在編輯器裡改、又還沒 commit 的內容沒有任何備份**，只能照殘存字元人工推回（本次有 4 處是這樣重建的，已在 `memory.md` §3 標注請抽查）。用 `git rev-list --all` + `git grep` 逐個 commit 確認過「本 repo 與外層 repo 從未有過該字串」之後，再認定它無法還原。
 
-25. **🔴 IIS 上切換 DB（正式區／測試區）請改 `web.config` 的「設定區 A」，不要改 `appsettings.json`（2026-08-25）**：改 `appsettings.json` 有三個各自獨立、都會讓人以為「改了沒用」的坑 ——
-    - **① 不會生效**：連線字串在 `Program.cs` 的 `AddDbContextPool`／`AddSqlServer` 建 options 時就被讀走，之後**不再重讀**。`reloadOnChange` 只更新 `IConfiguration`，換不掉已建好的 `DbContextOptions` → **必須回收 App Pool（或 `iisreset`）才會換 DB**，光存檔沒有任何作用。
+25. **IIS 上切換 DB（正式區／測試區）：改 `appsettings.json` 現在就會生效（2026-08-31 修正，取代 2026-08-25 的舊結論）**
+    - **現行行為**：`Hosting:RestartOnConnectionStringChange` 改為**依宿主自動判斷** —— IIS/ANCM 下**預設開啟**（偵測 `ASPNETCORE_IIS_PHYSICAL_PATH`），`dotnet run` 下預設關閉；明確設值一律優先。所以在 IIS 上**改 `appsettings.json` 的 `ConnectionStrings` 存檔即生效**，不需要手動回收 App Pool，也不再需要繞道 `web.config`。
+    - **為什麼是「換進程」而不是「就地換連線」**：換進程才會一併重跑 `SchemaBootstrap`（新 DB 可能缺表）、清掉 `SettingsService` 的快取與 ETag（否則會拿舊 DB 的資料回應最多 60 秒）、重印 DB banner。就地換連線這三件事都要各自補，漏一處就是「資料看起來是舊的」這種最難查的 bug。**不要為了省一次重啟而改成就地換連線。**
+    - **保護機制（都已實作，不要拿掉）**：① 比對前用 `SqlConnectionStringBuilder` **正規化**，純排版編輯（空白、鍵順序）不觸發重啟 ② 連線字串被**清空或改壞時不重啟**，只記 ERR、站台維持用舊連線服務（重啟只會撞上啟動守衛變成空白 500.30，更難救）③ `Interlocked` 擋掉檔案監看器對一次存檔觸發兩次。
+    - **`AddDbContextPool` 的限制仍然成立**（這是「為什麼需要換進程」的根因，不是可以修掉的 bug）：連線字串在建 options 時就被讀走、之後不再重讀；`reloadOnChange` 只更新 `IConfiguration`，換不掉已建好的 `DbContextOptions`。**連線池的前提就是 options 固定不變，「維持 pooling」與「現讀現用」本質互斥。**（對照組 `C:\Gantt` 是每個端點 `new SqlConnection(ConnStr())` 現讀現用，所以它存檔就生效 —— 架構不同，**不要再問「為什麼 Gantt 可以」**。）
+    - **`Scoped` 的服務其實一直都是現讀現用**：`SettingsService` / `SchemaBootstrap` / `TrackingController` 都是每請求 `config.GetConnectionString(...)`。**被凍住的只有 `AddDbContextPool` 與健康檢查的 `AddSqlServer`** —— 盤點時不要把 Scoped 那三個也列進去。
+    - **🔴 啟動 banner 必須排在 `SchemaBootstrap` 之前**（2026-08-31）：bootstrap 是啟動時第一個真正連 DB 的動作，連不上就直接拋例外中止進程。banner 排在它後面的話，「切到一個打不通的 DB」這個**最需要診斷的情境反而什麼都印不出來**（IIS 上只剩空白的 500.30）。**不要為了「等連線確認成功再印」而把它挪回去。**
+    - **banner 會印出「設定來源」**（`DescribeConnectionStringSource`，反查 `IConfigurationRoot.Providers`）：`appsettings.json` / `appsettings.Production.json` / 環境變數。「我改了 `appsettings.json` 卻沒換 DB」最常見的兩個成因是 ① 值被更高優先序來源蓋掉 ② 改到原始碼資料夾而不是 IIS 站台目錄那一份 —— 兩者都看不出來，只能靠 provider 反推。**排查時先看這個欄位，不要先懷疑程式。**
+    - 仍然成立的兩個舊坑（與上面無關，改 `appsettings.json` 時照樣要注意）：
+      - **會被 publish 蓋掉**：`appsettings*.json` 是 content 檔，下次 `dotnet publish` 覆蓋部署就把手改的值洗掉，且不會有任何提示。要長期固定用某個 DB，仍建議寫在 `web.config`「設定區 A」的 `ConnectionStrings__EQDashboard`。
+      - **可能整個起不來**：Production guard 對 `Password=test`／`Password=password`、`Auth:SimulatedAccount` 非空、`TestAccounts:Enabled`、`EnableEmergencyAdmin`、LDAP placeholder 一律**拒絕啟動**，而 `web.config` 預設 `stdoutLogEnabled="false"` → 只看得到一個空白的 **HTTP 500.30**。
+    - **確認真的換過去了**：看 `logs/log-*.txt` 的 `🗄️ 使用中的資料庫：Server=… / Catalog=… ｜設定來源：…`（**只印 Server/Catalog/驗證方式/來源，不印密碼**）。觸發自動重啟時另有一則 `🔄 偵測到 ConnectionStrings:EQDashboard 變更（新目標 Catalog=…）`。
+    - ⚠️ 正式站若不希望「改個檔案」就能無聲換掉全站資料來源，在 `web.config` 明確設 `Hosting__RestartOnConnectionStringChange=false` 關掉（設定區 A-2 已備妥註解範例）。
+
+    <details><summary>（歷史）2026-08-25 的舊結論，已被上面取代</summary>
+
+    - 舊結論是「請改 `web.config` 設定區 A，不要改 `appsettings.json`」，理由是改 `appsettings.json` 有三個坑：**① 不會生效**：連線字串在 `Program.cs` 的 `AddDbContextPool`／`AddSqlServer` 建 options 時就被讀走，之後**不再重讀**。`reloadOnChange` 只更新 `IConfiguration`，換不掉已建好的 `DbContextOptions` → **必須回收 App Pool（或 `iisreset`）才會換 DB**，光存檔沒有任何作用。
     - **② 會被 publish 蓋掉**：`appsettings*.json` 是 content 檔，下次 `dotnet publish` 覆蓋部署就把手改的值洗掉，且不會有任何提示。
     - **③ 可能整個起不來**：Production guard（`Program.cs`）對 `Password=test`／`Password=password`、`Auth:SimulatedAccount` 非空、`TestAccounts:Enabled`、`EnableEmergencyAdmin`、LDAP placeholder 一律**拒絕啟動**。而 `web.config` 預設 `stdoutLogEnabled="false"` → 只看得到一個空白的 **HTTP 500.30**。
     - **根因是架構差異，不是設定漏了**：對照組 `C:\Gantt` 是 `string ConnStr() => app.Configuration.GetConnectionString("Gantt")` + 每個端點 `new SqlConnection(ConnStr())` **現讀現用**，配上 `reloadOnChange:true` 所以存檔就生效。本專案走 EF Core `AddDbContextPool`，**連線池的前提就是 options 固定不變**，兩者本質互斥。**不要再問「為什麼 Gantt 可以」。**
@@ -198,6 +213,8 @@
       - ⚠️ **正式站維持關閉**：重啟會中斷當下所有請求，且等於讓「改個檔案」可以無聲換掉全站資料來源。
     - **確認真的換過去了**：啟動時會寫一行 `🗄️ 使用中的資料庫：Server=… / Catalog=… / …（環境 =…）` 到 `logs/log-*.txt`（**只印 Server/Catalog/驗證方式，不印密碼**）。**看到舊的 Catalog 就代表沒有真的重啟**，別再猜。連線字串格式寫錯（少引號/分號）也會在同一處以 `LogError` 現形。
     - ⚠️ `Password=test` 被 guard 擋是對的，測試 DB 的密碼本來就該改掉（何況它已隨 `appsettings.json` 外洩到公開 repo，見 §2 P0）。**但 `Auth:SimulatedAccount` 那一項不該擋** —— 它是使用者刻意要用的測試工具，已改由 `Auth:AllowSimulatedAccountInProduction=true` 顯式放行（見 §3），不要刪掉它、也不要把整站降成 `Development`。
+
+    </details>
 
 26. **📌 IIS 上切換「模擬他人帳號 ⇄ Windows 自動偵測」的標準操作（2026-08-27 定案，唯一開關在 `web.config`）**
     設定優先序是 `appsettings.json` → `appsettings.{Env}.json` → **環境變數（最高）**。`appsettings.Production.json` 已把 `Auth:SimulatedAccount` 釘成 `""`，所以 **Production 的預設恆為「不模擬」，切換完全由 `web.config` 的「設定區 B-2」決定**。
