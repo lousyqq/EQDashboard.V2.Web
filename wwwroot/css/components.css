@@ -1295,6 +1295,21 @@ table.dataTable.table-hover tbody tr:hover {
     position: relative;         /* 覆蓋層的定位基準 */
 }
 
+/* 「已另開分頁/視窗」佔位提示卡（2026-09-05）。
+   .page-section.active 是 flex column，這裡用 flex:1 撐滿剩餘高度再置中；
+   ⚠️ 不要沿用 .iframe-status-overlay —— 那是 position:absolute 的覆蓋層，
+   本頁沒有定位基準，會貼到整個 main-content 上。 */
+.external-opened-box {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    color: var(--text-main);
+}
+
 /* === 最近瀏覽卡片 hover（2026-08-13：由 navigation.js 的 inline onmouseenter/leave 移來） === */
 .recent-menu-card {
     cursor: pointer;

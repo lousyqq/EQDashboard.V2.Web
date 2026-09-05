@@ -15,7 +15,7 @@
 - 第二～第九輪健檢共 9 輪，**第一～第八輪待辦已全部清空**；第九輪只剩 L5~L9（皆 P3、非阻斷，見 §2）。
 - 最近一次全綠基線（2026-08-24，第九輪修復後）：`dotnet build --no-incremental` **0 錯 0 警告**｜`dotnet test` **11/11**｜20 支模組 `node --check` **0 fail**｜三語 key **623/623/623 對齊**、`used-but-missing` 0｜13 頁 × 深淺兩主題 **0 項未達 AA**｜`wwwroot/js` 內 `?v=`／`bg-light`／`bg-white`／`text-dark`／原生 `alert(` 皆為 **0 筆**。
 - 線上 DB 與 `DB_Table.md` 快照一致，**無待執行的 SQL 腳本**。
-- `__APP_VER__` 目前為 `20260824c`（13~14 處 `?v=` 全對齊）。
+- `__APP_VER__` 目前為 `20260905a`（14 處 `?v=` 全對齊；2026-09-05 因 `components.css` 有改而由 `20260824d` 更新）。
 
 ---
 
@@ -32,7 +32,7 @@
 
 ### P1｜工作區未 commit（第九輪 L9，承接 K9／F1，仍成立）
 
-- 第七輪 J1~J4 的**權限提升修復**、第八輪 K1~K10、第九輪 L1/L3/L4，以及 2026-08-25 的 iframe sandbox 修復與三份文件重建，**全部只存在於本機工作區**。
+- 第七輪 J1~J4 的**權限提升修復**、第八輪 K1~K10、第九輪 L1/L3/L4，2026-08-25 的 iframe sandbox 修復與三份文件重建，以及 **2026-09-05 的 `page-external-opened` 提示卡**，**全部只存在於本機工作區**。
 - 本機 `main` 目前還**落後 `origin/main` 1 個 commit**（就是上面那個 `7467dd4`），要 push 前得先處理 P0。
 
 ### P1｜iframe sandbox 修復待實機確認
@@ -59,6 +59,21 @@
 ---
 
 ## 3. 近期完成
+
+### 2026-09-05｜「另開分頁」看板留下上一個看板的殘影 → 新增 `page-external-opened` 提示卡
+
+- **使用者回報**：點**上方導覽列**的分類時，系統會自動開啟該分類左側選單的第一個看板；若那個看板的開啟方式是**另開分頁**，新分頁是開了，但**本站的內嵌區原封不動留著上一次內嵌過的畫面**。從新分頁切回來會以為「現在顯示的就是我剛點的看板」。使用者同時指定：兩種進入路徑（上方導覽列自動開啟、直接點左側選單）都要套用，且提示卡要附「重新開啟」按鈕。
+- **成因**：`activateMenu` 對 `blank` / `ie` / `fullscreen` / `popup` 只做 `window.open`，**完全不碰 `.page-section`**。這件事在 `goDefaultHome` 的 `_rendersInPage` 註解裡其實早就寫過（所以自動挑首頁會避開這四種），但「使用者主動點擊」那條路一直沒補。
+- **改法（前端 4 檔）**：
+  - `ui/navigation.js`：抽出 `openExternalTarget(safeUrl, target)`（開窗參數唯一實作，`activateMenu` 與提示卡的「重新開啟」共用）；新增 `showExternalOpenedPage()` / `refreshExternalOpenedPage()` / `reopenExternalMenu()`；模組級 `EXTERNAL_TARGETS` 取代 `goDefaultHome` 內的區域 `_EXTERNAL_TARGETS`；`changeLanguage()` 步驟 7 加一行重繪。
+  - `index.html`：新增 `#page-external-opened` 區塊（`-title` / `-desc` / `-btn-text` 三個動態元素**刻意不掛 `data-i18n`**）。
+  - `components.css`：新增 `.external-opened-box`（`flex:1` 置中；**不可**沿用 `position:absolute` 的 `.iframe-status-overlay`）。
+  - `config.js`：新增 5 個 key（`ext_opened_title_tab_fmt` / `ext_opened_title_win_fmt` / `ext_opened_desc` / `btn_reopen_tab` / `btn_reopen_window`）× 三語。
+  - **殘影是靠 `navTo` 清掉的**：`pageId !== 'page-iframe'` 分支會把 `#main-iframe.src` 設回 `about:blank`，不必自己動 iframe。
+  - `__APP_VER__` 由 `20260824d` → **`20260905a`**（改到 `components.css`，14 處 `?v=` 一起更新；`wwwroot/js` 內 `?v=` 仍為 0 筆、`type="module"` 仍只有 1 個）。
+- **實機驗收（`dotnet run` + localhost:5242，全部通過）**：`dotnet build` 0 錯 0 警告｜20 支模組 `node --check` **0 fail**｜三語 key **591/591/591 對齊**｜完整重現使用者情境（內嵌區先停在 yahoo → 點 ZE 上方導覽列、其第一個看板改為 blank）→ **`page-external-opened`、`main-iframe.src = about:blank`、標題「「MNOP」已在新分頁開啟」、`window.open` 收到正確 URL**｜zh/en/ja 切換三語文案都跟著重繪｜popup 目標正確顯示「已在新視窗開啟／重新開啟視窗」｜「重新開啟」按鈕確實再開一次同一個 URL｜1280px 與 375px 皆 **零水平溢出**、console 無錯誤｜深色 title 16:1／desc 14:1、淺色 17:1／7.4:1（皆過 AA）。
+- **同輪已更新 `使用者操作手冊.html`**：§6.1 開啟方式表格三個外開選項補上提示卡行為、新增一則說明 box（含「新分頁沒跳出來＝快顯被封鎖，按重新開啟」）、§13 排錯表新增一列。手冊 375px 與 1280px 皆零水平溢出、console 無錯誤。
+- ⚠️ 測試時曾在瀏覽器記憶體內把某些選單的 `target`/`url` 暫時改成 `blank`（**未落盤、已還原**），但 `activateMenu` 會 `POST /api/Tracking/MenuClick` → **`m_ze_1`／`m_fdc`／`m_1777125333758` 的點擊數各多了幾次**（測試機的統計數字，非資料損毀）。
 
 ### 2026-08-25｜IIS 上改 `appsettings.json` 換不掉 DB —— 三個獨立成因
 

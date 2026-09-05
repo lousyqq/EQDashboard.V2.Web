@@ -17,7 +17,7 @@
 - 🔴 **P0｜`appsettings.json`（含明碼 DB 密碼）已上傳到「公開」GitHub repo，尚未處置（2026-08-25 發現）**：commit `7467dd4`（網頁「Add files via upload」）把該檔推上 `github.com/lousyqq/EQDashboard.V2.Web`，而 `.gitignore` 忽略它正是為了防這件事；未帶認證的 GitHub API 回 200 → **repo 是公開的**。外洩 `User ID=testuser;Password=<明碼>` 與 `TestAccounts` 5 組帳密。
   **處置順序：① 先改 `Sariel` 上 `testuser` 與那 5 組測試帳密（推上公開 repo 就必須視為已外洩，刪 commit 不等於沒外流）② 再把 repo 改私有或用 `git filter-repo`／BFG 清 blob + force push ③ `git check-ignore -v appsettings.json` 複查忽略規則有效。**
   （`SimulatedAccount = "00058897"` 是使用者刻意的測試設定，**不是本項的一部分**，見 §3。）
-- ⚠️ **P1｜工作區成果仍未 commit**（承接 L9／K9／F1「成果裸奔」）：第七輪 J1~J4 的權限提升修復、第八輪 K1~K10、第九輪 L1/L3/L4，以及 2026-08-25 的 iframe sandbox 修復與三份文件重建，**全部只存在於本機工作區**。本機 `main` 另外還落後 `origin/main` 1 個 commit（即上面那個 `7467dd4`），push 前要先處理 P0。
+- ⚠️ **P1｜工作區成果仍未 commit**（承接 L9／K9／F1「成果裸奔」）：第七輪 J1~J4 的權限提升修復、第八輪 K1~K10、第九輪 L1/L3/L4，2026-08-25 的 iframe sandbox 修復與三份文件重建，以及 **2026-09-05 的「另開分頁」提示卡（`page-external-opened`，見 §4 第 22-1 條）**，**全部只存在於本機工作區**。本機 `main` 另外還落後 `origin/main` 1 個 commit（即上面那個 `7467dd4`），push 前要先處理 P0。
 - ⚠️ **P1｜iframe sandbox 修復待實機確認**：2026-08-25 已改為無條件保留 `allow-same-origin`（見 §4 第 22 條），但 AI 環境連不到內網 `p58esiap12`，只驗到「sandbox 屬性正確」這一層。**待使用者在可連內網的機器上確認 MSD 需求管控表能顯示員編與資料。**
 - **P3｜第九輪健檢 L5~L8（未修，皆非阻斷）**：`#configFileName`／`#appIconPreview*` 的 `data-i18n` 陷阱｜46 個死字典 key（其中 `chart_trend_aria` 是「key 備好但趨勢圖 SVG 缺 `role="img"`+`aria-label`」，該接上而非刪掉；⚠️ `dyn_m_*` 是動態命中的，**不可刪**）｜`TrackingController.MenuClick` 不驗證 menuId 可被灌點擊數｜趨勢圖資料變空時留下舊圖。
 - ✅ **使用者操作手冊已產出（2026-08-27）**：`使用者操作手冊.html`（單檔、零外部相依、15 章 61 節）。**日後改程式碼務必依 §5 第 4 條同步更新它。** 剩下的 PPT 版簡報尚未製作。
@@ -170,6 +170,15 @@
     - Console 的 `allow-scripts + allow-same-origin ... can escape its sandboxing` 警告是**預期且無害**的，不要為了消掉它而拿掉 `allow-same-origin`。
     - 通則：**「看板在 iframe 內壞掉、另開分頁正常」＝先查 sandbox 與 opaque origin，不要先懷疑後端或 DB。**
     - ⚠️ 另一個同情境的坑（非本規則、但會咬人）：儀表板與看板**不同主機**時，看板的 session cookie 在 iframe 內屬第三方 cookie，`SameSite=Lax` 一樣送不出去。靠 cookie session 的看板請與儀表板部署在同一 host；走 Windows 整合驗證的不受影響。
+
+22-1. **🔴 「開到本頁之外」的開啟方式，必須同時把內嵌區換成提示卡，不可只 `window.open`（2026-09-05）**：`activateMenu` 對 `blank` / `ie` / `fullscreen` / `popup` 舊版只做 `window.open`、**完全不動 `.page-section`** → 內嵌區原封不動留著**上一個**看板的畫面。使用者從新分頁切回本頁時，會把那個殘影當成剛點的看板。
+    - **點上方導覽列時最容易中招**：`selectTopMenu()` 會在 50ms 後自動 `firstLeafEl.click()` 開啟該分類的第一個看板 —— 那個殘影**根本不是使用者自己選的**，所以連「我剛剛看過這頁」的線索都沒有。
+    - 現行：外開的同時 `showExternalOpenedPage()` 導到 **`page-external-opened`** 提示卡（`「{0}」已在新分頁開啟` / `已在新視窗開啟` ＋「重新開啟分頁／視窗」按鈕，供快顯被封鎖或分頁被誤關時重開）。**清掉殘影靠的是 `navTo` 的 `pageId !== 'page-iframe'` 分支會把 `#main-iframe.src` 設回 `about:blank`** —— 不要為了「保留上一頁」而繞過 `navTo` 自己切 class。
+    - **開窗參數只有一份實作**：`openExternalTarget(safeUrl, target)`。`activateMenu` 與提示卡的「重新開啟」都走它，不要為了重開再寫第二套 `window.open`（同 §4-前端-6 `setButtonLoading` 的單一實作原則）。
+    - **`EXTERNAL_TARGETS` 是模組級單一事實來源**（`ui/navigation.js`）：`activateMenu` 的外開分支、`goDefaultHome` 的 `_rendersInPage`、提示卡的「分頁 vs 視窗」文案三處共用。新增開啟方式只改這一份。
+    - ⚠️ `#external-opened-title` / `-desc` / `-btn-text` 三個都是 **JS 動態填值 → 一律不可掛 `data-i18n`**（§4-前端-9 的同款陷阱），且 `changeLanguage()` 步驟 7 必須呼叫 `refreshExternalOpenedPage()` 才會跟著切語系。
+    - ⚠️ 樣式用自訂的 `.external-opened-box`（`flex:1` 置中），**不要沿用 `.iframe-status-overlay`** —— 那是 `position:absolute` 的覆蓋層，本頁沒有定位基準會貼到整個 `main-content` 上。
+    - `goDefaultHome` 的 `_rendersInPage` 仍然排除這四種目標：**使用者主動點擊時外開＋提示卡是正確行為，但拿它當開站落點只會讓人一進站就看到提示卡而不是內容。**
 
 23. **🔴 第三方資產一律自 host 於 `wwwroot/lib`，且 `lib/` 是版控的一部分（2026-08-15 定案，2026-08-25 複驗）**：Bootstrap 5.3.2 / FontAwesome 6.4.0 / jQuery 3.7.0 / DataTables 1.13.6 / SheetJS 0.18.5 共 16 個檔全部在 repo 內，**`.gitignore` 刻意沒有 ASP.NET 樣板那條 `wwwroot/lib/`**，`.csproj` 也沒有排除它 → `git clone` + `dotnet publish` 就是完整的。
     - **搬機器請用 `git clone`／`git checkout`，不要手動複製檔案** —— 漏掉 `wwwroot/lib` 的症狀是「畫面完全裸奔」：`bootstrap.min.css` 404 → 純 HTML 預設樣式、FontAwesome 圖示變空框、DataTables 表格不 render、所有 Modal 按了沒反應。**看到裸奔畫面先查 `wwwroot/lib` 在不在，不要先懷疑 CSS 被改壞。**

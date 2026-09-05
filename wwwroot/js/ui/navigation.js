@@ -116,6 +116,9 @@ export function changeLanguage(lang, persist = true) {
             const dName = document.getElementById('bc-name')?.innerText;
             if (textEl) textEl.innerText = t('under_construction_fmt', '{0} 內容建置中').replace('{0}', dName || '');
         }
+        // 「已另開分頁」提示卡的標題/說明/按鈕都含動態值（看板名稱、分頁 vs 視窗），
+        //   同樣不掛 data-i18n，必須在這裡以新語系重組。
+        if (pageId === 'page-external-opened') refreshExternalOpenedPage();
         // 最近瀏覽頁的卡片與空狀態文字也是動態產生的，需一併重繪才會跟著換語系
         if (pageId === 'page-recent') openRecentPage();
     }
@@ -253,6 +256,11 @@ export function selectTopMenu(menuId) {
     }, 50);
 }
 
+// 「不會渲染在畫面內、而是另開分頁/視窗」的開啟方式。
+//   唯一事實來源：activateMenu 的外開分支、goDefaultHome 的 _rendersInPage、
+//   showExternalOpenedPage 的提示文案三處都吃這一份，新增開啟方式時只要改這裡。
+const EXTERNAL_TARGETS = ['blank', 'ie', 'fullscreen', 'popup'];
+
 // ⭐️ 核心修復：點擊啟動特定看板 (加入對 DB 欄位大寫的全面支援)
 export function activateMenu(menuId) {
     try {
@@ -384,20 +392,14 @@ export function activateMenu(menuId) {
             let safeUrl = (typeof window.safeExternalUrl === 'function') ? window.safeExternalUrl(mUrl) : mUrl;
             safeUrl = normalizeTargetUrl(safeUrl);
             if (safeUrl !== '#') {
-                if (mTarget === 'blank') {
-                    window.open(safeUrl, '_blank', 'noopener,noreferrer');
-                } else if (mTarget === 'ie') {
-                    openInIE(safeUrl);
-                } else if (mTarget === 'fullscreen') {
-                    const w = screen.availWidth || window.screen.width || 1920;
-                    const h = screen.availHeight || window.screen.height || 1080;
-                    window.open(safeUrl, '_blank', `width=${w},height=${h},top=0,left=0,resizable=yes,scrollbars=yes,status=yes`);
-                } else if (mTarget === 'popup') {
-                    const w = Math.min(1024, (screen.availWidth || 1280) - 100);
-                    const h = Math.min(768, (screen.availHeight || 800) - 100);
-                    const left = Math.round(((screen.availWidth || 1280) - w) / 2);
-                    const top = Math.round(((screen.availHeight || 800) - h) / 2);
-                    window.open(safeUrl, '_blank', `width=${w},height=${h},top=${top},left=${left},resizable=yes,scrollbars=yes,status=yes`);
+                if (EXTERNAL_TARGETS.includes(String(mTarget || '').toLowerCase())) {
+                    // 🔴 外開的同時**一定要換掉內嵌區**（2026-09-05）：舊版這裡只 window.open，
+                    //   完全不動 .page-section → 內嵌區原封不動留著**上一個**看板的畫面。
+                    //   使用者從新分頁切回本頁時會以為那就是剛點的看板 ——
+                    //   點上方導覽列（selectTopMenu 自動點第一個側欄項目）時最容易中招，
+                    //   因為那個舊看板根本不是他自己選的。改為導到 page-external-opened 提示卡。
+                    openExternalTarget(safeUrl, mTarget);
+                    showExternalOpenedPage(safeUrl, dName, mTarget, targetEl);
                 } else if (mTarget === 'iframe_fullscreen') {
                     openDynamicIframe(safeUrl, dName, targetEl, true);
                 } else {
@@ -427,6 +429,78 @@ export function activateMenu(menuId) {
         console.error("🚨 啟動看板時發生錯誤:", error);
     }
 }
+
+// ⭐ 依開啟方式把網址開到「本頁之外」（blank / ie / fullscreen / popup）。
+//   ⚠️ 呼叫端必須先過 safeExternalUrl + normalizeTargetUrl（與舊版 activateMenu 內嵌時同層防護），
+//     本函式不重複驗證。抽出來是為了讓 reopenExternalMenu()（提示卡上的「重新開啟」）
+//     與 activateMenu 走**同一份**開窗參數 —— 兩套實作遲早會漂移。
+function openExternalTarget(safeUrl, target) {
+    if (!safeUrl || safeUrl === '#') return;
+    const tg = String(target || '').toLowerCase();
+    if (tg === 'ie') { openInIE(safeUrl); return; }
+    if (tg === 'fullscreen') {
+        const w = screen.availWidth || window.screen.width || 1920;
+        const h = screen.availHeight || window.screen.height || 1080;
+        window.open(safeUrl, '_blank', `width=${w},height=${h},top=0,left=0,resizable=yes,scrollbars=yes,status=yes`);
+        return;
+    }
+    if (tg === 'popup') {
+        const w = Math.min(1024, (screen.availWidth || 1280) - 100);
+        const h = Math.min(768, (screen.availHeight || 800) - 100);
+        const left = Math.round(((screen.availWidth || 1280) - w) / 2);
+        const top = Math.round(((screen.availHeight || 800) - h) / 2);
+        window.open(safeUrl, '_blank', `width=${w},height=${h},top=${top},left=${left},resizable=yes,scrollbars=yes,status=yes`);
+        return;
+    }
+    window.open(safeUrl, '_blank', 'noopener,noreferrer');
+}
+
+// === 「已另開分頁/視窗」佔位提示（2026-09-05）===
+// 記的是「輸入」而不是渲染結果 —— 切語言時要能用新語系重新組字（同 _lastBc 的作法）。
+let _lastExternalOpen = null;   // { url, name, target }
+
+/**
+ * 把內嵌區換成「XXX 已在新分頁開啟」的提示卡。
+ * navTo 會順手把 #main-iframe 的 src 設回 about:blank（pageId !== 'page-iframe' 分支），
+ * 所以舊看板畫面一定會被清掉 —— 這正是本功能的重點，不要為了「保留上一頁」而繞過 navTo。
+ */
+export function showExternalOpenedPage(url, name, target, element) {
+    _lastExternalOpen = { url, name: name || '', target };
+    navTo('page-external-opened', element, name || '');
+    refreshExternalOpenedPage();
+}
+
+/**
+ * 依 _lastExternalOpen 重畫提示卡文字（切語言時由 changeLanguage 步驟 7 呼叫）。
+ * ⚠️ #external-opened-title / -desc / -btn-text 都是 JS 動態填值，**不可掛 data-i18n**
+ *    （會被 changeLanguage 步驟 1 的 innerHTML 掃描洗掉，見 CLAUDE.md §4-前端-9）。
+ */
+export function refreshExternalOpenedPage() {
+    if (!_lastExternalOpen) return;
+    const isTab = String(_lastExternalOpen.target || '').toLowerCase() === 'blank';
+    const name = _lastExternalOpen.name || t('iframe_content', '看板內容');
+
+    const titleEl = document.getElementById('external-opened-title');
+    const descEl = document.getElementById('external-opened-desc');
+    const btnEl = document.getElementById('external-opened-btn-text');
+
+    if (titleEl) {
+        const fmt = isTab
+            ? t('ext_opened_title_tab_fmt', '「{0}」已在新分頁開啟')
+            : t('ext_opened_title_win_fmt', '「{0}」已在新視窗開啟');
+        titleEl.innerText = fmt.replace('{0}', name);
+    }
+    if (descEl) descEl.innerText = t('ext_opened_desc', '此看板設定為在本頁之外開啟，內容不會顯示在這個區域。若沒有看到，請確認瀏覽器是否封鎖了快顯視窗。');
+    if (btnEl) btnEl.innerText = isTab ? t('btn_reopen_tab', '重新開啟分頁') : t('btn_reopen_window', '重新開啟視窗');
+}
+window.refreshExternalOpenedPage = refreshExternalOpenedPage;
+
+// 提示卡上的「重新開啟」：使用者不小心關掉新分頁、或被快顯封鎖時可再開一次。
+export function reopenExternalMenu() {
+    if (!_lastExternalOpen || !_lastExternalOpen.url) return;
+    openExternalTarget(_lastExternalOpen.url, _lastExternalOpen.target);
+}
+window.reopenExternalMenu = reopenExternalMenu;
 
 // ⭐ 以 IE 開啟網址（開啟方式 target === 'ie'）：供含 ActiveX 等舊元件、Edge/Chrome 無法正常顯示的老網頁。
 //   實作：導向自訂協定「ie:<完整URL>」交給本機協定處理器啟動 iexplore ——
@@ -467,16 +541,15 @@ export function goDefaultHome() {
         const _isOpenable = (m) => !!m && !!(m.url || m.Url || m.targetPage || m.TargetPage || (m.menuMode || m.MenuMode) === 'app_grid');
 
         // ⭐️ 自動挑首頁時還要再多一層條件：**必須是會在畫面內呈現的看板**。
-        //   activateMenu 對 blank / ie / fullscreen / popup 只會 window.open 到外部，
-        //   完全不動 .page-section → 拿它當「開站落點」的話，App 一進來內容區是全白的
-        //   （使用者會以為系統壞了）。使用者「主動點擊」時另開視窗是正確行為，這裡只限制自動挑選。
+        //   activateMenu 對 blank / ie / fullscreen / popup 是 window.open 到外部、內嵌區只留一張
+        //   「已另開分頁」的提示卡（2026-09-05 起）→ 拿它當「開站落點」的話，使用者一進站看到的
+        //   就是那張提示卡而不是內容。使用者「主動點擊」時外開＋提示卡是正確行為，這裡只限制自動挑選。
         //   ⚠️ 只作用在步驟 2/3 的自動挑選；步驟 1（admin 明確指定的預設首頁）是明示意圖，不覆寫。
-        const _EXTERNAL_TARGETS = ['blank', 'ie', 'fullscreen', 'popup'];
         const _rendersInPage = (m) => {
             if (!m) return false;
             if (String(m.menuMode || m.MenuMode || '').toLowerCase() === 'app_grid') return true; // → page-app-grid
             const url = m.url || m.Url;
-            if (url) return !_EXTERNAL_TARGETS.includes(String(m.target || m.Target || '').toLowerCase());
+            if (url) return !EXTERNAL_TARGETS.includes(String(m.target || m.Target || '').toLowerCase());
             return !!(m.targetPage || m.TargetPage);                                              // → navTo(targetPage)
         };
         const _isAutoHomeCandidate = (m) => _isOpenable(m) && !_isFolder(m) && _rendersInPage(m);
